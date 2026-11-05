@@ -28,6 +28,9 @@ The provider URL and credentials are intentionally not published. Use
 `configs/gpt55-responses.example.json` with your own Responses-compatible
 gateway.
 
+Live playable outputs and visual traces:
+https://siyuanmacs.github.io/PixelWorld/smoke/
+
 During smoke testing, two harness issues were found and fixed before release:
 
 1. `--ask-for-approval` is a Codex top-level option and must precede `exec`.

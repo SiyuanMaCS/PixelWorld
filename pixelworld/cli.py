@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import argparse
 import json
+import os
 import shutil
 import subprocess
 
@@ -23,7 +24,9 @@ def _print(value) -> None:
 def doctor(config_path: str | None = None) -> dict:
     tools = {}
     for name in ("codex", "git", "ffmpeg", "uv"):
-        path = shutil.which(name)
+        path = os.environ.get("PIXELWORLD_CODEX") if name == "codex" else shutil.which(name)
+        if name == "codex" and not path:
+            path = shutil.which(name)
         tools[name] = {"path": path, "ok": bool(path)}
     if tools["codex"]["ok"]:
         tools["codex"]["version"] = subprocess.check_output([tools["codex"]["path"], "--version"], text=True).strip()

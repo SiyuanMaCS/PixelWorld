@@ -4,6 +4,17 @@ PixelWorld evaluates a **coding agent as a direct RGB pixel world model**. The a
 
 The repository is a portable benchmark harness built around **OpenAI Codex CLI**. Model identity and API routing are configuration, so the same cleanroom can run against any model exposed by a Codex installation or an OpenAI Responses-compatible gateway.
 
+**PixelWorld does not install, vendor, or replace Codex.** It invokes the
+user's existing `codex` executable from `PATH`. To use a specific local build:
+
+```bash
+export PIXELWORLD_CODEX=/absolute/path/to/codex
+```
+
+Codex authentication, available models, and API access remain owned by the
+user's installation. Codex is intentionally not a Python dependency of this
+repository.
+
 > Status: research preview. Generated quality remains the measured model outcome. No human selects or repairs individual cases.
 
 ## Included
@@ -255,6 +266,9 @@ Always run a fresh case in every enabled Track before releasing a full matrix.
 The harness's sanitized GPT-5.5 custom-provider smoke evidence is recorded in
 [docs/SMOKE_RESULTS.md](docs/SMOKE_RESULTS.md); the corresponding reusable
 configuration shape is [configs/gpt55-responses.example.json](configs/gpt55-responses.example.json).
+
+Play the three accepted smoke videos and inspect their round-by-round traces:
+**https://siyuanmacs.github.io/PixelWorld/smoke/**
 
 ## Upstream attribution
 

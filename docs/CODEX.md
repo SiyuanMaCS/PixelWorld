@@ -2,6 +2,11 @@
 
 PixelWorld uses `codex exec --json` as a subprocess. It does not call a model API directly. This preserves the coding-agent loop—reasoning, shell/Python, file edits, and optional visual inspection—while making model/provider identity replaceable.
 
+PixelWorld never installs Codex. The executable is resolved from
+`PIXELWORLD_CODEX` when set, otherwise from `PATH`. Users keep their own Codex
+version, authentication, and model access; `pixelworld doctor` reports the
+resolved binary and version before a run.
+
 ## Model routing
 
 `provider.type = builtin` passes only `--model MODEL`. Authentication and availability come from the local Codex installation.
