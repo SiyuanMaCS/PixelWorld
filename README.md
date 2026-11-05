@@ -1,0 +1,265 @@
+# PixelWorld
+
+PixelWorld evaluates a **coding agent as a direct RGB pixel world model**. The agent receives a Physics-IQ Verified first frame and prompt, writes Python code, and emits a 5-second continuation as a `uint32` RGB tensor. It does not call an image/video generator.
+
+The repository is a portable benchmark harness built around **OpenAI Codex CLI**. Model identity and API routing are configuration, so the same cleanroom can run against any model exposed by a Codex installation or an OpenAI Responses-compatible gateway.
+
+> Status: research preview. Generated quality remains the measured model outcome. No human selects or repairs individual cases.
+
+## Included
+
+- Three fixed capability Tracks: Text, Vision-Input, and Vision-Agent.
+- One clean Codex session per case; empty output workspace; no memory, network tools, subagents, other cases, references, masks, or scores.
+- Direct `256×144 × 20` RGB output at 4 fps / 5 seconds.
+- Exact PNG ↔ `uint32 0xRRGGBB` tensor validation and frame-00 equality.
+- Unlimited autonomous revision with every stable candidate frozen into an observable Trace.
+- Fair, restartable matrix scheduling with bounded concurrency and independent retries.
+- Pinned Physics-IQ Verified I2V input preparation (198 switch frames only).
+- Lossless MP4 export and the unmodified official Physics-IQ Verified evaluator.
+- A model × Track dashboard, playable galleries, and per-case visual generation Trace pages.
+
+The repository does **not** contain Physics-IQ reference videos/masks, generated benchmark outputs, API keys, or the original experiment's scores.
+
+## Quick start
+
+Requirements: Linux, Python 3.11+, [Codex CLI](https://github.com/openai/codex) (validated with 0.166.0), `git`, `ffmpeg`, and `uv` for official evaluation.
+
+```bash
+git clone https://github.com/SiyuanMaCS/PixelWorld.git
+cd PixelWorld
+uv venv --python 3.11 .venv
+source .venv/bin/activate
+uv pip install -e ".[dev]"
+pixelworld doctor --config configs/benchmark.example.json
+```
+
+Prepare only the 198 legal I2V conditioning images and base prompts:
+
+```bash
+pixelworld physics-iq setup-inputs
+```
+
+This downloads **switch frames only** at the pinned dataset revision, resizes them to 256×144, verifies RGB hashes, and writes `data/physics_iq/manifest.json`. It does not download evaluation videos or masks.
+
+Physics-IQ Verified is gated, so authenticate first with `hf auth login`. If the
+official dataset already exists locally, avoid another download:
+
+```bash
+pixelworld physics-iq setup-inputs \
+  --source-dir /path/to/physics-IQ-benchmark-verified
+```
+
+## Configure models and APIs
+
+For a model in the local Codex catalog:
+
+```json
+{
+  "key": "my-model",
+  "model": "model-id-visible-to-codex",
+  "reasoning_effort": "high",
+  "provider": {"type": "builtin"},
+  "tracks": ["text", "vision-input", "vision-agent"]
+}
+```
+
+For a Responses-compatible gateway:
+
+```json
+{
+  "key": "gateway-model",
+  "model": "upstream-model-id",
+  "reasoning_effort": "high",
+  "provider": {
+    "type": "responses",
+    "id": "my-gateway",
+    "name": "My gateway",
+    "base_url": "https://api.example.com/v1",
+    "env_key": "MY_RESPONSES_API_KEY"
+  },
+  "tracks": ["text", "vision-input", "vision-agent"]
+}
+```
+
+Export the key in the parent shell; never put it in JSON:
+
+```bash
+export MY_RESPONSES_API_KEY='...'
+```
+
+The runner passes the environment-variable **name**, not its value, into the Codex provider config. See [docs/CODEX.md](docs/CODEX.md).
+
+## Smoke, run, and monitor
+
+Run one case first:
+
+```bash
+pixelworld run-case \
+  --config configs/benchmark.example.json \
+  --model openai-example \
+  --track vision-agent \
+  --case 0001
+```
+
+Run a one-case × three-Track smoke:
+
+```bash
+cp configs/smoke.example.json configs/smoke.local.json
+# edit the model ID/provider
+pixelworld matrix run --config configs/smoke.local.json
+pixelworld matrix status --config configs/smoke.local.json
+```
+
+After checking the smoke outputs, run the full matrix:
+
+```bash
+cp configs/benchmark.example.json configs/benchmark.local.json
+# edit models, providers, and concurrency
+pixelworld matrix run --config configs/benchmark.local.json
+```
+
+The supervisor is restart-safe. A detached example:
+
+```bash
+nohup pixelworld matrix run --config configs/benchmark.local.json \
+  > runs/supervisor.log 2>&1 &
+```
+
+## Three Tracks
+
+| Track | Initial image attachment | Output visual tool | Purpose |
+|---|---:|---:|---|
+| `text` | No | Disabled | Code/numeric RGB-only baseline |
+| `vision-input` | Yes | Disabled | Initial multimodal perception only |
+| `vision-agent` | Yes | Available | Autonomous visual self-review |
+
+These are command-level differences:
+
+- `-i/--image first_frame.png` is present only for the two visual Tracks.
+- `--disable view_image` is added to Text and Vision-Input.
+- Vision-Agent keeps `view_image` available and chooses its own review count.
+- JSONL events are audited; a visual call in a disabled Track is a hard failure.
+
+There is no fixed visual-review prompt and no review-count budget.
+
+## Codex invocation
+
+The exact command is stored in every `run_manifest.json`. Its stable shape is:
+
+```bash
+codex --ask-for-approval never exec - \
+  --model MODEL \
+  --ephemeral --ignore-user-config --ignore-rules \
+  --skip-git-repo-check \
+  --sandbox workspace-write \
+  --strict-config --json \
+  -C RUN/workspace \
+  -c sandbox_workspace_write.network_access=false \
+  -c 'sandbox_workspace_write.writable_roots=[]' \
+  -c sandbox_workspace_write.exclude_slash_tmp=true \
+  -c project_doc_max_bytes=0 \
+  -c skills.bundled.enabled=false \
+  -c shell_environment_policy.inherit=none \
+  -c 'shell_environment_policy.set.PATH="<active-venv>/bin:/usr/local/bin:/usr/bin:/bin"' \
+  -c 'web_search="disabled"' \
+  --disable browser_use --disable computer_use \
+  --disable image_generation \
+  --disable multi_agent --disable multi_agent_v2 \
+  --disable apps --disable plugins --disable memories --disable skill_search
+```
+
+The fixed Track task is supplied on stdin. Responses gateway settings are explicit invocation-local `-c model_providers.<id>...` values.
+
+## Output contract
+
+```text
+runs/<model-key>/<track>/case_0001_attempt_01/
+├── run_manifest.json
+├── logs/{events.jsonl,stderr.log,validation.json}
+├── trace/{rounds.jsonl,round_000/, ...}
+└── workspace/
+    ├── generate.py
+    ├── pixels.npz             # uint32 (144,256,20), 0xRRGGBB
+    ├── frames/00.png ... 19.png
+    ├── inspection.png
+    ├── transition_check.png
+    ├── OBSERVATION.md
+    ├── METHOD.md
+    └── index.html
+```
+
+Acceptance requires every PNG to exactly equal its tensor slice and frame 00 to exactly equal the conditioning image. A `uint32 (20,144,256)` tensor is repaired only when it already matches all PNGs and can be losslessly transposed.
+
+## Visualization
+
+```bash
+pixelworld web build --config configs/benchmark.local.json --output site
+python -m http.server 8000 --directory site
+```
+
+Open <http://127.0.0.1:8000>. The page uses model rows and fixed Track columns. Each case has a playable final tensor and a Trace with frozen candidate rounds, event counts, validation evidence, and separately labelled Agent-authored claims.
+
+## Official Physics-IQ Verified evaluation
+
+Generation and evaluation data are deliberately separate. Only after a complete 198-case group is frozen:
+
+```bash
+pixelworld physics-iq setup-evaluator
+
+pixelworld physics-iq eval \
+  --config configs/benchmark.local.json \
+  --model openai-example \
+  --track vision-agent
+```
+
+The exporter creates 198 lossless `libx264rgb` videos and decodes each back to RGB for byte-exact comparison. It then runs the official evaluator at:
+
+```text
+google-deepmind/physics-IQ-benchmark
+commit d3f3de16a9c66b4d3bfd6bdb5518570e8b72ad48
+```
+
+Equivalent official command:
+
+```bash
+uv run python -m physiq.run_physics_iq \
+  --input_folders <198-video-folder> \
+  --output_folder evaluation_outputs/official_results \
+  --descriptions_file descriptions/best_practice/descriptions_base.csv \
+  --benchmark_base_folder vendor/physics-iq-data \
+  --n_process 8
+```
+
+PixelWorld reports `final_score_view` as the Verified score. The default protocol is I2V, base best-practice prompt, 4 fps, 5 seconds, and one deterministic run. Physics-IQ accepts one run for inclusion but recommends four runs and requires standard deviation for SOTA claims. See [docs/PHYSICS_IQ.md](docs/PHYSICS_IQ.md).
+
+## Leakage and isolation
+
+- Reference videos and masks are never copied into an Agent workspace.
+- The generation setup command does not download them.
+- Network-capable tools, browser/computer use, external image generation, plugins, memories, skills, and multi-agent features are disabled.
+- Every attempt receives a fresh `CODEX_HOME`, and bundled skills are disabled.
+- Agent shell commands and file actions are recorded and audited.
+- Each attempt receives a fresh directory; only `first_frame.png` and `prompt.txt` vary by case.
+- No human Best-of-N or per-case feedback is allowed.
+
+Codex `workspace-write` is the portable native mode. It hard-restricts writes and tool network access; read isolation depends on the installed Codex sandbox. For adversarial models, run the harness in an externally isolated VM/container containing only this repository and allowed inputs. The trace audit remains required.
+
+## Test
+
+```bash
+pytest -q
+pixelworld doctor --config configs/benchmark.example.json
+```
+
+Always run a fresh case in every enabled Track before releasing a full matrix.
+The harness's sanitized GPT-5.5 custom-provider smoke evidence is recorded in
+[docs/SMOKE_RESULTS.md](docs/SMOKE_RESULTS.md); the corresponding reusable
+configuration shape is [configs/gpt55-responses.example.json](configs/gpt55-responses.example.json).
+
+## Upstream attribution
+
+PixelWorld does not redistribute Physics-IQ code or data. Follow the licenses and terms of:
+
+- [Physics-IQ and Physics-IQ Verified](https://github.com/google-deepmind/physics-IQ-benchmark)
+- [Physics-IQ Verified dataset](https://huggingface.co/datasets/Anates-Labs-Research/Physics-IQ-Verified)
+- [OpenAI Codex CLI](https://github.com/openai/codex)

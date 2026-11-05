@@ -1,0 +1,4 @@
+PixelWorld invokes, but does not vendor, the Physics-IQ Verified benchmark.
+Physics-IQ code and data retain their upstream licenses and terms:
+https://github.com/google-deepmind/physics-IQ-benchmark
+https://huggingface.co/datasets/Anates-Labs-Research/Physics-IQ-Verified

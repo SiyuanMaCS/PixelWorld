@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pixelworld-bench"
+version = "0.1.0"
+description = "Evaluate coding agents as direct RGB pixel world models on Physics-IQ Verified."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+authors = [{name = "Siyuan Ma"}]
+dependencies = [
+  "huggingface-hub>=0.26",
+  "mistune>=3.0",
+  "numpy>=1.26",
+  "Pillow>=10.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "playwright>=1.48"]
+
+[project.scripts]
+pixelworld = "pixelworld.cli:main"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["pixelworld*"]
+
+[tool.setuptools.package-data]
+pixelworld = ["assets/*.md", "assets/*.html"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

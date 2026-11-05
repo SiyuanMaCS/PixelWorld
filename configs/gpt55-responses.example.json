@@ -1,0 +1,23 @@
+{
+  "protocol": "pixelworld-physics-iq-v1",
+  "inputs_root": "data/physics_iq/inputs",
+  "runs_root": "runs-gpt55",
+  "max_concurrency": 4,
+  "max_per_config": 2,
+  "max_attempts": 2,
+  "models": [
+    {
+      "key": "gpt55-custom",
+      "model": "gpt-5.5-2026-04-24",
+      "reasoning_effort": "high",
+      "provider": {
+        "type": "responses",
+        "id": "gpt55-gateway",
+        "name": "Custom GPT-5.5 Responses gateway",
+        "base_url": "https://replace-with-your-gateway.example/v1",
+        "env_key": "GPT55_RESPONSES_API_KEY"
+      },
+      "tracks": ["text", "vision-input", "vision-agent"]
+    }
+  ]
+}

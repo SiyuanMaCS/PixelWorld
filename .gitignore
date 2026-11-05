@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+.DS_Store
+data/physics_iq/
+vendor/
+runs/
+site/
+evaluation_outputs/
+*.log
+*.pid
