@@ -61,3 +61,5 @@ All 11 segments completed on GPT-5.6-Sol / Vision-Agent through the optional TRA
 Total reported output tokens: **94,533**. Reasoning is preserved separately and not added to output tokens. Frozen-candidate counts are not interpreted as visual review counts.
 
 WBench completed all four official navigation actions with an exact lossless generated-last-frame handoff. WorldArena preserves 121 frames / 24 fps but uses a validation episode at preview resolution. AVGen-Bench emits synchronized 10-second RGB and PCM WAV. The WorldArena numeric-frame-order validator fix rechecked the same output; no model retry occurred.
+
+Final checks: 25 harness tests passed; all 11 trace pages and 41 final/candidate players passed local Chromium playback/image checks. The public gallery passed playback, seek/replay and WAV clock checks for all 12 gallery/combined players. An omitted candidate inspection image is exported from its frozen RGB and labeled as an outer-harness view.

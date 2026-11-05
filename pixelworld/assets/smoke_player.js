@@ -32,10 +32,12 @@ class PixelPlayer {
   draw(n){this.frame=Math.max(0,Math.min(this.d.frames-1,n));this.seek.value=this.frame;this.updateClock();if(this.frames){this.image.data.set(this.frames[this.frame]);this.ctx.putImageData(this.image,0,0);this.root.querySelector('.poster').hidden=true}}
   pause(){this.playing=false;cancelAnimationFrame(this.raf);if(this.audio)this.audio.pause();this.button.textContent='▶ 播放'}
   async start(){
+    this.button.textContent='载入中…';
+    for(const control of this.root.querySelectorAll('button,input'))control.disabled=true;
     try{await this.ensure();if(this.frame===this.d.frames-1)this.draw(0);this.started=performance.now()-this.frame/this.d.fps*1000;
       if(this.audio){this.audio.currentTime=this.frame/this.d.fps;await this.audio.play()}
       this.playing=true;this.button.textContent='❚❚ 暂停';this.raf=requestAnimationFrame(t=>this.tick(t));
-    }catch(e){this.error(e)}
+    }catch(e){this.error(e)}finally{for(const control of this.root.querySelectorAll('button,input'))control.disabled=false}
   }
   tick(t){
     if(!this.playing)return;let elapsed=this.audio?this.audio.currentTime:(t-this.started)/1000;

@@ -61,14 +61,15 @@ def encode(workspace: Path, target: Path, spec: dict) -> dict:
         sheet.save(target/'inspection.png')
     if (workspace/'generate.py').is_file():
         (target/'generate.py').write_text(clean((workspace/'generate.py').read_text()))
-    return {"asset":asset,"poster":"poster.png","width":w,"height":h,"frames":n,"fps":spec['fps'],"inspection_derived":derived,
+    inspection='inspection.png?v='+hashlib.sha256((target/'inspection.png').read_bytes()).hexdigest()[:12]
+    return {"asset":asset,"poster":"poster.png","width":w,"height":h,"frames":n,"fps":spec['fps'],"inspection_derived":derived,"inspection":inspection,
             "audio":"audio.wav" if (target/'audio.wav').is_file() else None}
 
 
 def player(record: dict, prefix: str = "") -> str:
     data = record.copy()
     for key in ('asset','poster','audio'):
-        if data.get(key):data[key] = prefix + data[key]
+        if data.get(key) and not data[key].startswith(('https://','http://')):data[key] = prefix + data[key]
     payload = html.escape(json.dumps(data), quote=True)
     return f'''<div class="player" data-player="{payload}"><div class="screen" style="--aspect:{data['width']}/{data['height']}"><canvas></canvas><img class="poster" src="{html.escape(data['poster'])}"></div><div class="controls"><button class="play">▶ 播放</button><button class="replay">↻ 重播</button><input class="seek" type="range" min="0" value="0"><label><input class="loop" type="checkbox" checked>循环</label><span class="clock"></span></div></div>'''
 
@@ -85,7 +86,7 @@ def waveform(audio: Path, target: Path) -> None:
     im.save(target)
 
 
-def trace(run: Path, target: Path, back: str) -> dict:
+def trace(run: Path, target: Path, back: str, site: Path | None = None, asset_base: str | None = None) -> dict:
     manifest = json.loads((run/'run_manifest.json').read_text())
     spec = manifest.get('media_contract',DEFAULT_MEDIA)
     workspace = run/'workspace'
@@ -96,6 +97,8 @@ def trace(run: Path, target: Path, back: str) -> dict:
         if event.get('type')=='item.completed' and event.get('item',{}).get('type')!='reasoning':events.append(event)
     snapshots=sorted((run/'trace').glob('round_*'))
     final = encode(workspace,target/'final',spec)
+    if asset_base and site:
+        final['asset']=asset_base.rstrip('/')+'/'+(target/'final'/final['asset']).relative_to(site).as_posix()
     usage=manifest.get('token_usage',{})
     prompt=html.escape((workspace/'prompt.txt').read_text())
     body=f'<p><a href="{back}">← Smoke 总览</a></p><h1>{html.escape(manifest["case_id"])}</h1><p class="muted">{html.escape(manifest["model"])} · {html.escape(manifest["track"])} · {spec["width"]}×{spec["height"]} · {spec["frames"]} frames / {spec["fps"]:g} fps</p><div class="box"><strong>当前任务输入</strong><p>{prompt}</p></div><h2>最终视频</h2>{player(final,"final/")}<p><a href="final/generate.py">生成代码</a> · <a href="contract.json">输入与输出契约</a></p>'
@@ -106,10 +109,12 @@ def trace(run: Path, target: Path, back: str) -> dict:
     previous=[]
     for i,source in enumerate(snapshots):
         folder=target/f'candidate_{i:02d}';rec=encode(source,folder,spec)
+        if asset_base and site:
+            rec['asset']=asset_base.rstrip('/')+'/'+(folder/rec['asset']).relative_to(site).as_posix()
         snap=json.loads((source/'snapshot.json').read_text())
         code=(source/'generate.py').read_text().splitlines();diff='\n'.join(difflib.unified_diff(previous,code,fromfile='previous',tofile='current',lineterm=''));previous=code
         image_note='<p class="muted">该候选未存检查图；此图由外部 harness 从本轮真实 RGB 帧导出。</p>' if rec['inspection_derived'] else ''
-        body+=f'<article><h3>Candidate {i+1}</h3><p class="muted">{snap.get("utc","")} · RGB hash {snap.get("canonical_rgb_sha256","")[:16]}</p>{player(rec,f"candidate_{i:02d}/")}<img class="inspection" src="candidate_{i:02d}/inspection.png">{image_note}<details><summary>本轮代码修改</summary><pre>{html.escape(clean(diff))}</pre></details><a href="candidate_{i:02d}/generate.py">本轮完整代码</a></article>'
+        body+=f'<article><h3>Candidate {i+1}</h3><p class="muted">{snap.get("utc","")} · RGB hash {snap.get("canonical_rgb_sha256","")[:16]}</p>{player(rec,f"candidate_{i:02d}/")}<img class="inspection" src="candidate_{i:02d}/{rec["inspection"]}">{image_note}<details><summary>本轮代码修改</summary><pre>{html.escape(clean(diff))}</pre></details><a href="candidate_{i:02d}/generate.py">本轮完整代码</a></article>'
     observed=[]
     body+='<h2>可观测工具时间线</h2>'
     for event in events:
@@ -125,9 +130,10 @@ def trace(run: Path, target: Path, back: str) -> dict:
     return {'manifest':manifest,'player':final,'candidates':len(snapshots)}
 
 
-def build(root: Path, site: Path) -> dict:
+def build(root: Path, site: Path, asset_base: str | None = None) -> dict:
     root=root.resolve();site=site.resolve();site.mkdir(parents=True,exist_ok=True)
     inventory=json.loads((root/'inventory.json').read_text())
+    viewer_version=hashlib.sha256((ASSET_ROOT/'smoke_player.js').read_bytes()+Path(__file__).read_bytes()).hexdigest()[:12]
     cards=[];table=[];published=[]
     for bench in inventory:
         name=bench['id'];runs=sorted((root/'runs'/name).glob('*/*/case_*/run_manifest.json'))
@@ -138,8 +144,8 @@ def build(root: Path, site: Path) -> dict:
             if state!='complete':failed+=1;continue
             done+=1;tokens+=manifest.get('token_usage',{}).get('output_tokens') or 0
             relative=f'{name}/{path.parent.name}'
-            result=trace(path.parent,site/relative,'../../index.html');rec=result['player']
-            cards.append(f'<div class="card"><h3>{html.escape(bench["name"])} · {html.escape(manifest["case_id"])}</h3>{player(rec,relative+"/final/")}<p>{result["candidates"]} 保存候选 · {manifest.get("token_usage",{}).get("output_tokens","—")} output tokens</p><a href="{relative}/index.html">图文视频生成过程 →</a></div>')
+            result=trace(path.parent,site/relative,'../../index.html',site,asset_base);rec=result['player']
+            cards.append(f'<div class="card"><h3>{html.escape(bench["name"])} · {html.escape(manifest["case_id"])}</h3>{player(rec,relative+"/final/")}<p>{result["candidates"]} 保存候选 · {manifest.get("token_usage",{}).get("output_tokens","—")} output tokens</p><a href="{relative}/index.html?v={viewer_version}">图文视频生成过程 →</a></div>')
             published.append({'benchmark':name,'case':manifest['case_id'],'path':relative+'/index.html','media':manifest.get('media_contract',DEFAULT_MEDIA),'output_tokens':manifest.get('token_usage',{}).get('output_tokens')})
         sequence = next((root/'runs'/name).glob('*/*/sequence_*/sequence_manifest.json'),None)
         phase=f'{done} 完成 / {running} 运行 / {failed} 失败'
@@ -157,6 +163,8 @@ def build(root: Path, site: Path) -> dict:
                 np.savez_compressed(combined_dir/'pixels.npz',pixels=np.concatenate(tensors,axis=2))
                 relative=f'{name}/combined'
                 rec=encode(combined_dir,site/relative,spec|{'frames':spec['frames']*len(completed)})
+                if asset_base:
+                    rec['asset']=asset_base.rstrip('/')+'/'+relative+'/'+rec['asset']
                 action_text=' → '.join(turn['action'] for turn in completed)
                 cards.append(f'<div class="card"><h3>{html.escape(bench["name"])} · 多轮连续播放</h3><p>{html.escape(action_text)} · {len(completed)} 轮已完成</p>{player(rec,relative+"/")}<p>每轮使用上一轮末帧作输入；下方单轮页面提供对应候选和工具过程。</p></div>')
         table.append(f'<tr><td><a href="{html.escape(bench["source"])}">{html.escape(bench["name"])}</a></td><td>{html.escape(str(bench["size"]))}</td><td>{html.escape(bench["task"])}</td><td>{phase}</td><td>{tokens:,}</td><td>{html.escape(bench["adaptation"])}</td></tr>')
@@ -167,8 +175,8 @@ def build(root: Path, site: Path) -> dict:
 
 
 def main():
-    parser=argparse.ArgumentParser();parser.add_argument('--root',type=Path,required=True);parser.add_argument('--site',type=Path,required=True)
-    args=parser.parse_args();print(json.dumps(build(args.root,args.site)))
+    parser=argparse.ArgumentParser();parser.add_argument('--root',type=Path,required=True);parser.add_argument('--site',type=Path,required=True);parser.add_argument('--asset-base',help='Optional public mirror for the same lossless PNG sprites')
+    args=parser.parse_args();print(json.dumps(build(args.root,args.site,args.asset_base)))
 
 
 if __name__=='__main__':main()

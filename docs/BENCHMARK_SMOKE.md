@@ -136,3 +136,5 @@ TRAE CLI's `workspace-write` blocks writes and network as configured; it is
 not an OS-level mount that physically hides every outside file. The workspace
 contract and audit additionally prohibit outside data reads. This limitation
 is the same as the documented portable cleanroom boundary.
+
+The review builder accepts `--asset-base` for an alternate public origin of the same lossless PNG files. This changes only browser transport, without changing generated RGB or benchmark evaluation input. The current public preview uses the repository raw-file origin for pixel sprites after observing slower Pages transfers.
