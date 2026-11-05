@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 
-from .constants import TRACKS
+from .constants import TRACKS, DEFAULT_TRACKS, DEFAULT_PROTOCOL, LEGACY_TRACK_PROTOCOLS
 
 
 @dataclass(frozen=True)
@@ -52,6 +52,8 @@ def _resolve(base: Path, value: str) -> Path:
 def load_config(path: str | Path) -> Benchmark:
     source = Path(path).resolve()
     raw = json.loads(source.read_text())
+    protocol = raw.get("protocol", DEFAULT_PROTOCOL)
+    default_tracks = TRACKS if protocol in LEGACY_TRACK_PROTOCOLS else DEFAULT_TRACKS
     base = source.parent.parent if source.parent.name == "configs" else source.parent
     models = []
     keys = set()
@@ -66,7 +68,7 @@ def load_config(path: str | Path) -> Benchmark:
         if provider.type == "responses" and not all(
                 (provider.id, provider.name, provider.base_url, provider.env_key)):
             raise ValueError(f"Responses provider {key} needs id, name, base_url, and env_key")
-        tracks = tuple(value.get("tracks", TRACKS))
+        tracks = tuple(value.get("tracks", default_tracks))
         if not tracks or any(track not in TRACKS for track in tracks):
             raise ValueError(f"Invalid tracks for {key}: {tracks}")
         models.append(Model(key=key, model=value["model"],
@@ -76,7 +78,7 @@ def load_config(path: str | Path) -> Benchmark:
         raise ValueError("At least one model is required")
     result = Benchmark(
         source=source,
-        protocol=raw.get("protocol", "pixelworld-v1"),
+        protocol=protocol,
         inputs_root=_resolve(base, raw.get("inputs_root", "data/physics_iq/inputs")),
         runs_root=_resolve(base, raw.get("runs_root", "runs")),
         max_concurrency=int(raw.get("max_concurrency", 4)),

@@ -1,1 +1,1 @@
-Run the PixelWorld Vision-Agent Track. The initial `first_frame.png` is attached visually. Read `prompt.txt` and `GENERATION_RULES.md`. Visual image tools are available for your outputs; decide autonomously whether and how often to use them. Work autonomously, revise as needed, and finish every required artifact.
+Generate the RGB video requested in `prompt.txt`, following `GENERATION_RULES.md`. `first_frame.png` is attached visually. Visual image tools are available. Choose your own approach.

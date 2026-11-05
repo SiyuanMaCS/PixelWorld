@@ -8,11 +8,14 @@ import shutil
 import subprocess
 import sys
 import time
+import threading
 
 from .audit import canonicalize_tensor, validate
 from .config import Benchmark, Model
-from .constants import ASSET_ROOT, TRACKS
+from .constants import ASSET_ROOT, TRACKS, LEGACY_TRACK_PROTOCOLS
 from .util import atomic_json, sha256, utc_now
+from .usage import collect_usage
+from .events import capture_stream
 
 
 FILE_CHANGE_STALL_SECONDS = 20 * 60
@@ -135,19 +138,24 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
     codex_home = run / "empty-codex-home"
     for path in (workspace / ".tmp", logs, trace, codex_home):
         path.mkdir(parents=True, exist_ok=True)
+    legacy_contract = config.protocol in LEGACY_TRACK_PROTOCOLS or track == "vision-input"
+    task_root = ASSET_ROOT / "legacy_v1" if legacy_contract else ASSET_ROOT
     for origin, target in (
         (source / "first_frame.png", workspace / "first_frame.png"),
         (source / "prompt.txt", workspace / "prompt.txt"),
-        (ASSET_ROOT / "GENERATION_RULES.md", workspace / "GENERATION_RULES.md"),
+        (task_root / "GENERATION_RULES.md", workspace / "GENERATION_RULES.md"),
         (ASSET_ROOT / "artifact_io.py", workspace / "artifact_io.py"),
         (ASSET_ROOT / "player_template.html", workspace / "player_template.html"),
     ):
         shutil.copy2(origin, target)
-    task = ASSET_ROOT / {
+    task = task_root / {
         "text": "TASK_TEXT.md",
         "vision-input": "TASK_VISION_INPUT.md",
         "vision-agent": "TASK_VISION_AGENT.md",
     }[track]
+    # Keep the exact supplied task text outside the model's workspace for audit.
+    task_snapshot = run / "task_prompt.txt"
+    shutil.copy2(task, task_snapshot)
     binary = codex_binary or os.environ.get("PIXELWORLD_CODEX", "codex")
     command = codex_command(model, track, workspace, binary)
     try:
@@ -158,6 +166,7 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         "status": "dry-run" if dry_run else "running",
         "started_utc": utc_now(),
         "protocol": config.protocol,
+        "generation_contract": "legacy-v1" if legacy_contract else "minimal-v2",
         "model_key": model.key,
         "model": model.model,
         "provider": model.provider.__dict__,
@@ -171,11 +180,13 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         "codex_version": version,
         "isolated_codex_home": str(codex_home),
         "command": command,
-        "task_sha256": sha256(task),
+        "task_sha256": sha256(task_snapshot),
+        "task_prompt_file": "task_prompt.txt",
         "rules_sha256": sha256(workspace / "GENERATION_RULES.md"),
         "input_image_sha256": sha256(workspace / "first_frame.png"),
         "input_prompt_sha256": sha256(workspace / "prompt.txt"),
         "initial_visible_files": sorted(path.name for path in workspace.iterdir() if path.is_file()),
+        "token_usage": collect_usage(logs / "events.jsonl", finished=False),
     }
     atomic_json(run / "run_manifest.json", manifest)
     if dry_run:
@@ -192,12 +203,14 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         environment["TMPDIR"] = str(workspace / ".tmp")
         environment["PIXELWORLD_CLEANROOM"] = "1"
         environment["CODEX_HOME"] = str(codex_home)
-        with task.open("rb") as stdin, (logs / "events.jsonl").open("wb") as stdout, \
-                (logs / "stderr.log").open("wb") as stderr:
-            agent = subprocess.Popen(command, stdin=stdin, stdout=stdout, stderr=stderr, env=environment)
+        with task_snapshot.open("rb") as stdin, (logs / "stderr.log").open("wb") as stderr:
+            agent = subprocess.Popen(command, stdin=stdin, stdout=subprocess.PIPE, stderr=stderr, env=environment)
+            logger = threading.Thread(target=capture_stream, args=(agent.stdout, logs / "events.raw.jsonl", logs / "events.jsonl"), daemon=True)
+            logger.start()
             (logs / "agent.pid").write_text(str(agent.pid) + "\n")
             (logs / "supervisor.pid").write_text(str(os.getpid()) + "\n")
             exit_status, watchdog = _wait(agent, logs / "events.jsonl", logs)
+            logger.join()
         stop_file.touch()
         try:
             watcher.wait(timeout=30)
@@ -206,7 +219,8 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
             watcher.wait(timeout=10)
 
     canonicalization = canonicalize_tensor(workspace, logs)
-    validation = validate(workspace, logs / "events.jsonl", exit_status, track)
+    validation = validate(workspace, logs / "events.jsonl", exit_status, track,
+                          require_reports=legacy_contract)
     validation.update({
         "track": track,
         "initial_image_attached": track != "text",
@@ -214,6 +228,8 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
     })
     atomic_json(logs / "validation.json", validation)
     completed = dt.datetime.now(dt.timezone.utc)
+    token_usage = collect_usage(logs / "events.jsonl")
+    atomic_json(logs / "token_usage.json", token_usage)
     manifest.update({
         "status": "complete" if validation["pass"] else "failed",
         "completed_utc": completed.isoformat(),
@@ -221,6 +237,7 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         "exit_status": exit_status,
         "trace_rounds": len(list(trace.glob("round_*"))),
         "validation": validation,
+        "token_usage": token_usage,
     })
     if watchdog:
         manifest["watchdog"] = watchdog

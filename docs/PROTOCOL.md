@@ -1,7 +1,11 @@
-# PixelWorld cleanroom protocol v1
+# PixelWorld cleanroom protocol: current defaults and v1 compatibility
+
+New configurations use two active Tracks. Explicit historical Vision-Input
+configurations and named v1 defaults remain supported for continuation and
+reproduction; do not alter ongoing three-Track matrices or historical results.
 
 1. Prepare legal I2V switch frames and prompts with the pinned input setup.
-2. Run a fresh three-Track smoke for every model configuration.
+2. Run a fresh smoke in every enabled Track; new experiments default to Text and Vision-Agent.
 3. Release the full queue only after format, Track, isolation, and playback checks pass.
 4. Start one new Codex session and one empty workspace per model/Track/case attempt.
 5. Do not provide human feedback, reference outputs, masks, metrics, other cases, or a fixed review prompt.

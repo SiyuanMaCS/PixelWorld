@@ -19,3 +19,6 @@ PHYSICS_IQ_DESCRIPTIONS_SHA256 = "20ffd208acc0b0f50d4638d1da69218168e78336e96118
 PHYSICS_IQ_INPUTS = 198
 
 TRACKS = ("text", "vision-input", "vision-agent")
+DEFAULT_TRACKS = ("text", "vision-agent")
+DEFAULT_PROTOCOL = "pixelworld-v2"
+LEGACY_TRACK_PROTOCOLS = {"pixelworld-v1", "pixelworld-physics-iq-v1", "pixelworld-smoke-v1"}

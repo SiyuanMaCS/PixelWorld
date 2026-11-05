@@ -1,5 +1,5 @@
 {
-  "protocol": "pixelworld-physics-iq-v1",
+  "protocol": "pixelworld-physics-iq-v2",
   "inputs_root": "data/physics_iq/inputs",
   "runs_root": "runs",
   "max_concurrency": 4,
@@ -10,8 +10,13 @@
       "key": "openai-example",
       "model": "gpt-5.4",
       "reasoning_effort": "high",
-      "provider": {"type": "builtin"},
-      "tracks": ["text", "vision-input", "vision-agent"]
+      "provider": {
+        "type": "builtin"
+      },
+      "tracks": [
+        "text",
+        "vision-agent"
+      ]
     },
     {
       "key": "responses-gateway-example",
@@ -24,7 +29,10 @@
         "base_url": "https://api.example.com/v1",
         "env_key": "MY_RESPONSES_API_KEY"
       },
-      "tracks": ["text", "vision-input", "vision-agent"]
+      "tracks": [
+        "text",
+        "vision-agent"
+      ]
     }
   ]
 }

@@ -70,7 +70,7 @@ For a model in the local Codex catalog:
   "model": "model-id-visible-to-codex",
   "reasoning_effort": "high",
   "provider": {"type": "builtin"},
-  "tracks": ["text", "vision-input", "vision-agent"]
+  "tracks": ["text", "vision-agent"]
 }
 ```
 
@@ -88,7 +88,7 @@ For a Responses-compatible gateway:
     "base_url": "https://api.example.com/v1",
     "env_key": "MY_RESPONSES_API_KEY"
   },
-  "tracks": ["text", "vision-input", "vision-agent"]
+  "tracks": ["text", "vision-agent"]
 }
 ```
 
@@ -112,7 +112,7 @@ pixelworld run-case \
   --case 0001
 ```
 
-Run a one-case × three-Track smoke:
+Run a one-case smoke for both active Tracks:
 
 ```bash
 cp configs/smoke.example.json configs/smoke.local.json
@@ -136,13 +136,17 @@ nohup pixelworld matrix run --config configs/benchmark.local.json \
   > runs/supervisor.log 2>&1 &
 ```
 
-## Three Tracks
+## Two default Tracks and legacy compatibility
 
 | Track | Initial image attachment | Output visual tool | Purpose |
 |---|---:|---:|---|
 | `text` | No | Disabled | Code/numeric RGB-only baseline |
-| `vision-input` | Yes | Disabled | Initial multimodal perception only |
+| `vision-input` (legacy) | Yes | Disabled | Retained for old configurations and results |
 | `vision-agent` | Yes | Available | Autonomous visual self-review |
+
+New experiments default to `text` and `vision-agent`. Explicit legacy Track
+configurations remain supported, and named v1 configurations retain their old
+three-Track defaults. Existing v1 experiments and saved outputs are unchanged.
 
 These are command-level differences:
 
@@ -152,6 +156,27 @@ These are command-level differences:
 - JSONL events are audited; a visual call in a disabled Track is a hard failure.
 
 There is no fixed visual-review prompt and no review-count budget.
+
+New v2 runs require code and RGB outputs, without mandatory observation,
+event-plan or method reports. They ask only to save intermediate results when
+producing candidates for inspection. The harness records code versions,
+validated stable candidates and timestamped tool events externally, preserving
+exact CLI stdout in `events.raw.jsonl`. See
+[docs/WORKSPACE_AND_TASK.md](docs/WORKSPACE_AND_TASK.md).
+Legacy v1 rules/tasks remain frozen under `pixelworld/assets/legacy_v1/`.
+
+
+Every finalized run records API-reported input, output, cache and reasoning
+tokens in `run_manifest.json` (`token_usage`) and `logs/token_usage.json`.
+Missing usage remains explicit rather than zero. To backfill older runs and
+export one CSV row per run/attempt:
+
+```bash
+python -m pixelworld.usage --runs-root runs --output runs/token-report
+```
+
+See [docs/EFFICIENCY_PROTOCOL.md](docs/EFFICIENCY_PROTOCOL.md) for accounting
+and optional passive recording of older jobs that are still running.
 
 ## Codex invocation
 

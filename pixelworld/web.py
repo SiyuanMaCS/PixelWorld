@@ -7,6 +7,7 @@ import hashlib
 import html
 import io
 import json
+import difflib
 
 import mistune
 import numpy as np
@@ -82,17 +83,25 @@ def _trace_page(config: Benchmark, model: Model, track: str, case_id: str,
     manifest = json.loads((run / "run_manifest.json").read_text())
     events = _events(run)
     round_html = []
+    previous_code = []
     rounds = sorted((run / "trace").glob("round_*"))
     for index, round_dir in enumerate(rounds):
         snapshot_path = round_dir / "snapshot.json"
         snapshot_value = json.loads(snapshot_path.read_text()) if snapshot_path.is_file() else {}
         asset = Path("assets") / model.key / track / case_id / f"round_{index:03d}.webp"
         _round_preview(round_dir, site / asset)
-        round_html.append(f'<article class="round"><img loading="lazy" src="../../../../{asset.as_posix()}"><div><h3>Round {index:02d}</h3><p class="muted">pixels {html.escape(snapshot_value.get("pixels_sha256", "")[:16])} · code {html.escape(snapshot_value.get("generate_sha256", "")[:16])}</p><p>Actual frozen frames: 00 / 01 / 05 / 10 / 19. A frozen round is harness evidence, not proof that the model visually inspected it.</p></div></article>')
+        code_path = round_dir / 'generate.py'
+        current_code = code_path.read_text(errors='replace').splitlines() if code_path.is_file() else []
+        delta = list(difflib.unified_diff(previous_code, current_code, lineterm=''))
+        excerpt = '\n'.join(delta[:90]) or 'No code change in this snapshot.'
+        if len(delta) > 90:
+            excerpt += '\n… additional diff lines omitted …'
+        previous_code = current_code
+        round_html.append(f'<article class="round"><img loading="lazy" src="../../../../{asset.as_posix()}"><div><h3>Round {index:02d}</h3><p class="muted">pixels {html.escape(snapshot_value.get("pixels_sha256", "")[:16])} · code {html.escape(snapshot_value.get("generate_sha256", "")[:16])}</p><p>Actual frozen frames: 00 / 01 / 05 / 10 / 19. A frozen round is harness evidence, not proof that the model visually inspected it.</p><details><summary>Code changes</summary><pre>{html.escape(excerpt)}</pre></details></div></article>')
     validation = manifest.get("validation", {})
     prompt = html.escape((workspace / "prompt.txt").read_text().strip())
-    observation = MARKDOWN((workspace / "OBSERVATION.md").read_text(errors="replace"))
-    method = MARKDOWN((workspace / "METHOD.md").read_text(errors="replace"))
+    observation = MARKDOWN((workspace / "OBSERVATION.md").read_text(errors="replace")) if (workspace / "OBSERVATION.md").is_file() else '<p>No optional observation report was written.</p>'
+    method = MARKDOWN((workspace / "METHOD.md").read_text(errors="replace")) if (workspace / "METHOD.md").is_file() else '<p>No optional method report was written.</p>'
     stats = [(len(rounds), "frozen rounds"), (validation.get("generate_runs", 0), "generator runs"),
              (events["commands"], "commands"), (events["file_changes"], "file changes"),
              (events["view_image"], "view_image events")]
@@ -140,16 +149,19 @@ def build(config: Benchmark, site: Path) -> dict:
         total_records += len(records)
 
     rows = []
+    active_tracks = [track for track in TRACKS if any(track in model.tracks for model in config.models)]
     for model in config.models:
         cells = []
-        for track in TRACKS:
+        for track in active_tracks:
             if (model.key, track) not in matrix:
                 cells.append("<td>N/A</td>")
                 continue
             name, done = matrix[(model.key, track)]
             cells.append(f'<td><a href="{name}"><strong>{done}/198</strong><div class="bar"><i style="width:{done/198*100:.3f}%"></i></div><span>{track} →</span></a></td>')
         rows.append(f'<tr><th>{html.escape(model.model)}</th>{"".join(cells)}</tr>')
-    index = f'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PixelWorld matrix</title><style>{CSS}</style><main><h1>PixelWorld</h1><p class="muted">Coding agents as direct RGB pixel world models. {status['totals'].get('complete',0)}/{status['total_runs']} complete · {status['totals'].get('running',0)} active · {status['totals'].get('exhausted',0)} exhausted.</p><section class="matrix"><table><thead><tr><th>Model ↓ / Track →</th><th>Text</th><th>Vision-Input</th><th>Vision-Agent</th></tr></thead><tbody>{''.join(rows)}</tbody></table></section></main>'''
+    labels = {"text": "Text", "vision-input": "Vision-Input (legacy)", "vision-agent": "Vision-Agent"}
+    track_headers = "".join(f"<th>{labels[t]}</th>" for t in active_tracks)
+    index = f'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PixelWorld matrix</title><style>{CSS}</style><main><h1>PixelWorld</h1><p class="muted">Coding agents as direct RGB pixel world models. {status['totals'].get('complete',0)}/{status['total_runs']} complete · {status['totals'].get('running',0)} active · {status['totals'].get('exhausted',0)} exhausted.</p><section class="matrix"><table><thead><tr><th>Model ↓ / Track →</th>{track_headers}</tr></thead><tbody>{''.join(rows)}</tbody></table></section></main>'''
     (site / "index.html").write_text(index)
     return {"site": str(site), "players": total_records,
             "configurations": len(configurations(config)), "status": status["totals"]}

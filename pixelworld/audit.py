@@ -110,9 +110,12 @@ def outside_command_paths(command: str, workspace: Path) -> list[str]:
     return values
 
 
-def validate(workspace: Path, events_path: Path, exit_status: int, track: str) -> dict:
+def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
+             require_reports: bool = True) -> dict:
     required = ("generate.py", "pixels.npz", "inspection.png", "transition_check.png",
-                "index.html", "OBSERVATION.md", "METHOD.md")
+                "index.html")
+    if require_reports:
+        required += ("OBSERVATION.md", "METHOD.md")
     missing = [name for name in required if not (workspace / name).is_file()]
     frame_paths = sorted((workspace / "frames").glob("*.png")) if (workspace / "frames").is_dir() else []
     frame0_exact = False
@@ -181,6 +184,7 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str) -
         "exit_status": exit_status,
         "terminal_events": terminal,
         "missing_required": missing,
+        "planning_and_method_reports_required": require_reports,
         "frames": len(frame_paths),
         "tensor_shape": tensor_shape,
         "frame0_exact": frame0_exact,

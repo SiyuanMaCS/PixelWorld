@@ -1,1 +1,1 @@
-Run the PixelWorld Text Track. Read `prompt.txt` and `GENERATION_RULES.md`. The initial image is not attached to the model; `first_frame.png` may be accessed only through local code and numeric RGB operations. Visual image tools are disabled. Work autonomously, revise as needed, and finish every required artifact.
+Generate the RGB video requested in `prompt.txt`, following `GENERATION_RULES.md`. `first_frame.png` is available through local code and numeric RGB operations; it is not attached visually. Visual image tools are disabled. Choose your own approach.

@@ -1,0 +1,1 @@
+Run the PixelWorld Vision-Input Track. The initial `first_frame.png` is attached visually. Read `prompt.txt` and `GENERATION_RULES.md`. Visual image tools for later outputs are disabled; inspect them only through local code and numeric checks. Work autonomously, revise as needed, and finish every required artifact.

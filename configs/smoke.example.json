@@ -1,18 +1,25 @@
 {
-  "protocol": "pixelworld-smoke-v1",
+  "protocol": "pixelworld-smoke-v2",
   "inputs_root": "data/physics_iq/inputs",
   "runs_root": "runs-smoke",
   "max_concurrency": 3,
   "max_per_config": 3,
   "max_attempts": 1,
-  "case_ids": ["0001"],
+  "case_ids": [
+    "0001"
+  ],
   "models": [
     {
       "key": "smoke-model",
       "model": "gpt-5.4",
       "reasoning_effort": "high",
-      "provider": {"type": "builtin"},
-      "tracks": ["text", "vision-input", "vision-agent"]
+      "provider": {
+        "type": "builtin"
+      },
+      "tracks": [
+        "text",
+        "vision-agent"
+      ]
     }
   ]
 }

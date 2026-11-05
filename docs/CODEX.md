@@ -47,9 +47,14 @@ workspace.
 
 ## Track enforcement
 
+New configurations default to Text and Vision-Agent. Vision-Agent autonomously
+decides whether and how often to inspect or refine outputs. Vision-Input remains
+available only when explicitly requested by a legacy configuration; named v1
+configurations preserve their historical defaults.
+
 The initial attachment and `view_image` feature gate are command-level differences. JSONL audit is the second layer. Do not implement Tracks by changing prose only.
 
-Codex capabilities evolve. `pixelworld doctor` checks the installed version and `view_image` feature. The validated baseline is 0.166.0; newer versions should rerun unit tests and a three-Track smoke.
+Codex capabilities evolve. `pixelworld doctor` checks the installed version and `view_image` feature. The validated baseline is 0.166.0; newer versions should rerun unit tests and a smoke in every enabled Track.
 
 ## Runtime budget
 
