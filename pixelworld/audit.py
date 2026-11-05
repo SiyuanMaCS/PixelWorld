@@ -4,12 +4,14 @@ from pathlib import Path
 import json
 import re
 import shutil
+import wave
 
 import numpy as np
 from PIL import Image
 
 from .constants import FRAMES, HEIGHT, TENSOR_SHAPE, WIDTH
 from .util import atomic_json, sha256
+from .media import DEFAULT_MEDIA
 
 
 SUBAGENT_PATTERN = re.compile(
@@ -34,8 +36,11 @@ def invokes_network(command: str) -> bool:
     return bool(NETWORK_PATTERN.search(command))
 
 
-def canonicalize_tensor(workspace: Path, logs: Path) -> dict | None:
+def canonicalize_tensor(workspace: Path, logs: Path, media: dict | None = None) -> dict | None:
     """Losslessly repair only the unambiguous uint32 T,H,W layout."""
+    spec = media or DEFAULT_MEDIA
+    FRAMES, HEIGHT, WIDTH = (spec[k] for k in ("frames", "height", "width"))
+    TENSOR_SHAPE = (HEIGHT, WIDTH, FRAMES)
     tensor_path = workspace / "pixels.npz"
     frame_dir = workspace / "frames"
     if not tensor_path.is_file() or not frame_dir.is_dir():
@@ -111,9 +116,14 @@ def outside_command_paths(command: str, workspace: Path) -> list[str]:
 
 
 def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
-             require_reports: bool = True) -> dict:
+             require_reports: bool = True, media: dict | None = None) -> dict:
+    spec = media or DEFAULT_MEDIA
+    FRAMES, HEIGHT, WIDTH = (spec[k] for k in ("frames", "height", "width"))
+    TENSOR_SHAPE = (HEIGHT, WIDTH, FRAMES)
     required = ("generate.py", "pixels.npz", "inspection.png", "transition_check.png",
                 "index.html")
+    if spec.get("audio"):
+        required += ("audio.wav",)
     if require_reports:
         required += ("OBSERVATION.md", "METHOD.md")
     missing = [name for name in required if not (workspace / name).is_file()]
@@ -125,21 +135,32 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
         try:
             pixels = np.load(workspace / "pixels.npz")["pixels"]
             tensor_shape = list(pixels.shape)
-            frame0_exact = np.array_equal(
+            frame0_exact = spec["task_type"] == "t2v" or np.array_equal(
                 np.asarray(Image.open(workspace / "first_frame.png").convert("RGB")),
                 np.asarray(Image.open(workspace / "frames" / "00.png").convert("RGB")),
             )
             tensor_exact = pixels.shape == TENSOR_SHAPE and pixels.dtype == np.uint32
             if tensor_exact:
-                for index, path in enumerate(frame_paths):
+                # Lexicographic order breaks once frame indices reach 100.
+                for index in range(FRAMES):
+                    path = workspace / "frames" / f"{index:02d}.png"
                     rgb = np.asarray(Image.open(path).convert("RGB"), dtype=np.uint32)
                     packed = (rgb[:, :, 0] << 16) | (rgb[:, :, 1] << 8) | rgb[:, :, 2]
-                    if not np.array_equal(packed, pixels[:, :, index]):
+                    if rgb.shape != (HEIGHT, WIDTH, 3) or not np.array_equal(packed, pixels[:, :, index]):
                         tensor_exact = False
                         break
         except Exception:
             tensor_exact = False
 
+    audio_check = None
+    if spec.get("audio"):
+        audio_check = False
+        try:
+            with wave.open(str(workspace / "audio.wav"), "rb") as handle:
+                a = spec["audio"]
+                audio_check = (handle.getframerate() == a["sample_rate"] and handle.getnchannels() == a["channels"] and handle.getsampwidth() == 2 and handle.getnframes() == round(FRAMES / spec["fps"] * a["sample_rate"]) and handle.getcomptype() == "NONE")
+        except (OSError, wave.Error, EOFError):
+            pass
     terminal, commands, reads, failed_reads, file_changes, visual_calls = [], [], [], [], [], []
     lines = events_path.read_text(errors="replace").splitlines() if events_path.is_file() else []
     for line in lines:
@@ -179,7 +200,8 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
     passed = (exit_status == 0 and "turn.completed" in terminal and not missing and
               len(frame_paths) == FRAMES and frame0_exact and tensor_exact and
               not outside_reads and not outside_changes and not network_commands and
-              not subagent_commands and not outside_command_values and not track_violation)
+              not subagent_commands and not outside_command_values and not track_violation and
+              audio_check is not False)
     return {
         "exit_status": exit_status,
         "terminal_events": terminal,
@@ -187,7 +209,10 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
         "planning_and_method_reports_required": require_reports,
         "frames": len(frame_paths),
         "tensor_shape": tensor_shape,
-        "frame0_exact": frame0_exact,
+        "frame0_exact": frame0_exact if spec["task_type"] == "i2v" else None,
+        "first_frame_constraint_satisfied": frame0_exact,
+        "audio_contract_exact": audio_check,
+        "media_contract": spec,
         "png_tensor_exact": tensor_exact,
         "read_calls": len(reads),
         "outside_workspace_reads": outside_reads,

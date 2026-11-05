@@ -16,6 +16,7 @@ from .constants import ASSET_ROOT, TRACKS, LEGACY_TRACK_PROTOCOLS
 from .util import atomic_json, sha256, utc_now
 from .usage import collect_usage
 from .events import capture_stream
+from .media import contract, task_rules
 
 
 FILE_CHANGE_STALL_SECONDS = 20 * 60
@@ -27,9 +28,30 @@ def _toml(value: str) -> str:
 
 
 def codex_command(model: Model, track: str, workspace: Path,
-                  codex_binary: str = "codex") -> list[str]:
+                  codex_binary: str = "codex", has_image: bool = True) -> list[str]:
     if track not in TRACKS or track not in model.tracks:
         raise ValueError(f"Track {track} is not enabled for {model.key}")
+    if model.cli_backend == "trae":
+        command = [codex_binary, "exec", "-", "--model", model.model,
+                   "--ephemeral", "--ignore-user-config", "--ignore-rules",
+                   "--skip-git-repo-check", "--sandbox", "workspace-write",
+                   "--strict-config", "--json", "-C", str(workspace)]
+        for value in ('model_provider="trae"', f'model_reasoning_effort="{model.reasoning_effort}"',
+                      'approval_policy="never"', 'sandbox_workspace_write.network_access=false',
+                      'sandbox_workspace_write.writable_roots=[]', 'sandbox_workspace_write.exclude_slash_tmp=true',
+                      'web_search="disabled"', 'memories.use_memories=false', 'memories.generate_memories=false',
+                      'skills.bundled.enabled=false', 'resource_dirs=[]', 'history.persistence="none"',
+                      'shell_environment_policy.inherit="none"', 'features.multi_agent_v2.max_concurrent_threads_per_session=1'):
+            command += ['-c', value]
+        for feature in ('browser_use','computer_use','image_generation','multi_agent','multi_agent_v2',
+                        'apps','plugins','memories','skill_search','hooks'):
+            command += ['--disable',feature]
+        if track in ('text','vision-input'):
+            command += ['--disallowed-tool','Read','--disallowed-tool','view_image']
+        elif has_image:
+            command += ['-i',str(workspace/'first_frame.png')]
+        command += ['--shell-tool-timeout','10m']
+        return command
     python_bin = str(Path(sys.executable).resolve().parent)
     safe_path = ":".join(dict.fromkeys((python_bin, "/usr/local/bin", "/usr/bin", "/bin")))
     command = [
@@ -66,7 +88,7 @@ def codex_command(model: Model, track: str, workspace: Path,
         command.extend(["--disable", feature])
     if track in ("text", "vision-input"):
         command.extend(["--disable", "view_image"])
-    if track != "text":
+    if track != "text" and has_image:
         command.extend(["--image", str(workspace / "first_frame.png")])
     return command
 
@@ -129,7 +151,9 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
              codex_binary: str | None = None, dry_run: bool = False) -> dict:
     model = config.model(model_key)
     source = config.inputs_root / case_id
-    if not (source / "first_frame.png").is_file() or not (source / "prompt.txt").is_file():
+    spec = contract(source)
+    has_image = spec["task_type"] == "i2v"
+    if (has_image and not (source / "first_frame.png").is_file()) or not (source / "prompt.txt").is_file():
         raise FileNotFoundError(f"Missing prepared input for case {case_id}: {source}")
     run = run_path(config, model, track, case_id, attempt)
     if run.exists():
@@ -147,17 +171,28 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         (ASSET_ROOT / "artifact_io.py", workspace / "artifact_io.py"),
         (ASSET_ROOT / "player_template.html", workspace / "player_template.html"),
     ):
-        shutil.copy2(origin, target)
+        if origin.is_file():
+            shutil.copy2(origin, target)
     task = task_root / {
         "text": "TASK_TEXT.md",
         "vision-input": "TASK_VISION_INPUT.md",
         "vision-agent": "TASK_VISION_AGENT.md",
     }[track]
+    atomic_json(run / "media_contract.json", spec)
+    if (source / "task_spec.json").is_file():
+        if legacy_contract:
+            raise ValueError("Legacy contracts cannot override media")
+        atomic_json(workspace / "task_spec.json", spec)
+        (workspace / "GENERATION_RULES.md").write_text(task_rules(spec))
     # Keep the exact supplied task text outside the model's workspace for audit.
     task_snapshot = run / "task_prompt.txt"
-    shutil.copy2(task, task_snapshot)
-    binary = codex_binary or os.environ.get("PIXELWORLD_CODEX", "codex")
-    command = codex_command(model, track, workspace, binary)
+    task_text = task.read_text()
+    if not has_image:
+        task_text = "Generate the RGB video requested in `prompt.txt`, following `GENERATION_RULES.md` and `task_spec.json`. There is no input image. Choose your own approach. " + ("Visual image tools are available; choose whether to inspect your output.\n" if track == "vision-agent" else "Visual image tools are disabled.\n")
+    task_snapshot.write_text(task_text)
+    binary = codex_binary or (os.environ.get("PIXELWORLD_TRAECLI", "traecli") if model.cli_backend == 'trae'
+                              else os.environ.get("PIXELWORLD_CODEX", "codex"))
+    command = codex_command(model, track, workspace, binary, has_image)
     try:
         version = subprocess.check_output([binary, "--version"], text=True).strip()
     except Exception:
@@ -169,10 +204,11 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         "generation_contract": "legacy-v1" if legacy_contract else "minimal-v2",
         "model_key": model.key,
         "model": model.model,
+        "cli_backend": model.cli_backend,
         "provider": model.provider.__dict__,
         "reasoning_effort": model.reasoning_effort,
         "track": track,
-        "initial_image_attached": track != "text",
+        "initial_image_attached": has_image and track != "text",
         "output_image_tool_enabled": track == "vision-agent",
         "case_id": case_id,
         "attempt": attempt,
@@ -183,7 +219,8 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         "task_sha256": sha256(task_snapshot),
         "task_prompt_file": "task_prompt.txt",
         "rules_sha256": sha256(workspace / "GENERATION_RULES.md"),
-        "input_image_sha256": sha256(workspace / "first_frame.png"),
+        "input_image_sha256": sha256(workspace / "first_frame.png") if has_image else None,
+        "media_contract": spec,
         "input_prompt_sha256": sha256(workspace / "prompt.txt"),
         "initial_visible_files": sorted(path.name for path in workspace.iterdir() if path.is_file()),
         "token_usage": collect_usage(logs / "events.jsonl", finished=False),
@@ -198,11 +235,16 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         watcher = subprocess.Popen([
             sys.executable, "-m", "pixelworld.snapshot", "--workspace", str(workspace),
             "--trace", str(trace), "--stop-file", str(stop_file),
+            "--spec-file", str(run / "media_contract.json"),
         ], stdout=watcher_out, stderr=watcher_err)
         environment = os.environ.copy()
         environment["TMPDIR"] = str(workspace / ".tmp")
         environment["PIXELWORLD_CLEANROOM"] = "1"
         environment["CODEX_HOME"] = str(codex_home)
+        if model.cli_backend == 'trae':
+            environment.pop('CODEX_HOME',None)
+            environment['TRAE_HOME'] = str(codex_home)
+            environment['TRAECLI_HOME'] = os.environ.get('TRAECLI_HOME', str(Path.home()/'.trae/cli'))
         with task_snapshot.open("rb") as stdin, (logs / "stderr.log").open("wb") as stderr:
             agent = subprocess.Popen(command, stdin=stdin, stdout=subprocess.PIPE, stderr=stderr, env=environment)
             logger = threading.Thread(target=capture_stream, args=(agent.stdout, logs / "events.raw.jsonl", logs / "events.jsonl"), daemon=True)
@@ -218,12 +260,12 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
             watcher.terminate()
             watcher.wait(timeout=10)
 
-    canonicalization = canonicalize_tensor(workspace, logs)
+    canonicalization = canonicalize_tensor(workspace, logs, spec)
     validation = validate(workspace, logs / "events.jsonl", exit_status, track,
-                          require_reports=legacy_contract)
+                          require_reports=legacy_contract, media=spec)
     validation.update({
         "track": track,
-        "initial_image_attached": track != "text",
+        "initial_image_attached": has_image and track != "text",
         "output_image_tool_enabled": track == "vision-agent",
     })
     atomic_json(logs / "validation.json", validation)

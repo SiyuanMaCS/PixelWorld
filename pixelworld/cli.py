@@ -15,6 +15,7 @@ from .supervisor import run as run_matrix
 from .supervisor import snapshot as matrix_snapshot
 from .supervisor import stop as stop_matrix
 from .web import build as build_web
+from .interaction import run_sequence
 
 
 def _print(value) -> None:
@@ -57,6 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
     case.add_argument("--attempt", type=int, default=1)
     case.add_argument("--codex")
     case.add_argument("--dry-run", action="store_true")
+
+    sequence = commands.add_parser("run-sequence")
+    sequence.add_argument("--config", required=True)
+    sequence.add_argument("--model", required=True)
+    sequence.add_argument("--track", required=True, choices=("text", "vision-agent"))
+    sequence.add_argument("--episode", required=True)
 
     matrix = commands.add_parser("matrix")
     matrix_commands = matrix.add_subparsers(dest="matrix_command", required=True)
@@ -108,6 +115,10 @@ def main() -> None:
                          args.attempt, args.codex, args.dry_run)
         _print(value)
         raise SystemExit(0 if value["status"] in ("complete", "dry-run") else 1)
+    if args.command == "run-sequence":
+        value = run_sequence(load_config(args.config), args.model, args.track, args.episode)
+        _print(value)
+        raise SystemExit(0 if value["status"] == "complete" else 1)
     if args.command == "matrix":
         config = load_config(args.config)
         if args.matrix_command == "run":

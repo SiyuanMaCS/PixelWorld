@@ -23,7 +23,7 @@ An optional audio extension emits explicit PCM samples alongside RGB frames.
 | Benchmark | Role | Conditioning and scope | Metrics / readiness |
 | --- | --- | --- | --- |
 | [Physics-IQ Verified](https://github.com/google-deepmind/physics-IQ-benchmark) | Physical evolution | Existing pinned 198-case I2V suite | Existing official evaluator adapter; preserve current pins |
-| [RoboJudge generation evaluation](https://arxiv.org/abs/2610.27782) | Embodied manipulation | The exact shared 50-prompt set in Section 5.6, with its original conditioning images and actual prompt versions | RoboJudge-9B PA, IA and their mean; exact 50-input manifest and generation settings still need locating |
+| [RoboJudge generation evaluation](https://arxiv.org/abs/2610.27782) | Embodied manipulation | The exact shared 50-prompt set in Section 5.6, with its original conditioning images and actual prompt versions | RoboJudge-9B PA, IA and their mean; original common_set_50 input manifest located; smoke uses an explicitly selected official prefix |
 | [WBench](https://github.com/meituan-longcat/WBench) | Interactive world evolution | 289 cases / 1,058 interaction turns; navigation, subject action, event editing and perspective switch | Quality, setting, interaction, consistency and physical dimensions; preserve the official multi-turn protocol |
 | [WorldScore](https://github.com/haoyi-duan/WorldScore) | Scene complexity and spatial generation | 3,000 examples; initial scene and camera/layout instructions, including sequences of next-scene generation | Controllability, quality and dynamics; new adapter and smoke required |
 | [WorldArena](https://github.com/tsinghua-fib-lab/WorldArena) | Embodied world prediction | Start with its video-generation evaluation; preserve each selected conditioning mode, including actions where required | Its released video metrics / EWMScore; do not claim downstream functionality from video quality alone |
@@ -36,12 +36,15 @@ Seventeen published generator baselines are available in the paper, but direct
 comparisons require matching the input set, prompt variants and generation
 settings.
 
+See [the concrete smoke contracts](BENCHMARK_SMOKE.md) for WorldModelBench (350),
+TC-Bench (150 T2V / 120 I2V), the shared-50 provenance and the current real-model smoke scope.
+
 ## Optional audio extension
 
 | Benchmark | Role | Scope / readiness |
 | --- | --- | --- |
 | [HelixBench](https://huggingface.co/datasets/NoizAI/Helixbench) | Audio-visual and spatial sound | Released 1,015 first frames and AV captions, evaluator and frozen reference features. Report KL, FAD, DeSync, ImageBind, CLAP and Spatial separately. Follow the release's v3 all-150 Spatial protocol. No combined score. |
-| [AVGen-Bench](https://github.com/microsoft/AVGen-Bench) | General text-to-audio-video generation | Broader audio/video quality and fine-grained controllability, including speech and music; reserve for a later broad generation study. |
+| [AVGen-Bench](https://github.com/microsoft/AVGen-Bench) | General text-to-audio-video generation | 235 prompts in 11 categories; current smoke covers one physical-experiment T2AV prompt with RGB plus PCM. Newer audio extension, not a classical core benchmark. |
 
 Start with event synchronization and spatial sound rather than adding a speech
 or music synthesis module to the core pixel-video study.

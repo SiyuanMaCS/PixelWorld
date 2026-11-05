@@ -23,6 +23,7 @@ class Model:
     reasoning_effort: str
     provider: Provider
     tracks: tuple[str, ...]
+    cli_backend: str = "codex"
 
 
 @dataclass(frozen=True)
@@ -69,11 +70,14 @@ def load_config(path: str | Path) -> Benchmark:
                 (provider.id, provider.name, provider.base_url, provider.env_key)):
             raise ValueError(f"Responses provider {key} needs id, name, base_url, and env_key")
         tracks = tuple(value.get("tracks", default_tracks))
+        cli_backend = value.get("cli_backend", "codex")
+        if cli_backend not in ("codex", "trae"):
+            raise ValueError(f"Unknown CLI backend for {key}: {cli_backend}")
         if not tracks or any(track not in TRACKS for track in tracks):
             raise ValueError(f"Invalid tracks for {key}: {tracks}")
         models.append(Model(key=key, model=value["model"],
                             reasoning_effort=value.get("reasoning_effort", "high"),
-                            provider=provider, tracks=tracks))
+                            provider=provider, tracks=tracks, cli_backend=cli_backend))
     if not models:
         raise ValueError("At least one model is required")
     result = Benchmark(

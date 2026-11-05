@@ -2,15 +2,33 @@
 from pathlib import Path
 import base64
 import json
+import wave
 
 import numpy as np
 from PIL import Image, ImageDraw
 
 
-def save(frames, case_dir):
+def save(frames, case_dir, audio=None):
     case_dir = Path(case_dir)
     frames = np.asarray(frames)
-    assert frames.shape == (20, 144, 256, 3) and frames.dtype == np.uint8, frames.shape
+    path = case_dir / "task_spec.json"
+    spec = json.loads(path.read_text()) if path.is_file() else {}
+    n, h, w, fps = (spec.get("frames", 20), spec.get("height", 144), spec.get("width", 256), spec.get("fps", 4))
+    assert frames.shape == (n, h, w, 3) and frames.dtype == np.uint8, frames.shape
+    audio_spec = spec.get("audio")
+    audio_url = None
+    if audio_spec:
+        samples = round(n / fps * audio_spec["sample_rate"])
+        pcm = np.asarray(audio)
+        if pcm.ndim == 1:
+            pcm = pcm[:, None]
+        assert pcm.shape == (samples, audio_spec["channels"]) and pcm.dtype == np.int16, (pcm.shape, pcm.dtype)
+        with wave.open(str(case_dir / "audio.wav"), "wb") as handle:
+            handle.setnchannels(audio_spec["channels"])
+            handle.setsampwidth(2)
+            handle.setframerate(audio_spec["sample_rate"])
+            handle.writeframes(pcm.astype("<i2").tobytes())
+        audio_url = "data:audio/wav;base64," + base64.b64encode((case_dir / "audio.wav").read_bytes()).decode()
     values = frames.astype(np.uint32)
     packed = (values[:, :, :, 0] << 16) | (values[:, :, :, 1] << 8) | values[:, :, :, 2]
     tensor = packed.transpose(1, 2, 0)
@@ -21,26 +39,26 @@ def save(frames, case_dir):
     for index, frame in enumerate(frames):
         Image.fromarray(frame).save(folder / f"{index:02d}.png")
 
-    sheet = Image.new("RGB", (1024, 330), (25, 28, 35))
+    sheet = Image.new("RGB", (w * 4, (h + 21) * 2), (25, 28, 35))
     draw = ImageDraw.Draw(sheet)
-    for index, frame_index in enumerate((0, 2, 5, 8, 11, 14, 17, 19)):
-        x, y = (index % 4) * 256, (index // 4) * 165
-        draw.text((x + 5, y + 3), f"frame {frame_index:02d} · {frame_index / 4:.2f}s", fill="white")
+    for index, frame_index in enumerate(np.linspace(0, n - 1, 8).round().astype(int)):
+        x, y = (index % 4) * w, (index // 4) * (h + 21)
+        draw.text((x + 5, y + 3), f"frame {frame_index:02d} · {frame_index / fps:.2f}s", fill="white")
         sheet.paste(Image.fromarray(frames[frame_index]), (x, y + 21))
     sheet.save(case_dir / "inspection.png")
 
-    transition = Image.new("RGB", (1024, 309), (25, 28, 35))
+    transition = Image.new("RGB", (w * 4, h * 2 + 21), (25, 28, 35))
     draw = ImageDraw.Draw(transition)
-    for index, frame_index in enumerate((0, 1, 2, 3)):
-        x = index * 256
-        draw.text((x + 5, 4), f"frame {frame_index:02d} · {frame_index / 4:.2f}s", fill="white")
+    for index, frame_index in enumerate(min(i, n-1) for i in range(4)):
+        x = index * w
+        draw.text((x + 5, 4), f"frame {frame_index:02d} · {frame_index / fps:.2f}s", fill="white")
         transition.paste(Image.fromarray(frames[frame_index]), (x, 21))
-        transition.paste(Image.fromarray(frames[frame_index]).resize((256, 144), Image.Resampling.NEAREST), (x, 165))
+        transition.paste(Image.fromarray(frames[frame_index]).resize((w, h), Image.Resampling.NEAREST), (x, h + 21))
     transition.save(case_dir / "transition_check.png")
 
     encode = lambda array: base64.b64encode(np.asarray(array, dtype="<u4").tobytes()).decode()
     deltas = []
-    for index in range(1, 20):
+    for index in range(1, n):
         current = packed[index].reshape(-1)
         previous = packed[index - 1].reshape(-1)
         positions = np.flatnonzero(current != previous)
@@ -55,6 +73,7 @@ def save(frames, case_dir):
         deltas.append(encode(packet))
     data = {
         "id": case_dir.name,
+        "width": w, "height": h, "frames": n, "fps": fps, "audio": audio_url,
         "first": encode(packed[0].reshape(-1)),
         "deltas": deltas,
         "caption": (case_dir / "prompt.txt").read_text().strip(),

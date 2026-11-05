@@ -302,3 +302,5 @@ PixelWorld does not redistribute Physics-IQ code or data. Follow the licenses an
 - [Physics-IQ and Physics-IQ Verified](https://github.com/google-deepmind/physics-IQ-benchmark)
 - [Physics-IQ Verified dataset](https://huggingface.co/datasets/Anates-Labs-Research/Physics-IQ-Verified)
 - [OpenAI Codex CLI](https://github.com/openai/codex)
+
+Multi-benchmark generation smoke: [task interfaces, source mappings, RGB/PCM contracts and review pages](docs/BENCHMARK_SMOKE.md). New benchmarks are smoke-only until user review; existing Physics-IQ v1 remains unchanged.

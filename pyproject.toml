@@ -30,7 +30,7 @@ include-package-data = true
 include = ["pixelworld*"]
 
 [tool.setuptools.package-data]
-pixelworld = ["assets/*.md", "assets/*.html", "assets/legacy_v1/*.md"]
+pixelworld = ["assets/*.md", "assets/*.html", "assets/*.js", "assets/legacy_v1/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
