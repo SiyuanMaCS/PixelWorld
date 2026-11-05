@@ -49,9 +49,19 @@ def encode(workspace: Path, target: Path, spec: dict) -> dict:
     for name in ('inspection.png','transition_check.png','audio.wav'):
         if (workspace/name).is_file():
             shutil.copy2(workspace/name,target/name)
+    derived = not (workspace/'inspection.png').is_file()
+    if derived:
+        # A stable RGB candidate may precede the agent's optional contact sheet.
+        # Export a view of its frozen pixels without changing the snapshot.
+        sheet=Image.new('RGB',(w*4,(h+22)*2),(10,16,24));draw=ImageDraw.Draw(sheet)
+        for i,index in enumerate(np.linspace(0,n-1,8).round().astype(int)):
+            x,y=(i%4)*w,(i//4)*(h+22)
+            draw.text((x+4,y+3),f'frame {index:02d} / {index/spec["fps"]:.2f}s',fill='white')
+            sheet.paste(Image.fromarray(rgb[index]),(x,y+22))
+        sheet.save(target/'inspection.png')
     if (workspace/'generate.py').is_file():
         (target/'generate.py').write_text(clean((workspace/'generate.py').read_text()))
-    return {"asset":asset,"poster":"poster.png","width":w,"height":h,"frames":n,"fps":spec['fps'],
+    return {"asset":asset,"poster":"poster.png","width":w,"height":h,"frames":n,"fps":spec['fps'],"inspection_derived":derived,
             "audio":"audio.wav" if (target/'audio.wav').is_file() else None}
 
 
@@ -98,7 +108,8 @@ def trace(run: Path, target: Path, back: str) -> dict:
         folder=target/f'candidate_{i:02d}';rec=encode(source,folder,spec)
         snap=json.loads((source/'snapshot.json').read_text())
         code=(source/'generate.py').read_text().splitlines();diff='\n'.join(difflib.unified_diff(previous,code,fromfile='previous',tofile='current',lineterm=''));previous=code
-        body+=f'<article><h3>Candidate {i+1}</h3><p class="muted">{snap.get("utc","")} · RGB hash {snap.get("canonical_rgb_sha256","")[:16]}</p>{player(rec,f"candidate_{i:02d}/")}<img class="inspection" src="candidate_{i:02d}/inspection.png"><details><summary>本轮代码修改</summary><pre>{html.escape(clean(diff))}</pre></details><a href="candidate_{i:02d}/generate.py">本轮完整代码</a></article>'
+        image_note='<p class="muted">该候选未存检查图；此图由外部 harness 从本轮真实 RGB 帧导出。</p>' if rec['inspection_derived'] else ''
+        body+=f'<article><h3>Candidate {i+1}</h3><p class="muted">{snap.get("utc","")} · RGB hash {snap.get("canonical_rgb_sha256","")[:16]}</p>{player(rec,f"candidate_{i:02d}/")}<img class="inspection" src="candidate_{i:02d}/inspection.png">{image_note}<details><summary>本轮代码修改</summary><pre>{html.escape(clean(diff))}</pre></details><a href="candidate_{i:02d}/generate.py">本轮完整代码</a></article>'
     observed=[]
     body+='<h2>可观测工具时间线</h2>'
     for event in events:

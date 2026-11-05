@@ -54,3 +54,16 @@ def test_more_than_100_frames_are_checked_in_numeric_order(tmp_path):
     assert validate(tmp_path, events, 0, "vision-agent", False, spec)["pass"]
     Image.new("RGB", (32,24), "red").save(tmp_path / "frames" / "103.png")
     assert not validate(tmp_path, events, 0, "vision-agent", False, spec)["pass"]
+
+
+def test_export_derives_missing_inspection_without_mutating_candidate(tmp_path):
+    from pixelworld.smoke_web import encode
+    spec, _ = output(tmp_path)
+    (tmp_path/'inspection.png').unlink()
+    original=(tmp_path/'pixels.npz').read_bytes()
+    target=tmp_path/'web'
+    record=encode(tmp_path,target,spec)
+    assert record['inspection_derived']
+    assert (target/'inspection.png').is_file()
+    assert not (tmp_path/'inspection.png').exists()
+    assert (tmp_path/'pixels.npz').read_bytes()==original
