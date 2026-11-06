@@ -40,6 +40,8 @@ def test_command_classification_is_command_level():
     assert not invokes_subagent("cat > METHOD.md <<'EOF'\nNo codex exec was used.\nEOF")
     assert invokes_network("curl https://example.com")
     assert not invokes_network("printf 'curl was forbidden' > METHOD.md")
+    assert not invokes_network("cat > generate.py <<'PY'\n    curl = scorch * growth\nPY")
+    assert not invokes_network("python - <<'PY'\ncurl=0.5\nPY")
     workspace = Path("/tmp/workspace")
     assert outside_command_paths("sed -n 1,20p /home/user/.codex/skills/SKILL.md", workspace)
     assert not outside_command_paths("/bin/bash -lc 'python3 generate.py'", workspace)
