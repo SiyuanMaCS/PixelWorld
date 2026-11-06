@@ -10,6 +10,21 @@ reuse its published baseline scores. No self-selected case subsets or baseline
 reruns are scheduled. Generation and scoring smoke may use a few cases solely
 to validate the pipeline; those are not formal benchmark results.
 
+**Repetition policy: single-run full evaluation.** Each chosen official case is
+submitted once per model/Track configuration. No four-run aggregation is
+scheduled. Physics-IQ Verified explicitly accepts single-run results in its
+[official aggregation section](https://github.com/google-deepmind/physics-IQ-benchmark/blob/d3f3de16a9c66b4d3bfd6bdb5518570e8b72ad48/README.md#g-aggregate-leaderboard-scores);
+four independent runs are recommended rather than mandatory. Report our score
+as `single run`, without inventing a across-run standard deviation. Keep the
+published baseline's reported mean/std and repetition count clearly labelled.
+If another setting mandates repetition without an accepted single-run option,
+defer it rather than silently change its protocol.
+
+Autonomous program revisions within one case remain allowed; they are not
+independent benchmark runs. Save candidate history and submit the final valid
+output, without evaluator-driven best-of-N selection. Infrastructure recovery
+attempts remain separately recorded under the existing attempt policy.
+
 The generation agent receives an initial RGB image and the official task text;
 additional controls/history are supplied only as permitted by that benchmark.
 It writes executable code that produces RGB frames, with autonomous inspection
@@ -21,7 +36,7 @@ Legacy three-Track Physics-IQ runs continue under their frozen v1 protocol.
 
 | Benchmark | Capability | Proposed scope | Existing evidence / next requirement |
 | --- | --- | --- | --- |
-| [Physics-IQ Verified](https://github.com/google-deepmind/physics-IQ-benchmark) | Physical continuation: falling, collision, support, material motion | Reuse the existing pinned 198-case experiment | GPT-5.6's three legacy groups have official scores; the larger matrix continues. No new generation is scheduled by this plan. |
+| [Physics-IQ Verified](https://github.com/google-deepmind/physics-IQ-benchmark) | Physical continuation: falling, collision, support, material motion | Reuse one complete 198-case run per selected configuration | GPT-5.6's three legacy groups have official single-run scores; the larger matrix continues. No four-run expansion is scheduled. |
 | [RoboJudge shared-50](https://github.com/Sphere-AI-Lab/RoboJudge) | Embodied grasping, moving, placing and opening; physical adherence and instruction alignment | All 50 original generation tasks | The 50-input manifest and one generation smoke exist. Verify the original generation-prompt versions, published score scope and PA/IA judging recipe before comparison. |
 | [WorldModelBench](https://github.com/WorldModelBench-Team/WorldModelBench) | Broad I2V coverage across seven application domains | Complete 350-case I2V setting, if selected | One generation smoke exists. Confirm the published I2V baseline rows, official judge and aggregation before launch. A one-domain or sampled evaluation cannot replace its full I2V score. |
 | [WBench](https://github.com/meituan-longcat/WBench) | Camera/action control, scene consistency and multi-turn continuation | Official Full: 289 cases / 1,058 interaction turns, if selected | One complete four-turn generation smoke exists. Compare only with published Full scores under the correct judge/protocol. Navi 158 is a separate official setting and must not silently replace Full. |
