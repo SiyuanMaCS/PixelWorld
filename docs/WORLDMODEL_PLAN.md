@@ -5,6 +5,11 @@ continuation and interactive world evolution. Visual puzzle solving and video
 reasoning leaderboards are outside the current experiment plan. Earlier T2V,
 audio and reasoning explorations remain historical records.
 
+Formal comparisons run the complete selected official evaluation setting and
+reuse its published baseline scores. No self-selected case subsets or baseline
+reruns are scheduled. Generation and scoring smoke may use a few cases solely
+to validate the pipeline; those are not formal benchmark results.
+
 The generation agent receives an initial RGB image and the official task text;
 additional controls/history are supplied only as permitted by that benchmark.
 It writes executable code that produces RGB frames, with autonomous inspection
@@ -17,22 +22,22 @@ Legacy three-Track Physics-IQ runs continue under their frozen v1 protocol.
 | Benchmark | Capability | Proposed scope | Existing evidence / next requirement |
 | --- | --- | --- | --- |
 | [Physics-IQ Verified](https://github.com/google-deepmind/physics-IQ-benchmark) | Physical continuation: falling, collision, support, material motion | Reuse the existing pinned 198-case experiment | GPT-5.6's three legacy groups have official scores; the larger matrix continues. No new generation is scheduled by this plan. |
-| [WBench](https://github.com/meituan-longcat/WBench) | Camera/action control, scene consistency and multi-turn continuation | Fixed episodes, initially budgeted at about 40 generated turns | One complete four-turn generation smoke exists. Official Navi has 158 cases. Published HY-World 1.5 videos cover 158 and Kling 3.0 covers 289; choose shared cases and score with one frozen evaluator. |
-| [RoboJudge shared-50](https://github.com/Sphere-AI-Lab/RoboJudge) | Embodied grasping, moving, placing and opening; physical adherence and instruction alignment | The original 50 generation tasks, or a fixed 20-task pilot first | The 50-input manifest and one generation smoke exist. Match actual generation-prompt variants and baseline coverage before comparison; run PA/IA judging separately from generation. |
-| [WorldScore](https://github.com/haoyi-duan/WorldScore) | Spatial generation, parallax, disocclusion and new scene content | Fixed 10-case spatial subset, e.g. 8 single-transition and 2 three-transition cases | Current generation smoke covers only one easy push-in. Add translation/orbit and genuine new-scene transitions; preserve official last-frame handoff and boundary-frame removal. Baseline subset availability and official scoring still need verification. |
+| [RoboJudge shared-50](https://github.com/Sphere-AI-Lab/RoboJudge) | Embodied grasping, moving, placing and opening; physical adherence and instruction alignment | All 50 original generation tasks | The 50-input manifest and one generation smoke exist. Verify the original generation-prompt versions, published score scope and PA/IA judging recipe before comparison. |
+| [WorldModelBench](https://github.com/WorldModelBench-Team/WorldModelBench) | Broad I2V coverage across seven application domains | Complete 350-case I2V setting, if selected | One generation smoke exists. Confirm the published I2V baseline rows, official judge and aggregation before launch. A one-domain or sampled evaluation cannot replace its full I2V score. |
+| [WBench](https://github.com/meituan-longcat/WBench) | Camera/action control, scene consistency and multi-turn continuation | Official Full: 289 cases / 1,058 interaction turns, if selected | One complete four-turn generation smoke exists. Compare only with published Full scores under the correct judge/protocol. Navi 158 is a separate official setting and must not silently replace Full. |
 
-WBench is useful for a common scene under repeated controls. WorldScore adds
-explicit next-scene generation beyond the first field of view. This distinction
-should determine sample selection, rather than evaluating duplicate camera
-tasks merely to increase the benchmark count.
+WBench supplies intervention and repeated-control coverage. Physics-IQ,
+RoboJudge and WorldModelBench cover physical continuation, manipulation and
+domain breadth. Select whole benchmarks according to the claims and budget;
+do not reduce a formal benchmark to hand-picked easy or attractive examples.
 
 ## Reserve, not default expansion
 
 | Benchmark | Added coverage | Reason to defer |
 | --- | --- | --- |
-| [WorldArena](https://github.com/tsinghua-fib-lab/WorldArena) | Robot-world video prediction | Overlaps RoboJudge and has a heavier pipeline. A text-driven validation-episode generation smoke exists; functional planning/policy success is not established by video quality. |
-| [WorldModelBench](https://github.com/WorldModelBench-Team/WorldModelBench) | Broad I2V coverage across seven application domains, 350 cases | Useful if breadth remains insufficient, but adds substantial generation. One I2V generation smoke exists; official judging is not yet run. |
-| MemoBench / iWorld-Bench | Hidden state persistence / further camera and memory controls | Verify released inputs, evaluator and matched baselines before choosing a small addition. |
+| [WorldScore](https://github.com/haoyi-duan/WorldScore) | New scene content, camera motion, parallax and disocclusion | Full suite has 3,000 cases; the 400 three-transition cases increase generation work. If selected, run the whole chosen official setting and compare its matching published score; no custom 10-case result. |
+| [WorldArena](https://github.com/tsinghua-fib-lab/WorldArena) | Robot-world video prediction | Confirm the complete official text-driven test manifest and video-quality scoring scope first. A validation-episode smoke is not a leaderboard result. The 5-policy × 500-episode recipe is a separate functional policy evaluation, not automatically the I2V video-quality workload. |
+| MemoBench / iWorld-Bench | Hidden state persistence / further camera and memory controls | Consider only after confirming a manageable complete official setting, released scorer and matching reported baseline scores. |
 
 MME-CoF-Pro, VBVR-Pro, TC-Bench visual-reasoning studies and new T2V/T2AV
 experiments are not scheduled. Audio may be revisited only as an explicit future
@@ -41,20 +46,27 @@ scope decision.
 ## Cost and comparison policy
 
 Use one predeclared primary model for the new suite. Count generated segments,
-not only episodes: a four-turn WBench episode costs four generations. An example
-allocation is 50 RoboJudge videos + 40 WBench turns + 14 WorldScore transitions,
-about 104 new generations. A 20-task RoboJudge pilot reduces this to about 74.
-These are proposals; exact manifests and real turn counts must be frozen first.
+not only episodes: a four-turn WBench episode costs four generations. Control
+cost by choosing smaller complete benchmarks, reducing the number of coding
+agents/Tracks, or deferring an entire large benchmark. The previous ~100-segment
+custom-subset allocation is withdrawn.
 
-Reuse public baseline videos or per-case scores on identical cases wherever
-possible. Official subsets with separately reported scores are useful, but a
-subset score is never compared directly with a full-set aggregate. Baseline
-generation, prompt variants, output conditions, evaluator versions and failed
-case handling must be compatible with the claimed comparison.
+Reuse published official baseline scores; do not schedule baseline generation
+or rescoring. For every reference row, record dataset revision, complete case
+set, I2V setting, prompt/generation recipe, evaluator and judge version,
+aggregation, and failure handling. If that row cannot be matched, leave it out
+of the direct comparison rather than claiming official comparability.
 
-Do not multiply every benchmark by the old ten-group matrix. Model/Track and
-mechanism comparisons can use one smaller matched subset after the primary
-suite is fixed. Budget/FPS/resolution experiments follow
+Use the output conditions permitted by the official protocol. Native model
+outputs need not be identical in every detail when the benchmark explicitly
+allows different settings. A custom duration, crop, low-FPS recipe or different
+judge is not made official simply by passing the evaluator's input parser.
+Report actual output resolution, FPS, duration and trials with each result.
+
+Do not automatically multiply every benchmark by the old ten-group matrix.
+Any formal model/Track comparison also uses the complete chosen setting.
+Budget/FPS/resolution experiments remain a separate future decision; no
+sampled sweep is scheduled by this plan. Their methodology is described in
 [EFFICIENCY_PROTOCOL.md](EFFICIENCY_PROTOCOL.md); hard token-budget enforcement
 and refinement-effect measurements are not claimed as implemented.
 
