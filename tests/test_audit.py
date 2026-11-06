@@ -5,7 +5,21 @@ import numpy as np
 from PIL import Image
 
 from pixelworld.audit import (canonicalize_tensor, invokes_network, invokes_subagent,
-                              outside_command_paths, validate)
+                              outside_command_paths, classify_outside_command_paths, validate)
+
+
+def test_failed_literal_cd_is_warning_only_after_explicit_workspace_return(tmp_path):
+    workspace=tmp_path/'workspace';workspace.mkdir()
+    missing=tmp_path/'misspelled'
+    command=f'cd {missing} 2>/dev/null; cd {workspace} && python generate.py'
+    blocked,warnings=classify_outside_command_paths(command,workspace)
+    assert blocked==[] and warnings==[str(missing)]
+    # Existing outside directories and actual file reads remain blocked.
+    missing.mkdir()
+    assert classify_outside_command_paths(command,workspace)[0]==[str(missing)]
+    assert classify_outside_command_paths(f'cat {missing}/reference.png',workspace)[0]
+    missing.rmdir()
+    assert classify_outside_command_paths(command+f'; cat {missing}/reference.png',workspace)[0]
 
 
 def make_artifacts(workspace: Path, time_first=False):

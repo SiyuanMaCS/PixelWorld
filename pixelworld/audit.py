@@ -115,6 +115,26 @@ def outside_command_paths(command: str, workspace: Path) -> list[str]:
     return values
 
 
+def classify_outside_command_paths(command: str, workspace: Path) -> tuple[list[str], list[str]]:
+    """Keep unknown outside paths blocked; record a failed literal cd as a warning.
+
+    Only recognize a nonexistent absolute directory followed immediately by
+    an explicit return to this workspace. Preserve the raw command and do not
+    exempt file reads, writes, substitutions, or later uses of that path.
+    """
+    paths = outside_command_paths(command, workspace)
+    match = re.match(
+        r"\s*cd\s+(?P<outside>/[^\s;'\"`$]+)\s+2>/dev/null;\s*"
+        r"cd\s+(?P<inside>/[^\s&;'\"`$]+)\s*&&", command)
+    if not match:
+        return paths, []
+    outside, inside = match.group('outside'), match.group('inside')
+    if (outside not in paths or Path(inside).resolve() != workspace.resolve()
+            or Path(outside).exists() or command.count(outside) != 1):
+        return paths, []
+    return [path for path in paths if path != outside], [outside]
+
+
 def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
              require_reports: bool = True, media: dict | None = None) -> dict:
     spec = media or DEFAULT_MEDIA
@@ -190,8 +210,9 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
     outside_changes = [value for value in file_changes if not _inside(workspace, value)]
     network_commands = [command for command in commands if invokes_network(command)]
     subagent_commands = [command for command in commands if invokes_subagent(command)]
-    outside_command_values = sorted({value for command in commands
-                                     for value in outside_command_paths(command, workspace)})
+    path_checks = [classify_outside_command_paths(command, workspace) for command in commands]
+    outside_command_values = sorted({value for blocked, _ in path_checks for value in blocked})
+    failed_directory_probes = sorted({value for _, warnings in path_checks for value in warnings})
     generate_runs = sum(bool(re.search(r"\bpython(?:3)?\s+(?:\./)?generate\.py\b", command))
                         for command in commands)
     track_violation = None
@@ -221,6 +242,7 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
         "network_commands": network_commands,
         "subagent_commands": subagent_commands,
         "outside_workspace_command_paths": outside_command_values,
+        "failed_outside_directory_probes": failed_directory_probes,
         "visual_tool_calls": visual_calls,
         "generate_runs": generate_runs,
         "track_violation": track_violation,

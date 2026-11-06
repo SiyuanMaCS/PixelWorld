@@ -83,11 +83,15 @@ def _trace_page(config: Benchmark, model: Model, track: str, case_id: str,
     manifest = json.loads((run / "run_manifest.json").read_text())
     events = _events(run)
     round_html = []
+    candidate_hashes = set()
     previous_code = []
     rounds = sorted((run / "trace").glob("round_*"))
     for index, round_dir in enumerate(rounds):
         snapshot_path = round_dir / "snapshot.json"
         snapshot_value = json.loads(snapshot_path.read_text()) if snapshot_path.is_file() else {}
+        candidate_hash = snapshot_value.get('canonical_rgb_sha256') or snapshot_value.get('pixels_sha256')
+        if candidate_hash:
+            candidate_hashes.add(candidate_hash)
         asset = Path("assets") / model.key / track / case_id / f"round_{index:03d}.webp"
         _round_preview(round_dir, site / asset)
         code_path = round_dir / 'generate.py'
@@ -102,7 +106,8 @@ def _trace_page(config: Benchmark, model: Model, track: str, case_id: str,
     prompt = html.escape((workspace / "prompt.txt").read_text().strip())
     observation = MARKDOWN((workspace / "OBSERVATION.md").read_text(errors="replace")) if (workspace / "OBSERVATION.md").is_file() else '<p>No optional observation report was written.</p>'
     method = MARKDOWN((workspace / "METHOD.md").read_text(errors="replace")) if (workspace / "METHOD.md").is_file() else '<p>No optional method report was written.</p>'
-    stats = [(len(rounds), "frozen rounds"), (validation.get("generate_runs", 0), "generator runs"),
+    stats = [(len(candidate_hashes), "distinct RGB candidates"), (len(rounds), "artifact snapshots"),
+             (validation.get("generate_runs", 0), "generator executions"),
              (events["commands"], "commands"), (events["file_changes"], "file changes"),
              (events["view_image"], "view_image events")]
     stats_html = "".join(f"<div><strong>{value}</strong><span>{label}</span></div>" for value, label in stats)
