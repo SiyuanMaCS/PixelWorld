@@ -148,11 +148,13 @@ def run_path(config: Benchmark, model: Model, track: str, case_id: str, attempt:
 
 
 def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attempt: int = 1,
-             codex_binary: str | None = None, dry_run: bool = False) -> dict:
+             codex_binary: str | None = None, dry_run: bool = False,
+             task_file: Path | None = None, rules_file: Path | None = None,
+             extra_inputs: tuple[str,...] = ()) -> dict:
     model = config.model(model_key)
     source = config.inputs_root / case_id
     spec = contract(source)
-    has_image = spec["task_type"] == "i2v"
+    has_image = spec["task_type"] in ("i2v", "v2v")
     if (has_image and not (source / "first_frame.png").is_file()) or not (source / "prompt.txt").is_file():
         raise FileNotFoundError(f"Missing prepared input for case {case_id}: {source}")
     run = run_path(config, model, track, case_id, attempt)
@@ -173,6 +175,19 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
     ):
         if origin.is_file():
             shutil.copy2(origin, target)
+    if spec['task_type']=='v2v':
+        for name in ('conditioning.mp4','conditioning_info.json','conditioning_inspection.png'):
+            if not (source/name).is_file():raise FileNotFoundError(f'Missing historical input: {name}')
+            shutil.copy2(source/name,workspace/name)
+        shutil.copytree(source/'conditioning_frames',workspace/'conditioning_frames')
+    for name in extra_inputs:
+        if Path(name).is_absolute() or '..' in Path(name).parts:
+            raise ValueError('Extra inputs must be relative paths within the prepared case')
+        origin=(source/name).resolve()
+        origin.relative_to(source.resolve())
+        target=workspace/name
+        if origin.is_dir():shutil.copytree(origin,target)
+        else:shutil.copy2(origin,target)
     task = task_root / {
         "text": "TASK_TEXT.md",
         "vision-input": "TASK_VISION_INPUT.md",
@@ -184,15 +199,23 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
             raise ValueError("Legacy contracts cannot override media")
         atomic_json(workspace / "task_spec.json", spec)
         (workspace / "GENERATION_RULES.md").write_text(task_rules(spec))
+    if rules_file:
+        shutil.copy2(rules_file,workspace/'GENERATION_RULES.md')
     # Keep the exact supplied task text outside the model's workspace for audit.
     task_snapshot = run / "task_prompt.txt"
     task_text = task.read_text()
+    if spec['task_type']=='v2v':
+        task_text='Generate the future RGB continuation requested in `prompt.txt`, following `GENERATION_RULES.md`. The supplied conditioning video and frames contain only the historical segment. Use the permitted tools and choose your own approach to generation, checking and revision.\n'
     if not has_image:
         task_text = "Generate the RGB video requested in `prompt.txt`, following `GENERATION_RULES.md` and `task_spec.json`. There is no input image. Choose your own approach. " + ("Visual image tools are available; choose whether to inspect your output.\n" if track == "vision-agent" else "Visual image tools are disabled.\n")
+    if task_file:
+        task_text=task_file.read_text()
     task_snapshot.write_text(task_text)
     binary = codex_binary or (os.environ.get("PIXELWORLD_TRAECLI", "traecli") if model.cli_backend == 'trae'
                               else os.environ.get("PIXELWORLD_CODEX", "codex"))
     command = codex_command(model, track, workspace, binary, has_image)
+    if spec['task_type']=='v2v' and track!='text':
+        command += ['-i' if model.cli_backend=='trae' else '--image',str(workspace/'conditioning_inspection.png')]
     try:
         version = subprocess.check_output([binary, "--version"], text=True).strip()
     except Exception:
@@ -223,6 +246,7 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         "media_contract": spec,
         "input_prompt_sha256": sha256(workspace / "prompt.txt"),
         "initial_visible_files": sorted(path.name for path in workspace.iterdir() if path.is_file()),
+        "extra_input_files": list(extra_inputs),
         "token_usage": collect_usage(logs / "events.jsonl", finished=False),
     }
     atomic_json(run / "run_manifest.json", manifest)

@@ -51,3 +51,26 @@ class PixelPlayer {
 window.__smokePlayers=[];
 for(const root of document.querySelectorAll('.player'))new PixelPlayer(root,JSON.parse(root.dataset.player));
 window.__smokeReady=true;
+
+// Use one animation clock for selected revisions; independent playback stays available.
+window.__candidateComparisons=[];
+for(const root of document.querySelectorAll('[data-candidate-compare]')){
+  const players=window.__smokePlayers.filter(p=>root.contains(p.root)),seek=root.querySelector('.compare-seek'),clock=root.querySelector('.compare-clock'),button=root.querySelector('.compare-play');
+  if(!players.length)continue;
+  seek.max=players[0].d.frames-1;
+  const group={root,players,playing:false,frame:0,raf:null,
+    selected(){return players.filter(p=>p.root.closest('.candidate-entry').querySelector('.compare-pick').checked)},
+    pause(){this.playing=false;cancelAnimationFrame(this.raf);players.forEach(p=>p.pause());button.textContent='▶ 同步播放勾选版本'},
+    draw(frame){this.frame=frame;seek.value=frame;clock.textContent=`${(frame/players[0].d.fps).toFixed(2)} / ${(players[0].d.frames/players[0].d.fps).toFixed(2)}s`;this.selected().forEach(p=>p.draw(frame))},
+    async ensure(){const selected=this.selected();if(!selected.length)throw Error('请勾选要对比的版本');await Promise.all(selected.map(p=>p.ensure()))},
+    async start(){if(this.playing){this.pause();return}button.disabled=true;button.textContent='载入中…';try{await this.ensure();players.forEach(p=>p.pause());if(this.frame===players[0].d.frames-1)this.draw(0);this.started=performance.now()-this.frame/players[0].d.fps*1000;this.playing=true;this.selected().forEach(p=>{p.playing=true;p.button.textContent='❚❚ 暂停'});button.textContent='❚❚ 暂停同步播放';this.raf=requestAnimationFrame(t=>this.tick(t))}catch(e){this.pause();clock.textContent='Load failed: '+e.message}finally{button.disabled=false}},
+    tick(t){if(!this.playing)return;let elapsed=(t-this.started)/1000;const d=players[0].d;if(elapsed>=d.frames/d.fps){if(root.querySelector('.compare-loop').checked){this.started=t;elapsed=0}else{this.draw(d.frames-1);this.pause();return}}this.draw(Math.min(d.frames-1,Math.floor(elapsed*d.fps)));this.raf=requestAnimationFrame(x=>this.tick(x))}
+  };
+  button.onclick=()=>group.start();root.querySelector('.compare-pause').onclick=()=>group.pause();
+  root.querySelector('.compare-replay').onclick=()=>{group.pause();group.frame=0;group.start()};
+  seek.oninput=async()=>{group.pause();try{await group.ensure();group.draw(+seek.value)}catch(e){clock.textContent=e.message}};
+  root.querySelectorAll('.compare-pick').forEach(c=>c.onchange=()=>group.pause());
+  players.forEach(p=>{const play=p.button.onclick,slide=p.seek.oninput,replay=p.root.querySelector('.replay').onclick;p.button.onclick=()=>{if(group.playing){group.pause();return}play()};p.seek.oninput=()=>{group.pause();slide()};p.root.querySelector('.replay').onclick=()=>{group.pause();replay()}});
+  root.__comparison=group;window.__candidateComparisons.push(group);
+}
+window.__candidateCompareReady=true;

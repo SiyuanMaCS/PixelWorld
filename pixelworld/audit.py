@@ -24,7 +24,7 @@ NETWORK_PATTERN = re.compile(
     re.I | re.M,
 )
 ABSOLUTE_PATH_PATTERN = re.compile(
-    r"(?<![A-Za-z0-9_])(/[A-Za-z0-9_@%+=:.,-]+/[A-Za-z0-9_@%+=:,./-]*)")
+    r"(?<![A-Za-z0-9_.*])(/[A-Za-z0-9_@%+=:.,-]+/[A-Za-z0-9_@%+=:,./-]*)")
 SYSTEM_READ_PREFIXES = ("/bin/", "/usr/", "/lib/", "/lib64/", "/dev/", "/proc/")
 
 
@@ -155,7 +155,7 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
         try:
             pixels = np.load(workspace / "pixels.npz")["pixels"]
             tensor_shape = list(pixels.shape)
-            frame0_exact = spec["task_type"] == "t2v" or np.array_equal(
+            frame0_exact = spec["task_type"] != "i2v" or np.array_equal(
                 np.asarray(Image.open(workspace / "first_frame.png").convert("RGB")),
                 np.asarray(Image.open(workspace / "frames" / "00.png").convert("RGB")),
             )
@@ -182,6 +182,7 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
         except (OSError, wave.Error, EOFError):
             pass
     terminal, commands, reads, failed_reads, file_changes, visual_calls = [], [], [], [], [], []
+    failed_file_changes=[]
     lines = events_path.read_text(errors="replace").splitlines() if events_path.is_file() else []
     for line in lines:
         try:
@@ -192,7 +193,8 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
             terminal.append(event.get("type"))
         item = event.get("item", {})
         if event.get("type") == "item.completed" and item.get("type") == "file_change":
-            file_changes.extend(change.get("path", "") for change in item.get("changes") or [])
+            paths=[change.get('path','') for change in item.get('changes') or []]
+            (failed_file_changes if item.get('status')=='failed' else file_changes).extend(paths)
         if event.get("type") == "item.completed" and item.get("type") == "command_execution":
             command = item.get("command", "")
             commands.append(command)
@@ -239,6 +241,7 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
         "outside_workspace_reads": outside_reads,
         "failed_outside_workspace_read_attempts": failed_outside_reads,
         "outside_workspace_file_changes": outside_changes,
+        "failed_outside_workspace_file_change_attempts": [value for value in failed_file_changes if not _inside(workspace,value)],
         "network_commands": network_commands,
         "subagent_commands": subagent_commands,
         "outside_workspace_command_paths": outside_command_values,

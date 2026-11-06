@@ -69,9 +69,30 @@ def encode(workspace: Path, target: Path, spec: dict) -> dict:
 def player(record: dict, prefix: str = "") -> str:
     data = record.copy()
     for key in ('asset','poster','audio'):
-        if data.get(key) and not data[key].startswith(('https://','http://')):data[key] = prefix + data[key]
+        if data.get(key) and not data[key].startswith(('https://','http://','data:')):data[key] = prefix + data[key]
     payload = html.escape(json.dumps(data), quote=True)
     return f'''<div class="player" data-player="{payload}"><div class="screen" style="--aspect:{data['width']}/{data['height']}"><canvas></canvas><img class="poster" src="{html.escape(data['poster'])}"></div><div class="controls"><button class="play">▶ 播放</button><button class="replay">↻ 重播</button><input class="seek" type="range" min="0" value="0"><label><input class="loop" type="checkbox" checked>循环</label><span class="clock"></span></div></div>'''
+
+
+CANDIDATE_CSS = '''.candidate-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}.candidate-entry{border:1px solid #344257;border-radius:12px;padding:12px;background:#11161b}.candidate-entry h3{margin:0 0 6px}.candidate-entry .screen{position:relative;aspect-ratio:var(--aspect);background:#080c12}.candidate-entry canvas,.candidate-entry .poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated}.candidate-entry .controls,.compare-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.candidate-entry button,.compare-controls button{background:#a5ef83;color:#142110;border:0;border-radius:7px;padding:8px 11px;cursor:pointer}.candidate-entry .seek,.compare-seek{flex:1;min-width:90px}.candidate-entry .clock,.candidate-meta{color:#a6b3c5;font-size:11px}.compare-controls{margin:12px 0 18px}.candidate-entry .controls label{white-space:nowrap}.candidate-entry .controls input[type=checkbox]{flex:0}.candidate-warning{color:#ffc478;font-size:12px}@media(max-width:760px){.candidate-grid{grid-template-columns:1fr}}'''
+
+
+def candidate_section(versions: list[dict], prefix: str = '') -> str:
+    cards=[]
+    paired=[]
+    for index in dict.fromkeys((0,len(versions)-1)):
+        record=versions[index]
+        label='初版 V0' if index==0 else f'最终版 V{index}'
+        if len(versions)==1:label='V0 · 初版即最终版'
+        paired.append(f'<article class="candidate-entry comparison-pane"><h3>{label}</h3><input class="compare-pick" type="checkbox" checked hidden>{player(record,prefix)}</article>')
+    for i,record in enumerate(versions):
+        label='V0 · 初版' if i==0 else f'V{i} · 修订 {i}'
+        if record.get('is_final'):label+=' · 最终提交'
+        checked=''
+        same=(f" · 像素与 V{record['same_pixels_as']} 相同（回退）" if record.get('same_pixels_as') is not None else '')
+        warning=f'<p class="candidate-warning">{html.escape(record["warning"])}</p>' if record.get('warning') else ''
+        cards.append(f'<article class="candidate-entry" id="candidate-V{i}" data-version="{i}"><h3>{label}</h3><label><input class="compare-pick" type="checkbox"{checked}> 加入同步对比</label><p class="candidate-meta">{html.escape(str(record.get("utc") or ""))} · RGB {record["rgb_sha256"][:12]}{same}</p>{player(record,prefix)}{warning}</article>')
+    return f'''<section data-candidate-compare id="candidate-versions"><h2>每次修订版本播放</h2><p>上方并排显示初版和最终版，默认同步播放；下方每个版本可独立播放，也可勾选加入同步播放。仅检查图更新的连续重复快照已合并，回退旧视频仍保留为一次修订。</p><div class="compare-controls"><button class="compare-play">▶ 同步播放勾选版本</button><button class="compare-pause">❚❚ 暂停</button><button class="compare-replay">↻ 同步重播</button><input class="compare-seek" type="range" min="0" max="19" value="0"><label><input class="compare-loop" type="checkbox" checked>循环</label><span class="compare-clock">0.00s</span></div><div class="candidate-grid paired-grid">{''.join(paired)}</div><h3>完整修订版本</h3><div class="candidate-grid versions-grid">{''.join(cards)}</div></section>'''
 
 
 def waveform(audio: Path, target: Path) -> None:
@@ -137,14 +158,17 @@ def build(root: Path, site: Path, asset_base: str | None = None) -> dict:
     cards=[];table=[];published=[]
     for bench in inventory:
         name=bench['id'];runs=sorted((root/'runs'/name).glob('*/*/case_*/run_manifest.json'))
+        repeated={p.parent.name for p in runs if sum(q.parent.name==p.parent.name for q in runs)>1}
         done=0;running=0;failed=0;tokens=0
         for path in runs:
             manifest=json.loads(path.read_text());state=manifest['status']
             if state=='running':running+=1;continue
             if state!='complete':failed+=1;continue
             done+=1;tokens+=manifest.get('token_usage',{}).get('output_tokens') or 0
-            relative=f'{name}/{path.parent.name}'
-            result=trace(path.parent,site/relative,'../../index.html',site,asset_base);rec=result['player']
+            relative=(f'{name}/{manifest.get("model_key","model")}/{manifest["track"]}/{path.parent.name}'
+                      if path.parent.name in repeated else f'{name}/{path.parent.name}')
+            back='../'*len(Path(relative).parts)+'index.html'
+            result=trace(path.parent,site/relative,back,site,asset_base);rec=result['player']
             cards.append(f'<div class="card"><h3>{html.escape(bench["name"])} · {html.escape(manifest["case_id"])}</h3>{player(rec,relative+"/final/")}<p>{result["candidates"]} 保存候选 · {manifest.get("token_usage",{}).get("output_tokens","—")} output tokens</p><a href="{relative}/index.html?v={viewer_version}">图文视频生成过程 →</a></div>')
             published.append({'benchmark':name,'case':manifest['case_id'],'path':relative+'/index.html','media':manifest.get('media_contract',DEFAULT_MEDIA),'output_tokens':manifest.get('token_usage',{}).get('output_tokens')})
         sequence = next((root/'runs'/name).glob('*/*/sequence_*/sequence_manifest.json'),None)
@@ -168,7 +192,9 @@ def build(root: Path, site: Path, asset_base: str | None = None) -> dict:
                 action_text=' → '.join(turn['action'] for turn in completed)
                 cards.append(f'<div class="card"><h3>{html.escape(bench["name"])} · 多轮连续播放</h3><p>{html.escape(action_text)} · {len(completed)} 轮已完成</p>{player(rec,relative+"/")}<p>每轮使用上一轮末帧作输入；下方单轮页面提供对应候选和工具过程。</p></div>')
         table.append(f'<tr><td><a href="{html.escape(bench["source"])}">{html.escape(bench["name"])}</a></td><td>{html.escape(str(bench["size"]))}</td><td>{html.escape(bench["task"])}</td><td>{phase}</td><td>{tokens:,}</td><td>{html.escape(bench["adaptation"])}</td></tr>')
-    body=f'<p><a href="../index.html">← PixelWorld 主入口</a></p><h1>PixelWorld · Benchmark Smoke</h1><p class="muted">GPT-5.6-Sol · Vision-Agent · 更新时间 {utc_now()}。现有 Physics-IQ 全量独立继续运行。</p><p>先检查真实生成效果与各任务接口，再选择全量评测。这里展示 smoke 产物，不报告官方全量分数。<button onclick="location.reload()">刷新进度</button></p><div class="table"><table><thead><tr><th>Benchmark</th><th>集合规模</th><th>能力与任务</th><th>当前状态</th><th>Output tokens</th><th>协议适配</th></tr></thead><tbody>{"".join(table)}</tbody></table></div><h2>可播放的生成结果</h2><div class="grid">{"".join(cards)}</div>'
+    labels=sorted({json.loads(p.read_text()).get('model','') for p in (root/'runs').glob('*/*/*/case_*/run_manifest.json')})
+    model_label=' / '.join(labels) or 'Queued model smoke'
+    body=f'<p><a href="../index.html">← PixelWorld 主入口</a></p><h1>PixelWorld · Benchmark Smoke</h1><p class="muted">{html.escape(model_label)} · Vision-Agent · 更新时间 {utc_now()}。现有 Physics-IQ 全量独立继续运行。</p><p>先检查真实生成效果与各任务接口，再选择全量评测。这里展示 smoke 产物，不报告官方全量分数。<button onclick="location.reload()">刷新进度</button></p><div class="table"><table><thead><tr><th>Benchmark</th><th>集合规模</th><th>能力与任务</th><th>当前状态</th><th>Output tokens</th><th>协议适配</th></tr></thead><tbody>{"".join(table)}</tbody></table></div><h2>可播放的生成结果</h2><div class="grid">{"".join(cards)}</div>'
     (site/'index.html').write_text(page('PixelWorld benchmark smoke',body,(ASSET_ROOT/'smoke_player.js').read_text()))
     atomic_json(site/'status.json',{'updated_utc':utc_now(),'cases':published})
     return {'site':str(site),'cases':len(published)}

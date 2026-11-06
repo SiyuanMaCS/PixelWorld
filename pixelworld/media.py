@@ -15,8 +15,8 @@ def contract(source: Path) -> dict:
     allowed = set(DEFAULT_MEDIA) | {"benchmark", "turn", "action"}
     if set(raw) - allowed:
         raise ValueError(f"Unsupported task fields: {set(raw) - allowed}")
-    if result["task_type"] not in ("i2v", "t2v"):
-        raise ValueError("task_type must be i2v or t2v")
+    if result["task_type"] not in ("i2v", "v2v", "t2v"):
+        raise ValueError("task_type must be i2v, v2v or t2v")
     for key in ("width", "height", "frames"):
         value = result[key]
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
@@ -36,6 +36,9 @@ def task_rules(spec: dict) -> str:
     w, h, n, fps = (spec[k] for k in ("width", "height", "frames", "fps"))
     inputs = "`first_frame.png`, `prompt.txt` and `task_spec.json`" if spec["task_type"] == "i2v" else "`prompt.txt` and `task_spec.json`"
     first = " Frame 00 must be pixel-identical to `first_frame.png`." if spec["task_type"] == "i2v" else " Generate all frames from the text."
+    if spec['task_type']=='v2v':
+        inputs='`conditioning.mp4`, `conditioning_frames/`, `conditioning_info.json`, `conditioning_inspection.png`, `first_frame.png`, `prompt.txt` and `task_spec.json`'
+        first=' Generate only the future continuation after the conditioning clip, without including the historical segment. `first_frame.png` is the last historical frame for reference; output frame 00 is a future prediction, not a required copy.'
     audio = ""
     if spec["audio"]:
         rate, channels = spec["audio"]["sample_rate"], spec["audio"]["channels"]

@@ -16,6 +16,9 @@ from PIL import Image, ImageDraw
 from .config import Benchmark, Model
 from .constants import TRACKS
 from .supervisor import case_ids, configurations, inspect, snapshot
+from .candidate_media import revision_versions
+from .smoke_web import candidate_section, CANDIDATE_CSS
+from .constants import ASSET_ROOT
 
 
 MARKDOWN = mistune.create_markdown(escape=True, plugins=["table", "strikethrough"])
@@ -103,6 +106,9 @@ def _trace_page(config: Benchmark, model: Model, track: str, case_id: str,
         previous_code = current_code
         round_html.append(f'<article class="round"><img loading="lazy" src="../../../../{asset.as_posix()}"><div><h3>Round {index:02d}</h3><p class="muted">pixels {html.escape(snapshot_value.get("pixels_sha256", "")[:16])} · code {html.escape(snapshot_value.get("generate_sha256", "")[:16])}</p><p>Actual frozen frames: 00 / 01 / 05 / 10 / 19. A frozen round is harness evidence, not proof that the model visually inspected it.</p><details><summary>Code changes</summary><pre>{html.escape(excerpt)}</pre></details></div></article>')
     validation = manifest.get("validation", {})
+    candidate_target=site/'assets'/model.key/track/case_id/'video_versions'
+    versions,_,_=revision_versions(run,candidate_target)
+    candidate_html=candidate_section(versions,'../../../../'+candidate_target.relative_to(site).as_posix()+'/')
     prompt = html.escape((workspace / "prompt.txt").read_text().strip())
     observation = MARKDOWN((workspace / "OBSERVATION.md").read_text(errors="replace")) if (workspace / "OBSERVATION.md").is_file() else '<p>No optional observation report was written.</p>'
     method = MARKDOWN((workspace / "METHOD.md").read_text(errors="replace")) if (workspace / "METHOD.md").is_file() else '<p>No optional method report was written.</p>'
@@ -113,6 +119,9 @@ def _trace_page(config: Benchmark, model: Model, track: str, case_id: str,
     stats_html = "".join(f"<div><strong>{value}</strong><span>{label}</span></div>" for value, label in stats)
     video_asset = "../../../../" + record["asset"]
     body = f'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(case_id)} trace</title><style>{CSS}</style><main><p><a href="../../../gallery_{model.key}__{track}.html">← gallery</a></p><h1>{html.escape(case_id)} · Observable generation trace</h1><p class="muted">{html.escape(model.model)} · {html.escape(track)}. Blue/manifest facts are observable; Agent-authored Markdown is shown separately as a claim.</p><div class="stats">{stats_html}</div><section class="card" id="final"><h2>Final 20-frame RGB video</h2><div class="screen"><canvas width="256" height="144"></canvas><img src="{record['poster']}"></div><div class="controls"><button>Play</button><input type="range" min="0" max="19" value="0"></div></section><section class="box" style="padding:14px;margin-top:14px"><h2>Input and validation evidence</h2><p>{prompt}</p><p class="evidence">frame00 exact: {validation.get('frame0_exact')} · PNG/tensor exact: {validation.get('png_tensor_exact')} · network commands: {len(validation.get('network_commands') or [])} · subagents: {len(validation.get('subagent_commands') or [])}</p></section><h2>Frozen candidate rounds</h2><div class="rounds">{''.join(round_html) or '<p>No intermediate candidate was frozen.</p>'}</div><section class="claims"><h2>Agent-authored OBSERVATION.md (claim)</h2>{observation}<h2>Agent-authored METHOD.md (claim)</h2>{method}</section></main><script>{PLAYER_JS}loadPlayer(document.getElementById('final'),{{asset:{json.dumps(video_asset)}}});window.__pixelTraceReady=true;</script>'''
+    body=body.replace('<h2>Frozen candidate rounds</h2>',candidate_html+'<h2>Frozen artifact snapshots</h2>')
+    body=body.replace('</style>',CANDIDATE_CSS+'\n</style>',1)
+    body+='<script>'+(ASSET_ROOT/'smoke_player.js').read_text()+'</script>'
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(body)
 

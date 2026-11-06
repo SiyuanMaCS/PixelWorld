@@ -58,6 +58,9 @@ def build_parser() -> argparse.ArgumentParser:
     case.add_argument("--attempt", type=int, default=1)
     case.add_argument("--codex")
     case.add_argument("--dry-run", action="store_true")
+    case.add_argument('--task-file',type=Path,help='Explicit experimental task override, preserved in run metadata')
+    case.add_argument('--rules-file',type=Path,help='Explicit experimental rules override')
+    case.add_argument('--extra-input',action='append',default=[],help='Named additional input within the prepared case folder')
 
     sequence = commands.add_parser("run-sequence")
     sequence.add_argument("--config", required=True)
@@ -112,7 +115,7 @@ def main() -> None:
         raise SystemExit(0 if value["ok"] else 1)
     if args.command == "run-case":
         value = run_case(load_config(args.config), args.model, args.track, args.case,
-                         args.attempt, args.codex, args.dry_run)
+                         args.attempt, args.codex, args.dry_run,args.task_file,args.rules_file,tuple(args.extra_input))
         _print(value)
         raise SystemExit(0 if value["status"] in ("complete", "dry-run") else 1)
     if args.command == "run-sequence":

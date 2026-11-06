@@ -49,6 +49,14 @@ def test_variable_i2v_validates_every_png(tmp_path):
     assert freeze(tmp_path, tmp_path / "trace", 0, candidate_key(tmp_path, spec), spec) is None
 
 
+def test_v2v_predicts_future_instead_of_copying_last_historical_frame(tmp_path):
+    spec, events=output(tmp_path,task_type='v2v')
+    Image.new('RGB',(32,24),'black').save(tmp_path/'first_frame.png')
+    result=validate(tmp_path,events,0,'vision-agent',False,spec)
+    assert result['pass'] and result['frame0_exact'] is None
+    assert freeze(tmp_path,tmp_path/'trace',0,candidate_key(tmp_path,spec),spec)
+
+
 def test_more_than_100_frames_are_checked_in_numeric_order(tmp_path):
     spec, events = output(tmp_path, n=121)
     assert validate(tmp_path, events, 0, "vision-agent", False, spec)["pass"]

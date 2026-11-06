@@ -59,6 +59,8 @@ def test_command_classification_is_command_level():
     workspace = Path("/tmp/workspace")
     assert outside_command_paths("sed -n 1,20p /home/user/.codex/skills/SKILL.md", workspace)
     assert not outside_command_paths("/bin/bash -lc 'python3 generate.py'", workspace)
+    assert not outside_command_paths("find . -not -path './candidate/*' -not -path './.git/*'",workspace)
+    assert outside_command_paths('cat /candidate/other.png',workspace)
 
 
 def test_lossless_time_first_canonicalization(tmp_path):
@@ -85,3 +87,12 @@ def test_validation_and_track_visual_boundary(tmp_path):
     ]) + "\n")
     assert not validate(workspace, visual, 0, "text")["pass"]
     assert validate(workspace, visual, 0, "vision-agent")["pass"]
+
+
+def test_failed_patch_request_does_not_claim_successful_external_write(tmp_path):
+    workspace=tmp_path/'workspace';make_artifacts(workspace)
+    events=tmp_path/'events.jsonl';outside=str(tmp_path/'missing/generate.py')
+    events.write_text('\n'.join([json.dumps({'type':'item.completed','item':{'type':'file_change','status':'failed','changes':[{'path':outside,'kind':'update'}]}}),json.dumps({'type':'turn.completed'})])+'\n')
+    result=validate(workspace,events,0,'vision-agent')
+    assert result['pass'] and result['outside_workspace_file_changes']==[]
+    assert result['failed_outside_workspace_file_change_attempts']==[outside]
