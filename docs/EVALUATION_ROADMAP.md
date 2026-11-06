@@ -1,5 +1,11 @@
 # PixelWorld evaluation roadmap
 
+**Current scope (2026-11-06): I2V world continuation and interactive world
+evolution only.** See [the current world-model plan](WORLDMODEL_PLAN.md) for the
+primary suite, reserve benchmarks and segment budget. Visual-reasoning,
+T2V and audio directions below are historical/reserve context, not scheduled
+experiments. Existing run artifacts and the Physics-IQ v1 queue are preserved.
+
 Research framing: [PixelWorld: Coding Agents as Omni Pixel World Models](RESEARCH_DESIGN.md).
 This roadmap is the benchmark and protocol inventory supporting that framing.
 Budget, latency, cost, FPS and resolution experiments are specified in

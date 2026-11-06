@@ -1,5 +1,11 @@
 # PixelWorld: Coding Agents as Omni Pixel World Models
 
+**Active scope (2026-11-06): image-conditioned world continuation and
+interactive evolution.** The current selection and cost policy is in
+[WORLDMODEL_PLAN.md](WORLDMODEL_PLAN.md). World creation, audio and visual puzzle
+reasoning discussed in earlier planning are outside the active experiment
+suite; their existing demos remain historical evidence.
+
 ## Central question
 
 Can the same general-purpose coding agent generate coherent pixel worlds across
