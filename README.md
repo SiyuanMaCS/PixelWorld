@@ -19,7 +19,7 @@ repository.
 
 ## Included
 
-- Three fixed capability Tracks: Text, Vision-Input, and Vision-Agent.
+- Two default capability Tracks: Text and Vision-Agent; historical Vision-Input runs remain supported.
 - One clean Codex session per case; empty output workspace; no memory, network tools, subagents, other cases, references, masks, or scores.
 - Direct `256×144 × 20` RGB output at 4 fps / 5 seconds.
 - Exact PNG ↔ `uint32 0xRRGGBB` tensor validation and frame-00 equality.
@@ -99,6 +99,20 @@ export MY_RESPONSES_API_KEY='...'
 ```
 
 The runner passes the environment-variable **name**, not its value, into the Codex provider config. See [docs/CODEX.md](docs/CODEX.md).
+
+For the optional TRAE CLI backend, [configs/deepseek-v41-flash.example.json](configs/deepseek-v41-flash.example.json)
+configures DeepSeek-V4.1-Flash with the minimal-v2 contract and Text/Vision-Agent
+Tracks. It requires that model in your own TRAE CLI catalog. Run case 0001 in
+each Track before starting all 198 cases; preserve the same output root so the
+full run reuses the validated smoke cases. Agent-authored planning and method
+reports are optional; code revisions, candidate RGB outputs and tool events are
+recorded externally.
+
+On Linux, check the sandbox launcher after a CLI upgrade. With an empty shell
+environment, TRAE CLI must have `traecli-resources/bwrap` beside its resolved
+executable, or a discoverable system installation. A missing launcher is an
+infrastructure failure; repair it before retrying rather than disabling the
+workspace sandbox or its network restrictions.
 
 ## Smoke, run, and monitor
 

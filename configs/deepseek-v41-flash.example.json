@@ -1,0 +1,18 @@
+{
+  "protocol": "pixelworld-v2",
+  "inputs_root": "data/physics_iq/inputs",
+  "runs_root": "runs/deepseek-v41-flash-v2",
+  "max_concurrency": 4,
+  "max_per_config": 2,
+  "max_attempts": 2,
+  "models": [
+    {
+      "key": "deepseek-v4-1-flash",
+      "model": "DeepSeek-V4.1-Flash",
+      "cli_backend": "trae",
+      "reasoning_effort": "high",
+      "provider": {"type": "builtin"},
+      "tracks": ["text", "vision-agent"]
+    }
+  ]
+}
