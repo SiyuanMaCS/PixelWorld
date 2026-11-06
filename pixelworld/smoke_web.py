@@ -107,6 +107,24 @@ def waveform(audio: Path, target: Path) -> None:
     im.save(target)
 
 
+def full_tools_section(run: Path, target: Path) -> str:
+    path=run/'logs/tool_calls.json'
+    if not path.is_file():
+        return '<div class="box"><strong>视觉检查的证据覆盖</strong><p>此run没有保存完整工具rollout。stdout JSONL会省略部分exec嵌套调用，未出现读图事件不等于没有实际读图；检查图存在或模型自述也不单独证明视觉检查。</p></div>'
+    data=json.loads(path.read_text());cards=[]
+    for call in data['tool_calls']:
+        images=[]
+        for image in call['returned_images']:
+            relative=Path(image['path']);source=run/'logs'/relative
+            destination=target/relative;destination.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(source,destination)
+            images.append(f'<img class="inspection" style="max-width:100%" src="{relative.as_posix()}" alt="实际返回给模型的图片"><p class="muted">返回图片SHA {image["sha256"][:16]}</p>')
+        title=str(call['tool'])+' · '+', '.join(call['nested_tool_expressions'])
+        visible_input=call['input'].replace(str(run/'workspace'),'workspace')
+        cards.append(f'<details{" open" if images else ""}><summary>{html.escape(title)} · {len(images)}张返回图片</summary><p>{html.escape(call["call_id"])} · 调用 {html.escape(str(call.get("utc") or ""))} → 返回 {html.escape(str(call.get("output_utc") or ""))}</p><pre>{html.escape(clean(visible_input))}</pre>{"".join(images)}</details>')
+    return f'<h2>完整工具调用与实际返回图片</h2><p>完整rollout记录{len(data["tool_calls"])}次顶层工具调用，向模型返回{data["returned_images"]}张图片。嵌套工具名来自调用代码；下面图片来自匹配call_id的实际工具输出，区别于模型自述。</p>'+''.join(cards)
+
+
 def trace(run: Path, target: Path, back: str, site: Path | None = None, asset_base: str | None = None) -> dict:
     manifest = json.loads((run/'run_manifest.json').read_text())
     spec = manifest.get('media_contract',DEFAULT_MEDIA)
@@ -126,7 +144,9 @@ def trace(run: Path, target: Path, back: str, site: Path | None = None, asset_ba
     if final['audio']:
         waveform(target/'final/audio.wav',target/'waveform.png')
         body+='<p>音频与 RGB 使用同一播放器时钟；点击播放会同时播放 WAV。</p><img class="wave" src="waveform.png">'
-    body+=f'<div class="box">保存的候选：{len(snapshots)} · output tokens：{usage.get("output_tokens","未上报")} · reasoning output tokens：{usage.get("reasoning_output_tokens","未上报")} · 耗时：{manifest.get("duration_seconds",0):.0f}s</div><h2>逐轮生成与修改</h2><p class="muted">候选由外部 harness 保存。是否读图，以对应工具事件为依据。</p>'
+    body+=f'<div class="box">保存的候选：{len(snapshots)} · output tokens：{usage.get("output_tokens","未上报")} · reasoning output tokens：{usage.get("reasoning_output_tokens","未上报")} · 耗时：{manifest.get("duration_seconds",0):.0f}s</div>'
+    body+=full_tools_section(run,target)
+    body+='<h2>逐轮生成与修改</h2><p class="muted">候选由外部harness保存，工具证据以实际保留的记录范围为准。</p>'
     previous=[]
     for i,source in enumerate(snapshots):
         folder=target/f'candidate_{i:02d}';rec=encode(source,folder,spec)

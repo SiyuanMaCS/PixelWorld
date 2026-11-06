@@ -214,6 +214,12 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
     binary = codex_binary or (os.environ.get("PIXELWORLD_TRAECLI", "traecli") if model.cli_backend == 'trae'
                               else os.environ.get("PIXELWORLD_CODEX", "codex"))
     command = codex_command(model, track, workspace, binary, has_image)
+    # Persist an external full rollout for new runs. Fresh contexts, memory and
+    # history-reuse settings stay unchanged; the stdout projection omits some
+    # nested tools and image returns. Preserve legacy launch settings.
+    full_trace_enabled = not legacy_contract
+    if full_trace_enabled:
+        command.remove('--ephemeral')
     if spec['task_type']=='v2v' and track!='text':
         command += ['-i' if model.cli_backend=='trae' else '--image',str(workspace/'conditioning_inspection.png')]
     try:
@@ -247,6 +253,7 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         "input_prompt_sha256": sha256(workspace / "prompt.txt"),
         "initial_visible_files": sorted(path.name for path in workspace.iterdir() if path.is_file()),
         "extra_input_files": list(extra_inputs),
+        "full_trace_capture_enabled": full_trace_enabled,
         "token_usage": collect_usage(logs / "events.jsonl", finished=False),
     }
     atomic_json(run / "run_manifest.json", manifest)
@@ -284,6 +291,15 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
             watcher.terminate()
             watcher.wait(timeout=10)
 
+    full_trace = {'status': 'not_recorded', 'reason': 'Legacy ephemeral launch settings preserved'}
+    if full_trace_enabled:
+        from .full_trace import capture_rollout
+        cli_home = Path(environment['TRAECLI_HOME']) if model.cli_backend == 'trae' else codex_home
+        try:
+            full_trace = capture_rollout(cli_home, logs, started)
+        except (OSError, ValueError, KeyError) as error:
+            full_trace = {'status':'error','reason':str(error)}
+        atomic_json(logs / 'full_trace_status.json', full_trace)
     canonicalization = canonicalize_tensor(workspace, logs, spec)
     validation = validate(workspace, logs / "events.jsonl", exit_status, track,
                           require_reports=legacy_contract, media=spec)
@@ -304,6 +320,7 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         "trace_rounds": len(list(trace.glob("round_*"))),
         "validation": validation,
         "token_usage": token_usage,
+        "full_trace": full_trace,
     })
     if watchdog:
         manifest["watchdog"] = watchdog

@@ -17,7 +17,7 @@ from .config import Benchmark, Model
 from .constants import TRACKS
 from .supervisor import case_ids, configurations, inspect, snapshot
 from .candidate_media import revision_versions
-from .smoke_web import candidate_section, CANDIDATE_CSS
+from .smoke_web import candidate_section, CANDIDATE_CSS, full_tools_section
 from .constants import ASSET_ROOT
 
 
@@ -112,14 +112,14 @@ def _trace_page(config: Benchmark, model: Model, track: str, case_id: str,
     prompt = html.escape((workspace / "prompt.txt").read_text().strip())
     observation = MARKDOWN((workspace / "OBSERVATION.md").read_text(errors="replace")) if (workspace / "OBSERVATION.md").is_file() else '<p>No optional observation report was written.</p>'
     method = MARKDOWN((workspace / "METHOD.md").read_text(errors="replace")) if (workspace / "METHOD.md").is_file() else '<p>No optional method report was written.</p>'
-    stats = [(len(candidate_hashes), "distinct RGB candidates"), (len(rounds), "artifact snapshots"),
+    stats = [(len({v['rgb_sha256'] for v in versions}), "distinct RGB candidates"), (len(rounds), "artifact snapshots"),
              (validation.get("generate_runs", 0), "generator executions"),
              (events["commands"], "commands"), (events["file_changes"], "file changes"),
-             (events["view_image"], "view_image events")]
+             (events["view_image"], "projected view_image events")]
     stats_html = "".join(f"<div><strong>{value}</strong><span>{label}</span></div>" for value, label in stats)
     video_asset = "../../../../" + record["asset"]
     body = f'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{html.escape(case_id)} trace</title><style>{CSS}</style><main><p><a href="../../../gallery_{model.key}__{track}.html">← gallery</a></p><h1>{html.escape(case_id)} · Observable generation trace</h1><p class="muted">{html.escape(model.model)} · {html.escape(track)}. Blue/manifest facts are observable; Agent-authored Markdown is shown separately as a claim.</p><div class="stats">{stats_html}</div><section class="card" id="final"><h2>Final 20-frame RGB video</h2><div class="screen"><canvas width="256" height="144"></canvas><img src="{record['poster']}"></div><div class="controls"><button>Play</button><input type="range" min="0" max="19" value="0"></div></section><section class="box" style="padding:14px;margin-top:14px"><h2>Input and validation evidence</h2><p>{prompt}</p><p class="evidence">frame00 exact: {validation.get('frame0_exact')} · PNG/tensor exact: {validation.get('png_tensor_exact')} · network commands: {len(validation.get('network_commands') or [])} · subagents: {len(validation.get('subagent_commands') or [])}</p></section><h2>Frozen candidate rounds</h2><div class="rounds">{''.join(round_html) or '<p>No intermediate candidate was frozen.</p>'}</div><section class="claims"><h2>Agent-authored OBSERVATION.md (claim)</h2>{observation}<h2>Agent-authored METHOD.md (claim)</h2>{method}</section></main><script>{PLAYER_JS}loadPlayer(document.getElementById('final'),{{asset:{json.dumps(video_asset)}}});window.__pixelTraceReady=true;</script>'''
-    body=body.replace('<h2>Frozen candidate rounds</h2>',candidate_html+'<h2>Frozen artifact snapshots</h2>')
+    body=body.replace('<h2>Frozen candidate rounds</h2>',full_tools_section(run,output.parent)+candidate_html+'<h2>Frozen artifact snapshots</h2>')
     body=body.replace('</style>',CANDIDATE_CSS+'\n</style>',1)
     body+='<script>'+(ASSET_ROOT/'smoke_player.js').read_text()+'</script>'
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -55,3 +55,18 @@ Count tool executions, candidate snapshots, chronological RGB versions and uniqu
 RGB videos separately. A model's review statement is not evidence of a visual
 tool invocation. First/final comparisons of a native run are retrospective; they
 are not the results of a prompt that forbids revision.
+
+New minimal-protocol runs also retain `logs/full_rollout.jsonl`,
+`logs/tool_calls.json`, and actual returned images under `logs/tool_images/`.
+The CLI stdout JSONL is a partial projection: it can omit an entire nested
+`exec → tools.view_image(...) → image(...)` call. Count image delivery from
+matched full-rollout call/output records, rather than treating a missing stdout
+event as no visual inspection. The trace viewer shows these actual images.
+
+Full recording persists an external CLI session file without resuming an old
+session or enabling memory/history reuse. The fresh agent workspace and native
+task instructions are unchanged. Legacy ephemeral launch settings are preserved.
+If full recording is unavailable, its status is explicitly `missing` or `error`;
+old stdout-only traces cannot establish the absence of visual inspection. Raw
+rollouts remain local; public pages export tool evidence and images, not system
+instructions or hidden model reasoning.

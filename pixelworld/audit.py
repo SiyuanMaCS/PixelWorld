@@ -206,6 +206,9 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
         if event.get("type") in ("item.started", "item.completed") and "view_image" in tool:
             visual_calls.append({"event": event.get("type"), "tool": tool,
                                  "path": item.get("path") or item.get("arguments")})
+        if event.get('type')=='item.completed' and item.get('type')=='full_trace_image_return':
+            visual_calls.append({'event':event['type'],'tool':'actual image delivered in full rollout',
+                                 'call_id':item.get('call_id'),'images':item.get('returned_images')})
 
     outside_reads = [value for value in reads if not _inside(workspace, value)]
     failed_outside_reads = [value for value in failed_reads if not _inside(workspace, value)]

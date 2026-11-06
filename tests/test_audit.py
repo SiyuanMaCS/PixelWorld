@@ -89,6 +89,17 @@ def test_validation_and_track_visual_boundary(tmp_path):
     assert validate(workspace, visual, 0, "vision-agent")["pass"]
 
 
+def test_image_return_hidden_by_stdout_projection_enforces_track(tmp_path):
+    workspace=tmp_path/'workspace';make_artifacts(workspace)
+    events=tmp_path/'events.jsonl'
+    events.write_text('\n'.join([json.dumps({'type':'turn.completed'}),
+        json.dumps({'type':'item.completed','item':{'type':'full_trace_image_return',
+            'call_id':'nested-image','returned_images':[{'path':'tool_images/a.png'}]}})])+'\n')
+    assert not validate(workspace,events,0,'text')['pass']
+    assert not validate(workspace,events,0,'vision-input')['pass']
+    assert validate(workspace,events,0,'vision-agent')['pass']
+
+
 def test_failed_patch_request_does_not_claim_successful_external_write(tmp_path):
     workspace=tmp_path/'workspace';make_artifacts(workspace)
     events=tmp_path/'events.jsonl';outside=str(tmp_path/'missing/generate.py')
