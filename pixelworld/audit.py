@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+import io
 import json
 import re
 import shutil
+import tokenize
 import wave
 
 import numpy as np
@@ -103,8 +105,25 @@ def _tool_name(item: dict) -> str:
 def outside_command_paths(command: str, workspace: Path) -> list[str]:
     values = []
     workspace_value = str(workspace.resolve()) + "/"
-    for match in ABSOLUTE_PATH_PATTERN.findall(command):
-        value = match.rstrip(".,:)")
+    divisions = set()
+    # A slash in an actual Python division expression is not a file path.
+    # Restrict lexical parsing to Python heredoc bodies; shell paths and
+    # quoted Python filenames remain subject to the original checks.
+    for header in re.finditer(r"(?m)^python(?:3)?\s+-\s+<<\s*['\"]?(?P<tag>[A-Za-z_]\w*)['\"]?\s*\n", command):
+        tail=command[header.end():]
+        end=re.search(r'(?m)^'+re.escape(header.group('tag'))+r'\s*$',tail)
+        if not end:continue
+        body=tail[:end.start()]
+        offsets=[0]
+        for line in body.splitlines(keepends=True):offsets.append(offsets[-1]+len(line))
+        try:
+            tokens=list(tokenize.generate_tokens(io.StringIO(body).readline))
+        except (tokenize.TokenError,IndentationError):continue
+        divisions.update(header.end()+offsets[token.start[0]-1]+token.start[1]
+                         for token in tokens if token.type==tokenize.OP and token.string=='/')
+    for match in ABSOLUTE_PATH_PATTERN.finditer(command):
+        if match.start() in divisions:continue
+        value = match.group(1).rstrip(".,:)")
         if value == str(workspace.resolve()) or value.startswith(workspace_value):
             continue
         if value.startswith(SYSTEM_READ_PREFIXES):

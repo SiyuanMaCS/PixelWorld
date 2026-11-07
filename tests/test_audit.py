@@ -63,6 +63,12 @@ def test_command_classification_is_command_level():
     assert outside_command_paths('cat /candidate/other.png',workspace)
 
 
+def test_python_division_is_not_an_absolute_file_access(tmp_path):
+    assert outside_command_paths("python - <<'PY'\nx=int((r+g+b)/3/26)\nPY",tmp_path)==[]
+    assert outside_command_paths("python - <<'PY'\nopen('/3/26').read()\nPY",tmp_path)==['/3/26']
+    assert outside_command_paths('cat /3/26',tmp_path)==['/3/26']
+
+
 def test_lossless_time_first_canonicalization(tmp_path):
     workspace = tmp_path / "workspace"
     logs = tmp_path / "logs"
