@@ -115,6 +115,9 @@ def full_tools_section(run: Path, target: Path) -> str:
     for call in data['tool_calls']:
         images=[]
         for image in call['returned_images']:
+            if not image.get('path'):
+                images.append('<p class="muted">完整记录包含实际图片消息，但存储blob尚未恢复。</p>')
+                continue
             relative=Path(image['path']);source=run/'logs'/relative
             destination=target/relative;destination.parent.mkdir(parents=True,exist_ok=True)
             shutil.copy2(source,destination)

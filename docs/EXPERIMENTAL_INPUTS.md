@@ -63,6 +63,12 @@ The CLI stdout JSONL is a partial projection: it can omit an entire nested
 matched full-rollout call/output records, rather than treating a missing stdout
 event as no visual inspection. The trace viewer shows these actual images.
 
+The CLI can store image messages as `traex-rollout-blob` references instead of
+inline data URLs. Recording also resolves these verified content-addressed blobs
+and retains them under `logs/rollout-blobs/`. Missing blob contents remain counted
+as archived image messages and are explicitly marked unavailable; they must not
+silently become zero image inspections.
+
 Full recording persists an external CLI session file without resuming an old
 session or enabling memory/history reuse. The fresh agent workspace and native
 task instructions are unchanged. Legacy ephemeral launch settings are preserved.

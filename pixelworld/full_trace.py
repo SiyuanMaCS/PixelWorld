@@ -12,7 +12,22 @@ import shutil
 from .util import atomic_json
 
 
-def extract_tools(rollout: Path, logs: Path) -> dict:
+def _resolve_blob(value: str, logs: Path, blob_root: Path | None) -> str | None:
+    match=re.fullmatch(r'traex-rollout-blob:v1:sha256:([0-9a-f]{64}):(\d+)',value)
+    if not match:return value
+    relative=Path('sha256')/match[1][:2]/match[1]
+    target=logs/'rollout-blobs'/relative
+    source=target if target.is_file() else (blob_root/relative if blob_root else None)
+    if source is None or not source.is_file():return None
+    raw=source.read_bytes()
+    if len(raw)!=int(match[2]) or hashlib.sha256(raw).hexdigest()!=match[1]:
+        raise ValueError('Rollout blob failed size/hash verification')
+    if source!=target:
+        target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(raw)
+    return raw.decode('utf-8')
+
+
+def extract_tools(rollout: Path, logs: Path, blob_root: Path | None = None) -> dict:
     calls = {}
     outputs = {}
     for line in rollout.open():
@@ -24,13 +39,16 @@ def extract_tools(rollout: Path, logs: Path) -> dict:
             kind = item.get('type')
             call_id = item.get('call_id')
             if kind in ('custom_tool_call', 'function_call') and call_id:
+                source_input=item.get('input') or item.get('arguments') or ''
+                resolved_input=_resolve_blob(source_input,logs,blob_root)
                 calls[call_id] = {'call_id': call_id, 'tool': item.get('name'),
-                    'input': item.get('input') or item.get('arguments') or '',
+                    'input': resolved_input if resolved_input is not None else source_input,
                     'utc': event.get('timestamp')}
             elif kind in ('custom_tool_call_output', 'function_call_output') and call_id:
                 outputs[call_id] = {'output':item.get('output'),'utc':event.get('timestamp')}
     records = []
     returned_images = 0
+    unresolved_images = 0
     for call_id, call in calls.items():
         # Names are syntactic evidence; image delivery is proved separately.
         nested = sorted(set(re.findall(r'\btools\.(\w+)\s*\(', call['input'])))
@@ -42,7 +60,16 @@ def extract_tools(rollout: Path, logs: Path) -> dict:
             for block in output:
                 if block.get('type') not in ('input_image', 'image'):continue
                 url = block.get('image_url', '')
-                if not isinstance(url, str) or not url.startswith('data:image/'):continue
+                if not isinstance(url,str):continue
+                reference=url if url.startswith('traex-rollout-blob:') else None
+                resolved=_resolve_blob(url,logs,blob_root)
+                if resolved is None:
+                    record['returned_images'].append({'path':None,'available':False,
+                        'persisted_reference':reference,'source':'actual archived image message; blob unavailable'})
+                    returned_images+=1;unresolved_images+=1
+                    continue
+                url=resolved
+                if not url.startswith('data:image/'):continue
                 header, encoded = url.split(',', 1)
                 image_bytes = base64.b64decode(encoded, validate=True)
                 digest = hashlib.sha256(image_bytes).hexdigest()
@@ -52,12 +79,14 @@ def extract_tools(rollout: Path, logs: Path) -> dict:
                 target.parent.mkdir(exist_ok=True)
                 target.write_bytes(image_bytes)
                 record['returned_images'].append({'path': relative, 'sha256': digest,
-                    'bytes': len(image_bytes), 'mime_type': header.split(';')[0][5:]})
+                    'bytes': len(image_bytes), 'mime_type': header.split(';')[0][5:],
+                    'available':True,'persisted_reference':reference})
                 returned_images += 1
         record['matched_output'] = call_id in outputs
         records.append(record)
     result = {'status': 'recorded', 'source': 'full CLI rollout, not stdout projection',
         'tool_calls': records, 'returned_images': returned_images,
+        'unresolved_images':unresolved_images,
         'limitations': 'Nested tool names are source expressions. Matched image outputs prove images delivered to the model; source text alone does not prove every expression executed.'}
     atomic_json(logs / 'tool_calls.json', result)
     return result
@@ -80,7 +109,7 @@ def capture_rollout(cli_home: Path, logs: Path, started: dt.datetime) -> dict:
             'reason': f'Expected one persisted session rollout, found {len(matches)}'}
     target = logs / 'full_rollout.jsonl'
     shutil.copy2(matches[0], target)
-    result = extract_tools(target, logs)
+    result = extract_tools(target, logs, matches[0].with_suffix('.artifacts')/'rollout-blobs')
     result['thread_id'] = thread_id
     result['rollout_sha256'] = hashlib.sha256(target.read_bytes()).hexdigest()
     # Append actual image delivery to the audit stream without duplicating shell events.

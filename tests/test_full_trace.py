@@ -1,6 +1,7 @@
 import base64
 import datetime as dt
 import json
+import hashlib
 from pathlib import Path
 
 from pixelworld.full_trace import capture_rollout, extract_tools
@@ -37,3 +38,31 @@ def test_missing_full_rollout_is_unknown_not_zero_actual_calls(tmp_path):
     (tmp_path/'events.jsonl').write_text(json.dumps({'type':'thread.started','thread_id':'00000000-0000-0000-0000-000000000001'})+'\n')
     result=capture_rollout(tmp_path/'empty',tmp_path,dt.datetime.now(dt.timezone.utc))
     assert result['status']=='missing' and 'returned_images' not in result
+
+
+def test_spilled_image_blob_is_restored_and_archive_is_self_contained(tmp_path):
+    url='data:image/png;base64,'+base64.b64encode(b'png-bytes').decode()
+    raw=url.encode();digest=hashlib.sha256(raw).hexdigest()
+    blobs=tmp_path/'source_blobs';file=blobs/'sha256'/digest[:2]/digest
+    file.parent.mkdir(parents=True);file.write_bytes(raw)
+    logs=tmp_path/'logs';logs.mkdir();rollout=logs/'full_rollout.jsonl'
+    rollout.write_text(json.dumps({'type':'history_mutation','payload':{'items':[
+        {'type':'custom_tool_call','name':'exec','call_id':'a','input':'image(await tools.view_image({path:"x.png"}));'},
+        {'type':'custom_tool_call_output','call_id':'a','output':[{'type':'input_image',
+            'image_url':f'traex-rollout-blob:v1:sha256:{digest}:{len(raw)}'}]}]}})+'\n')
+    result=extract_tools(rollout,logs,blobs)
+    assert result['returned_images']==1 and result['unresolved_images']==0
+    assert (logs/result['tool_calls'][0]['returned_images'][0]['path']).read_bytes()==b'png-bytes'
+    file.unlink()
+    assert extract_tools(rollout,logs)['unresolved_images']==0
+
+
+def test_missing_image_blob_is_recorded_as_image_not_silently_dropped(tmp_path):
+    rollout=tmp_path/'full_rollout.jsonl'
+    rollout.write_text(json.dumps({'type':'history_mutation','payload':{'items':[
+        {'type':'custom_tool_call','name':'exec','call_id':'a','input':'image(await tools.view_image({path:"x.png"}));'},
+        {'type':'custom_tool_call_output','call_id':'a','output':[{'type':'input_image',
+            'image_url':'traex-rollout-blob:v1:sha256:'+('0'*64)+':123'}]}]}})+'\n')
+    result=extract_tools(rollout,tmp_path)
+    assert result['returned_images']==1 and result['unresolved_images']==1
+    assert result['tool_calls'][0]['returned_images'][0]['available'] is False
