@@ -1,5 +1,6 @@
 """Contract tests use fixtures, not generated/scored benchmark or baseline videos."""
 import importlib.util
+import hashlib
 import io
 import json
 import tarfile
@@ -89,6 +90,24 @@ def test_inventory_checks_all_modalities_and_count():
         prep.episode_inventory(index)
 
 
+def test_selected_archive_payloads_are_exact_in_arbitrary_order(tmp_path):
+    path = tmp_path/'assets.tar.gz'
+    rows = {'video/episode1.mp4': b'fixture-no-video',
+            'instructions/fixed_scene_task/episode1.json': b'{"instruction":"fixture"}',
+            'first_frame/fixed_scene_task/episode1.png': b'fixture-no-image'}
+    with tarfile.open(path, 'w:gz') as tar:
+        for name, data in rows.items():
+            member = tarfile.TarInfo('test_dataset/'+name)
+            member.size = len(data)
+            tar.addfile(member, io.BytesIO(data))
+    with tarfile.open(path) as tar:
+        index = prep.archive_index(tar)
+    selected = set(rows)-{'video/episode1.mp4'}
+    assert ev.archive_payloads(path, index, selected) == {k:rows[k] for k in selected}
+    with pytest.raises(ValueError, match='missing'):
+        ev.archive_payloads(path, index, {'first_frame/missing.png'})
+
+
 def test_official_pinned_legal_input_real_archive(tmp_path):
     if not ARCHIVE.exists():
         pytest.skip("Optional ignored official download unavailable")
@@ -123,6 +142,27 @@ def test_weight_lock_cannot_select_replacement_judge(tmp_path):
                           "model_identities": {"vlm": "replacement-judge"}, "artifacts": []})
     with pytest.raises(ValueError, match="no replacement"):
         ev.check_weight_lock(lock, {"ckpt": ckpt})
+
+
+def test_official_model_identity_uses_complete_object_hashes(tmp_path):
+    folder = tmp_path/'official-model';folder.mkdir()
+    config = b'{"model_type":"qwen3_vl"}\n'
+    weights = b'fixture-not-neural-weights'
+    (folder/'config.json').write_bytes(config)
+    (folder/'model.safetensors').write_bytes(weights)
+    pin = {'repo_id':'Qwen/Qwen3-VL-8B-Instruct','files':{
+        'config.json': {'bytes':len(config),'hash_algorithm':'git-blob-sha1',
+                        'digest':hashlib.sha1(b'blob '+str(len(config)).encode()+b'\0'+config).hexdigest()},
+        'model.safetensors': {'bytes':len(weights),'hash_algorithm':'sha256',
+                             'digest':hashlib.sha256(weights).hexdigest()}}}
+    # Released config has no _name_or_path; exact canonical bytes prove identity.
+    assert len(ev.verify_hf_checkpoint(folder, pin)) == 2
+    (folder/'model.safetensors').write_bytes(b'x'*len(weights))
+    with pytest.raises(ValueError, match='hash mismatch'):
+        ev.verify_hf_checkpoint(folder, pin)
+    (folder/'model.safetensors').unlink()
+    with pytest.raises(ValueError, match='Missing/incomplete'):
+        ev.verify_hf_checkpoint(folder, pin)
 
 
 def test_commands_call_unchanged_official_scorers(tmp_path):

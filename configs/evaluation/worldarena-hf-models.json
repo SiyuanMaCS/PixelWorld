@@ -1,0 +1,149 @@
+{
+  "purpose": "Exact original WorldArena HF evaluator model resource identity; no model inference",
+  "models": {
+    "vlm": {
+      "repo_id": "Qwen/Qwen3-VL-8B-Instruct",
+      "revision": "0c351dd01ed87e9c1b53cbc748cba10e6187ff3b",
+      "files": {
+        "chat_template.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "1081bacf1af7c7c6de4a585ce02cd0fd34e382da",
+          "bytes": 5499
+        },
+        "config.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "0e2df614c5fe1ad2b6b540c8625bebf2d7ec43ca",
+          "bytes": 1474
+        },
+        "merges.txt": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0",
+          "bytes": 1671839
+        },
+        "model-00001-of-00004.safetensors": {
+          "hash_algorithm": "sha256",
+          "digest": "d5d0aef0eb170fc7453a296c43c0849a56f510555d3588e4fd662bb35490aefa",
+          "bytes": 4902275944
+        },
+        "model-00002-of-00004.safetensors": {
+          "hash_algorithm": "sha256",
+          "digest": "8be88fb5501e4d5719a6d4cc212e6a13480330e74f3e8c77daa1a68f199106b5",
+          "bytes": 4915962496
+        },
+        "model-00003-of-00004.safetensors": {
+          "hash_algorithm": "sha256",
+          "digest": "83de00eafe6e0d57ccd009dbcf71c9974d74df2f016c27afb7e95aafd16b2192",
+          "bytes": 4999831048
+        },
+        "model-00004-of-00004.safetensors": {
+          "hash_algorithm": "sha256",
+          "digest": "0a88b98e9f96270973f567e6a2c103ede6ccdf915ca3075e21c755604d0377a5",
+          "bytes": 2716270024
+        },
+        "model.safetensors.index.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "5857ec62530eb589b1876034dd5386f1d98131a6",
+          "bytes": 67759
+        },
+        "preprocessor_config.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "2ea84a437d448ff71b08df68fdd949d5cc4ebb64",
+          "bytes": 390
+        },
+        "tokenizer.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "c6cc1014128b19d1fc46b1d30a23e3b1d35db421",
+          "bytes": 7032403
+        },
+        "tokenizer_config.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "d3d3763207692c78780f4bf42d4dadf49a5c8012",
+          "bytes": 10868
+        },
+        "video_preprocessor_config.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "3ba673a5ad7d4d13f54155ecd38b2a94a6dac8fe",
+          "bytes": 385
+        },
+        "vocab.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "4783fe10ac3adce15ac8f358ef5462739852c569",
+          "bytes": 2776833
+        }
+      },
+      "source_url": "https://huggingface.co/Qwen/Qwen3-VL-8B-Instruct/tree/0c351dd01ed87e9c1b53cbc748cba10e6187ff3b"
+    },
+    "caption": {
+      "repo_id": "Qwen/Qwen2.5-VL-7B-Instruct",
+      "revision": "cc594898137f460bfe9f0759e9844b3ce807cfb5",
+      "files": {
+        "chat_template.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "732bd68bc5427d1fb6c06a59b3bf2456b2155d24",
+          "bytes": 1050
+        },
+        "config.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "58ee12a9fb3d8708a1e41e49cb9aa5ac5017b6a6",
+          "bytes": 1374
+        },
+        "merges.txt": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "20024bfe7c83998e9aeaf98a0cd6a2ce6306c2f0",
+          "bytes": 1671839
+        },
+        "model-00001-of-00005.safetensors": {
+          "hash_algorithm": "sha256",
+          "digest": "e97b877e47fde53a6c6e77aafb36e58e91ee9d95c4a3eeac6f1b5c0e6a1c986e",
+          "bytes": 3900233256
+        },
+        "model-00002-of-00005.safetensors": {
+          "hash_algorithm": "sha256",
+          "digest": "a9a300a43b4724eee2abe7c18ceb26768d0ab011eb0cad19d9bfd2476a24d024",
+          "bytes": 3864726320
+        },
+        "model-00003-of-00005.safetensors": {
+          "hash_algorithm": "sha256",
+          "digest": "111223d173e00bbee81cba1216fad28668df3476706b7fd26f4d5b50f8b3a507",
+          "bytes": 3864726424
+        },
+        "model-00004-of-00005.safetensors": {
+          "hash_algorithm": "sha256",
+          "digest": "ef47f634fa57d46ee134edcc09f34085a47da1e16c12a2abe0d67118be6d72ed",
+          "bytes": 3864733680
+        },
+        "model-00005-of-00005.safetensors": {
+          "hash_algorithm": "sha256",
+          "digest": "0c859795ad3a627a9b95bcb762e059d5b768a4a36fdd4affeff269d93fdecc67",
+          "bytes": 1089994880
+        },
+        "model.safetensors.index.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "f0c9e9b8e043f5de0ac99fd8b2ea75515d811e7b",
+          "bytes": 57619
+        },
+        "preprocessor_config.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "7f3b746825e5eef53ed8ed57a91df9e86ee62c0a",
+          "bytes": 350
+        },
+        "tokenizer.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "443909a61d429dff23010e5bddd28ff530edda00",
+          "bytes": 7031645
+        },
+        "tokenizer_config.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "91684ea3dc135a7d815e2c932054ce88c1aab41f",
+          "bytes": 5702
+        },
+        "vocab.json": {
+          "hash_algorithm": "git-blob-sha1",
+          "digest": "4783fe10ac3adce15ac8f358ef5462739852c569",
+          "bytes": 2776833
+        }
+      },
+      "source_url": "https://huggingface.co/Qwen/Qwen2.5-VL-7B-Instruct/tree/cc594898137f460bfe9f0759e9844b3ce807cfb5"
+    }
+  }
+}

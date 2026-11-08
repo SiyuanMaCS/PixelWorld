@@ -245,7 +245,50 @@ def main():
         d = json.loads(quality.read_text())
         values = ' · '.join(f'{html.escape(k)} {v[0]:.4f}' for k, v in d.items())
         body += f'<tr><td>VBench 补充维度</td><td>官方函数已评分</td><td>同一 pair 的五份样本；原始值：{values}</td></tr>'
-    for benchmark, label in [('robojudge', 'RoboJudge'), ('worldarena', 'WorldArena'), ('other_bench_protocols', 'WBench / WorldScore')]:
+    model_names = {'gpt61-sol':'GPT-6.1-Sol', 'gpt56-sol':'GPT-5.6-Sol',
+                   'gpt6-astra':'GPT-6-Astra', 'deepseek-v41':'DeepSeek-V4.1-Flash'}
+    for model, label in model_names.items():
+        summaries = sorted((root/'evaluation').glob(f'robojudge_{model}_gpu_smoke*/summary.json'))
+        scored = []
+        for path in summaries:
+            record = json.loads(path.read_text())
+            if record.get('valid_paired_count'):
+                scored.append(record)
+        if scored:
+            record = scored[0]
+            values = record.get('shared50_means') or record.get('partial_paired_means')
+            scope = 'shared50 完整均分' if record.get('complete_shared50') else '单例/部分 smoke；不是 shared50 均分'
+            body += (f'<tr><td>RoboJudge · {html.escape(label)}</td><td>原始 9B judge 已评分</td>'
+                     f'<td>{scope}；n={record["valid_paired_count"]}；'
+                     f'PA {values["PA"]:.2f} / IA {values["IA"]:.2f}（1–5）</td></tr>')
+    worldscore = root/'evaluation/worldscore_scheduler.json'
+    if worldscore.exists():
+        record = json.loads(worldscore.read_text())
+        errors = record.get('reported_metric_errors', [])
+        # Old scheduler outputs may predate explicit error reporting. The
+        # original scorer catches exceptions and writes finite penalty values.
+        log = root/'evaluation/worldscore_case80_original_metrics/stdout.log'
+        if not errors and log.exists():
+            errors = [line for line in log.read_text(errors='replace').splitlines()
+                      if line.startswith('Error in ')]
+        state = '部分指标有执行异常；原始默认惩罚值保留' if errors else str(record.get('status','评分准备中'))
+        body += (f'<tr><td>WorldScore · Case80 /256×144</td><td>{html.escape(state)}</td>'
+                 '<td>三段、148帧；原始逐指标结果；无全量 Total。512×288 新生成规格正在单独验证。</td></tr>')
+        if record.get('raw_metrics'):
+            content = '<table><tr><th>Metric</th><th>Raw</th><th>Normalized</th></tr>'
+            for aspect, metrics in record['raw_metrics'].items():
+                for name, item in metrics.items():
+                    raw = html.escape(json.dumps(item.get('score'),ensure_ascii=False))
+                    value = item.get('score_normalized')
+                    normal = f'{value:.4f}' if isinstance(value,(int,float)) else str(value)
+                    suffix = ' · 原始异常默认值' if name == 'optical_flow_aepe' and errors else ''
+                    content += f'<tr><td>{html.escape(aspect+"/"+name+suffix)}</td><td>{raw}</td><td>{normal}</td></tr>'
+            (output/'worldscore_metrics.html').write_text(document('WorldScore Case80 metric smoke',
+                '<a href="index.html">← 总览</a><h1>WorldScore Case80 · 原始逐指标结果</h1>'
+                '<p>256×144 原生生成。光流发生尺寸异常，100是官方 scorer 的默认惩罚值；没有成功计算该项。其余原始结果保留，不合成全量 Total。</p>'
+                '<p><a href="worldscore_case80_complete/index.html">▶ 播放完整三段 RGB</a></p>'+content+'</table>'))
+            body += '<tr><td>WorldScore 详细结果</td><td>原始数值与异常分开</td><td><a href="worldscore_metrics.html">查看逐指标数值与完整播放 →</a></td></tr>'
+    for benchmark, label in [('worldarena', 'WorldArena'), ('other_bench_protocols', 'WBench / 其他资源')]:
         report = root / 'infrastructure' / benchmark / 'setup_status.json'
         state = '适配与资源检查中'
         if report.exists():

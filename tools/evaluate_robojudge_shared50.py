@@ -100,7 +100,10 @@ def load_frames(run: Path, task: dict) -> tuple[np.ndarray, dict, dict]:
     if prompt != prefix + task["instruction"].strip():
         raise ValueError("generator instruction does not match original task plus published generation prefix")
     tensor_path = ws / "pixels.npz"
-    pngs = sorted((ws / "frames").glob("*.png"))
+    try:
+        pngs = sorted((ws / "frames").glob("*.png"), key=lambda p: int(p.stem))
+    except ValueError:
+        raise ValueError("PNG frame names must be numeric") from None
     from_tensor = None
     if tensor_path.exists():
         if manifest.get("pixels_sha256") and sha256(tensor_path) != manifest["pixels_sha256"]:
@@ -170,6 +173,35 @@ def scope_report(records: list[dict], expected: list[str]) -> dict:
             "complete_shared50": len(expected) == 50 and not (missing or failed or duplicates)}
 
 
+def submitted_attempts(folder: Path) -> tuple[list[Path], list[dict]]:
+    """Use the earliest completed validated submission, not every retry folder."""
+    groups, unexpected = {}, []
+    for run in folder.glob("case_*_attempt_*"):
+        match = re.fullmatch(r"case_(common50_\d{4})_attempt_(\d+)", run.name)
+        if not match:
+            unexpected.append(run)
+            continue
+        try:
+            manifest = read_json(run / "run_manifest.json")
+        except (OSError, ValueError):
+            manifest = {}
+        accepted = (manifest.get("status") == "complete"
+                    and manifest.get("validation", {}).get("pass") is True)
+        groups.setdefault(match[1], []).append((int(match[2]), run, accepted, manifest.get("status")))
+    selected, ignored = list(unexpected), []
+    for case, attempts in sorted(groups.items()):
+        attempts.sort(key=lambda item: item[0])
+        chosen = next((item for item in attempts if item[2]), attempts[0])
+        selected.append(chosen[1])
+        for attempt, run, accepted, status in attempts:
+            if run != chosen[1]:
+                ignored.append({'case_id': case, 'run': str(run), 'attempt': attempt,
+                                'status': status, 'completed_validated': accepted,
+                                'reason': 'first_completed_validated_submission_selected' if chosen[2]
+                                          else 'all_attempts_failed_case_failure_preserved'})
+    return sorted(selected), ignored
+
+
 def prepare(args) -> int:
     root, output = args.generations.resolve(), args.output.resolve()
     external_output(output, root)
@@ -177,7 +209,8 @@ def prepare(args) -> int:
     tasks = load_tasks(args.tasks)
     expected = [f"common50_{i:04d}" for i in range(50)]
     records = []
-    for run in sorted((root / args.model / args.track).glob("case_*_attempt_*")):
+    submissions, ignored = submitted_attempts(root / args.model / args.track)
+    for run in submissions:
         match = re.fullmatch(r"case_(common50_\d{4})_attempt_\d+", run.name)
         if not match:
             records.append({"case_id": run.name, "status": "failed", "error": "unexpected task identity"})
@@ -208,7 +241,9 @@ def prepare(args) -> int:
     plan = {"schema": "robojudge-shared50-adapter-v1", "model": args.model, "track": args.track,
             "code_revision": CODE_REVISION, "checkpoint_revision": CHECKPOINT_REVISION,
             "dataset_revision": DATASET_REVISION, "tasks_sha256": sha256(args.tasks),
-            "adapter_sha256": sha256(Path(__file__)), "scope": scope, "records": records}
+            "adapter_sha256": sha256(Path(__file__)), "scope": scope, "records": records,
+            "attempt_selection_policy": "earliest_completed_validated_submission_no_quality_selection",
+            "ignored_attempts": ignored}
     write_json(output / "plan.json", plan)
     with (output / "inputs.jsonl").open("w") as f:
         for r in records:

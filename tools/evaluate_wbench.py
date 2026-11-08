@@ -135,7 +135,11 @@ def load_rgb(run: Path, provenance: dict) -> tuple[np.ndarray, dict, dict]:
     if any(type(x) is not int or x < 1 for x in (n, h, w)) or not math.isfinite(float(spec["fps"])) or not 0 < float(spec["fps"]) <= 240:
         raise ValueError("Invalid native RGB contract")
     tensor = run / "workspace/pixels.npz"
-    pngs = sorted((run / "workspace/frames").glob("*.png"))
+    try:
+        pngs = sorted((run / "workspace/frames").glob("*.png"),
+                      key=lambda path: int(path.stem))
+    except ValueError:
+        raise ValueError("PNG frame names must be numeric") from None
     rgb_tensor = rgb_png = None
     if tensor.exists():
         if manifest.get("pixels_sha256") and sha256(tensor) != manifest["pixels_sha256"]:

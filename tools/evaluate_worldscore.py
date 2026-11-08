@@ -11,6 +11,7 @@ import ast
 import json
 import math
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -47,6 +48,18 @@ def check_runtime(source: Path, python: str, lock: Path, movement: str = 'all') 
     weights = {'static': STATIC_WEIGHTS, 'dynamic': DYNAMIC_WEIGHTS,
                'all': REQUIRED_WEIGHTS}[movement]
     return runtime_preflight(source, CODE_REVISION, python, REQUIRED_MODULES, lock, weights)
+
+
+def metric_error_events(log: Path) -> list[dict]:
+    """Original Evaluator catches errors and emits finite penalty defaults."""
+    if not log.exists():
+        return []
+    events = []
+    for number, line in enumerate(log.read_text(errors='replace').splitlines(), 1):
+        match = re.match(r'^Error in ([A-Za-z0-9_+]+):\s*(.*)$', line)
+        if match:
+            events.append({'line': number, 'metric': match[1], 'message': match[2]})
+    return events
 
 
 def check_export_scope(exports: Path, movement: str, scope: str,
@@ -205,6 +218,12 @@ Evaluator(cfg).evaluate(num_jobs=int(sys.argv[2]),use_slurm=False,
                          args.source.resolve(), args.output, env)
         result.update(scope=args.scope, case_ids=ids, metric_source_unchanged=True,
                       model_registration_only=cfg['model'])
+        errors = metric_error_events(args.output/'stdout.log')
+        result['reported_metric_errors'] = errors
+        if errors and result['returncode'] == 0:
+            result['status'] = 'finished_with_original_metric_error_penalties'
+            result['note'] = ('Original process returned zero and its raw penalty values are preserved; '
+                              'this does not establish successful inference for every metric.')
         write_json(args.output/'execution.json', result)
         print(json.dumps(result))
         if result['returncode']: raise SystemExit(result['returncode'])

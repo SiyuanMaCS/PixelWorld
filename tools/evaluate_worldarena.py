@@ -35,6 +35,7 @@ except ModuleNotFoundError:
 REFERENCE_REVISION = "7b368882024e8ebc7658e01d57d65fdb58fe788b"
 REFERENCE_SHA256 = "f7765dae0785b9cf6f9ac46bbd090157d768b5a8a5145a6cb93ef8f5dfcddb15"
 BOARD_SHA256 = "7646a29c01f0ccf8010a2cc6c25f0d50874de143f9cf6d29126aa2a46e27d014"
+HF_MODEL_MANIFEST = Path(__file__).resolve().parents[1] / "configs/evaluation/worldarena-hf-models.json"
 CORE = {
     "image_quality": "Image Quality", "aesthetic_quality": "Aesthetic Quality",
     "dynamic_degree": "Dynamic Degree", "flow_score": "Flow Score",
@@ -188,6 +189,31 @@ def preflight(source: Path, board: Path) -> dict:
             "python": sys.version.split()[0], "no_generation_launched": True, "official_score": None}
 
 
+def verify_hf_checkpoint(directory: Path, pin: dict) -> dict[str, str]:
+    """Verify official config, tokenizer and all shards; no invented config field."""
+    verified = {}
+    for name, meta in pin["files"].items():
+        relative = Path(name)
+        if relative.is_absolute() or ".." in relative.parts:
+            raise ValueError("Unsafe canonical model file path")
+        path = directory / relative
+        if not path.is_file() or path.stat().st_size != meta["bytes"]:
+            raise ValueError(f"Missing/incomplete canonical model file: {pin['repo_id']}/{name}")
+        sha = hashlib.sha256()
+        git = hashlib.sha1()
+        git.update(b"blob " + str(path.stat().st_size).encode() + b"\0")
+        with path.open("rb") as handle:
+            for block in iter(lambda: handle.read(8 * 1024 * 1024), b""):
+                sha.update(block)
+                git.update(block)
+        algorithm = meta["hash_algorithm"]
+        actual = sha.hexdigest() if algorithm == "sha256" else git.hexdigest()
+        if algorithm not in ("sha256", "git-blob-sha1") or actual != meta["digest"]:
+            raise ValueError(f"Canonical model object hash mismatch: {pin['repo_id']}/{name}")
+        verified[str(path.resolve())] = sha.hexdigest()
+    return verified
+
+
 def check_weight_lock(lock: Path, cfg: dict) -> None:
     """Only provisioned, hashed official checkpoints; never silently select another VLM."""
     data = load_json(lock)
@@ -197,14 +223,36 @@ def check_weight_lock(lock: Path, cfg: dict) -> None:
                 "jepa": "https://dl.fbaipublicfiles.com/jepa/vith16/"}
     if data["model_identities"] != required or not data["artifacts"]:
         raise ValueError("Pinned official judge/JEPA identities required; no replacement judge")
+    pins = load_json(HF_MODEL_MANIFEST)["models"]
+    verified = {}
+    for role, directory in [("vlm", Path(cfg["ckpt"]["vlm_model"])),
+                            ("caption", Path(cfg["ckpt"]["semantic_alignment"]["caption"]))]:
+        if pins[role]["repo_id"] != required[role] or not pins[role].get("revision"):
+            raise ValueError("Canonical HF model revision/identity mismatch")
+        verified.update(verify_hf_checkpoint(directory, pins[role]))
     for artifact in data["artifacts"]:
         path = Path(artifact["path"])
-        if "legal_inputs" in path.resolve().parts or sha256(path) != artifact["sha256"]:
+        actual = verified.get(str(path.resolve())) or sha256(path)
+        if "legal_inputs" in path.resolve().parts or actual != artifact["sha256"]:
             raise ValueError("Weight artifact missing/mutated or inside legal input")
-    for model_key, expected in [("vlm_model", "Qwen/Qwen3-VL-8B-Instruct")]:
-        model_config = load_json(Path(cfg["ckpt"][model_key]) / "config.json")
-        if model_config.get("_name_or_path") != expected:
-            raise ValueError("Official Qwen3-VL-8B-Instruct judge identity not verified")
+
+
+def archive_payloads(archive: Path, index: dict, selected: set[str]) -> dict[str, bytes]:
+    """Read validated members in one pass, without repeatedly seeking gzip."""
+    if not selected <= set(index):
+        raise ValueError("Required aligned archive members are missing")
+    names = {index[key].name: key for key in selected}
+    payloads = {}
+    with tarfile.open(archive, "r|gz") as stream:
+        for member in stream:
+            key = names.get(member.name)
+            if key is not None:
+                if key in payloads or not member.isfile() or member.issym() or member.islnk():
+                    raise ValueError("Invalid or duplicate selected archive member")
+                payloads[key] = stream.extractfile(member).read()
+    if set(payloads) != selected:
+        raise ValueError("Selected archive members are incomplete")
+    return payloads
 
 
 def stage_inputs(archive: Path, references: Path, videos: Path, work: Path, episodes: list[str]) -> None:
@@ -213,42 +261,45 @@ def stage_inputs(archive: Path, references: Path, videos: Path, work: Path, epis
     if sha256(archive) != ARCHIVE_SHA256 or sha256(references) != REFERENCE_SHA256:
         raise ValueError("Input/reference archive pins mismatch")
     # Reference root cannot be inside the legal directory. All staging is eval-only.
-    work.mkdir(parents=True, exist_ok=False)
     with tarfile.open(archive) as t, tarfile.open(references) as rt:
         idx, ridx = archive_index(t), archive_index(rt)
         episode_inventory(idx)
-        # Verify all 4000 original image/instruction assets, not just one case, align with GT release.
-        for key in idx:
-            if key.startswith(("first_frame/", "instructions/", "instructions_1/", "instructions_2/")):
-                if key not in ridx or t.extractfile(idx[key]).read() != rt.extractfile(ridx[key]).read():
-                    raise ValueError("Later public GT archive is not aligned with pinned March 6 inputs")
-        core_summary, vlm_summary = [], []
-        for e in episodes:
-            name = internal_id(e) + ".mp4"
-            gen = work / (videos.name) / name
-            gen.parent.mkdir(exist_ok=True)
-            shutil.copyfile(videos / external_filename(e), gen)
-            if len(episodes) == 1000:
-                # All 16 local indicators require the official two action-prompt variants.
-                for variant in (1, 2):
-                    variant_dir = work / (videos.name + f"_{variant}")
-                    variant_dir.mkdir(exist_ok=True)
-                    shutil.copyfile(videos.parent / (videos.name + f"_{variant}") / external_filename(e),
-                                    variant_dir / name)
-            # Official preprocess uses parts[-5] for task, basename for episode.
-            gt = work / "gt_layout/fixed_scene_task/a/b/video" / (e + ".mp4")
-            gt.parent.mkdir(parents=True, exist_ok=True)
-            gt.write_bytes(rt.extractfile(ridx[f"video/{e}.mp4"]).read())
-            flat = work / "gt_flat" / name
-            flat.parent.mkdir(exist_ok=True)
-            os.link(gt, flat)
-            image = work / "initial_images" / (e + ".png")
-            image.parent.mkdir(exist_ok=True)
-            image.write_bytes(t.extractfile(idx[f"first_frame/fixed_scene_task/{e}.png"]).read())
-            prompt = json.loads(t.extractfile(idx[f"instructions/fixed_scene_task/{e}.json"]).read())["instruction"]
-            row = {"gt_path": str(gt.resolve()), "image": str(image.resolve()), "prompt": [prompt]}
-            core_summary.append(row)
-            vlm_summary.append({**row, "gt_path": str(flat.resolve())})
+    # Verify every one of the 4000 image/instruction assets byte-for-byte.
+    # Repeated random access to gzip can reread hundreds of GB for this check.
+    assets = {key for key in idx if key.startswith(("first_frame/", "instructions/",
+                                                  "instructions_1/", "instructions_2/"))}
+    initial = archive_payloads(archive, idx, assets)
+    reference = archive_payloads(references, ridx, assets | {f"video/{e}.mp4" for e in episodes})
+    if any(initial[key] != reference[key] for key in assets):
+        raise ValueError("Later public GT archive is not aligned with pinned March 6 inputs")
+    work.mkdir(parents=True, exist_ok=False)
+    core_summary, vlm_summary = [], []
+    for e in episodes:
+        name = internal_id(e) + ".mp4"
+        gen = work / (videos.name) / name
+        gen.parent.mkdir(exist_ok=True)
+        shutil.copyfile(videos / external_filename(e), gen)
+        if len(episodes) == 1000:
+            # All 16 local indicators require the official two action-prompt variants.
+            for variant in (1, 2):
+                variant_dir = work / (videos.name + f"_{variant}")
+                variant_dir.mkdir(exist_ok=True)
+                shutil.copyfile(videos.parent / (videos.name + f"_{variant}") / external_filename(e),
+                                variant_dir / name)
+        # Official preprocess uses parts[-5] for task, basename for episode.
+        gt = work / "gt_layout/fixed_scene_task/a/b/video" / (e + ".mp4")
+        gt.parent.mkdir(parents=True, exist_ok=True)
+        gt.write_bytes(reference[f"video/{e}.mp4"])
+        flat = work / "gt_flat" / name
+        flat.parent.mkdir(exist_ok=True)
+        os.link(gt, flat)
+        image = work / "initial_images" / (e + ".png")
+        image.parent.mkdir(exist_ok=True)
+        image.write_bytes(initial[f"first_frame/fixed_scene_task/{e}.png"])
+        prompt = json.loads(initial[f"instructions/fixed_scene_task/{e}.json"])["instruction"]
+        row = {"gt_path": str(gt.resolve()), "image": str(image.resolve()), "prompt": [prompt]}
+        core_summary.append(row)
+        vlm_summary.append({**row, "gt_path": str(flat.resolve())})
     write_json(work / "summary_core.json", core_summary)
     write_json(work / "summary_vlm.json", vlm_summary)
     immutable = {str(p.relative_to(work)): sha256(p) for p in work.rglob("*") if p.is_file()}

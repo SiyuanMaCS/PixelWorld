@@ -115,6 +115,29 @@ def test_scope_requires_all_50_and_no_duplicate_attempts():
     assert adapter.scope_report(records, expected)["failed"] == [expected[4]]
 
 
+def test_failed_later_startup_is_not_a_second_submission(sample):
+    run, _, _ = sample
+    later = run.parent/'case_common50_0000_attempt_02';later.mkdir()
+    adapter.write_json(later/'run_manifest.json', {'status':'failed','validation':{'pass':False}})
+    chosen, ignored = adapter.submitted_attempts(run.parent)
+    assert chosen == [run]
+    assert len(ignored) == 1 and ignored[0]['status'] == 'failed'
+    assert ignored[0]['reason'] == 'first_completed_validated_submission_selected'
+
+
+def test_multiple_completed_attempts_use_first_without_quality_selection(sample):
+    run, _, _ = sample
+    later = run.parent/'case_common50_0000_attempt_02';later.mkdir()
+    adapter.write_json(later/'run_manifest.json', {'status':'complete','validation':{'pass':True}})
+    assert adapter.submitted_attempts(run.parent)[0] == [run]
+    first = adapter.read_json(run/'run_manifest.json');first['status']='failed'
+    adapter.write_json(run/'run_manifest.json',first)
+    assert adapter.submitted_attempts(run.parent)[0] == [later]
+    adapter.write_json(later/'run_manifest.json',{'status':'failed'})
+    chosen, ignored = adapter.submitted_attempts(run.parent)
+    assert chosen == [run] and ignored[0]['reason'] == 'all_attempts_failed_case_failure_preserved'
+
+
 def write_predictions(output, rows, count=1):
     records = [{"case_id": f"common50_{i:04d}", "status": "prepared"} for i in range(count)]
     scope = adapter.scope_report(records, [f"common50_{i:04d}" for i in range(50)])

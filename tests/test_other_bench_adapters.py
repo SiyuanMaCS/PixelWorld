@@ -15,15 +15,15 @@ import prepare_worldscore as ws
 import evaluate_worldscore as es
 
 
-def fixture_run(tmp, benchmark="wbench", cid="1", turn=1, initial=None):
+def fixture_run(tmp, benchmark="wbench", cid="1", turn=1, initial=None, frames=3):
     root = tmp / f"run{turn}"
     snapshot = root / "input_snapshot"; snapshot.mkdir(parents=True)
     frames_dir = root / "workspace/frames"; frames_dir.mkdir(parents=True)
-    rgb = np.full((3, 4, 6, 3), 40 + turn, dtype=np.uint8)
+    rgb = np.full((frames, 4, 6, 3), 40 + turn, dtype=np.uint8)
     rgb[-1] = 70 + turn
     if initial is not None:
         rgb[0] = initial
-    spec = wb.media_spec(benchmark, 6, 4, 3, 2)
+    spec = wb.media_spec(benchmark, 6, 4, frames, 2)
     spec.update(turn=turn, action="W")
     Image.fromarray(rgb[0]).save(snapshot / "first_frame.png")
     (snapshot / "prompt.txt").write_text("official action")
@@ -47,6 +47,23 @@ def test_validated_native_rgb(tmp_path):
     result, spec, _ = ew.load_rgb(run, wb.read_json(pp))
     assert np.array_equal(result, rgb)
     assert spec["fps"] == 2
+
+
+def test_rgb_export_preserves_frame_order_past_99(tmp_path):
+    run, pp, rgb = fixture_run(tmp_path, frames=121)
+    for i in range(1, 121):
+        rgb[i] = (40 + i) % 256
+        Image.fromarray(rgb[i]).save(run/'workspace/frames'/f'{i:02d}.png')
+    result, spec, _ = ew.load_rgb(run, wb.read_json(pp))
+    assert spec['frames'] == 121
+    assert np.array_equal(result, rgb)
+
+
+def test_rgb_export_rejects_nonnumeric_frame_names(tmp_path):
+    run, pp, _ = fixture_run(tmp_path)
+    (run/'workspace/frames/01.png').rename(run/'workspace/frames/check.png')
+    with pytest.raises(ValueError, match='numeric'):
+        ew.load_rgb(run, wb.read_json(pp))
 
 
 @pytest.mark.parametrize("corrupt", ["incomplete", "prompt", "frame_zero", "gap", "contract"])

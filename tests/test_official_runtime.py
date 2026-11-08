@@ -24,6 +24,19 @@ def test_worldscore_locks_selected_original_metric_resources(monkeypatch, tmp_pa
     assert {'clip_iqa_backbone', 'clip_aesthetic_backbone', 'vgg19', 'bert'} <= seen[0]
 
 
+def test_worldscore_finite_error_penalties_are_reported(tmp_path):
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parents[1] / 'tools'))
+    from evaluate_worldscore import metric_error_events
+    log = tmp_path/'stdout.log'
+    log.write_text('Warning: Error text is not a metric exception\n'
+                   'Error in optical_flow_aepe: output (H: 0, W: 1)\n'
+                   '-- Aspect (metric): style_consistency (gram_matrix)\n')
+    assert metric_error_events(log) == [{'line': 2, 'metric': 'optical_flow_aepe',
+                                        'message': 'output (H: 0, W: 1)'}]
+
+
 def test_resource_lock_verifies_bytes_and_complete_identities(tmp_path):
     weights = tmp_path/'weights.bin'
     weights.write_bytes(b'unit-fixture-not-model-weights')

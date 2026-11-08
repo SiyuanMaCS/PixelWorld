@@ -27,6 +27,8 @@ python tools/setup_official_benchmark.py robojudge --download-checkpoint
 
 The only checkpoint downloaded by that flag is published `HuggingFriends/RoboJudge-9B`, revision `54b5fd7b93e0288bc91a8827af03b72eec7ffad1`; complete local file hashes are recorded. `tools/evaluate_robojudge_shared50.py` runs unchanged upstream inference with original greedy/bfloat16/SDPA settings. Smoke requires explicit partial scope; only all50 complete PA/IA pairs can receive a full shared50 mean. No seed42/43 checkpoint or different judge is substituted.
 
+One case's failed startup/recovery attempt folders are not independent submissions. Preparation selects the earliest completed, validated attempt and records every ignored attempt separately, consistent with the supervisor's reuse policy. If all attempts fail, that case remains failed. It does not choose an output by judge score or increase trial counts.
+
 ## VBench-I2V / VBench++
 
 This is `vbench2_beta_i2v`, not VBench-2.0 T2V physics. Standard scope is all1,118 official pairs,355 initial images and five independent samples per pair (5,590 videos/configuration). The evaluator accepts an explicit `--generation-root`, so manifest-relative artifact paths can be used on another host. API seeds may be unreported: record independent completed session identities instead of inventing seeds.
@@ -43,11 +45,17 @@ Static needs all2,000 entries. Dynamic Total additionally needs all1,000 motion 
 
 The preflight selects resource identities for `--split static`, `dynamic` or `all`. The pinned default metrics use **SEA-RAFT**; separate RAFT/FlowFormer files are alternate implementations and are not default requirements. Static resources also include the actual BERT, CLIP-IQA+ backbone/head, aesthetic backbone/head and VGG19. Full Evaluator import additionally needs torch-scatter, the spaCy English model and Mamba/CausalConv1D even when evaluating a static case. Base-package importability does not establish metric inference success; require actual predictions and complete applicable metric records.
 
+The original Evaluator catches exceptions and assigns finite default penalties. At256×144, its SEA-RAFT half-scale/four-level correlation path failed on a zero-height interpolation and wrote raw100/normalized0. Preserve that original result and report the exception; do not call it successful optical-flow inference because JSON is finite or the process exits0. The adapter records these reported errors without altering the original penalty policy. A512×288 dimension probe passed; the working generation specification is updated to native512×288 rather than presenting upsampled old frames as a new native generation.
+
 ## WorldArena
 
 Track1 text output is121 frames/24FPS, recommended640x480. The actual pinned test archive contains1,000 original episodes and two instruction-variant sets. Complete local16-indicator scope includes the variants; the public board averages15 fields and omits Action Following. Preserve this scope distinction instead of silently narrowing full submissions.
 
 The unmodified CSV writer has two reproduced key defects. The explicitly named `aggregate-compatible` path changes only those two export keys in an external copied writer, records original/corrected hashes, keeps raw values and original metric source unchanged, and calls the actual pinned public board formula only after full checks. It does not certify organizer publication or fill missing fields.
+
+`configs/evaluation/worldarena-hf-models.json` locks the original Qwen3-VL-8B-Instruct and Qwen2.5-VL-7B-Instruct repositories to explicit revisions and canonical object hashes for their configs, tokenizers and all weight shards. The official Qwen3 config does not contain `_name_or_path`; that incidental field is not an identity check. Resource validation uses the complete locked file set instead. These reproducibility pins do not establish which unpublished checkpoint revision was used for a public leaderboard row.
+
+The March6 initial-input archive has no GT video payload. The separately pinned later reference archive is checked against all4,000 original image/instruction assets before staging; this byte alignment is independent of the unresolved per-baseline published test revision. Archive validation preserves path/link/duplicate checks and reads selected payloads sequentially instead of repeatedly seeking through gzip. No reference payload is placed in a generation workspace.
 
 ## WBench
 
