@@ -4,6 +4,26 @@ import json
 from tools import official_runtime as runtime
 
 
+def test_worldscore_locks_selected_original_metric_resources(monkeypatch, tmp_path):
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parents[1] / 'tools'))
+    import evaluate_worldscore as evaluator
+    seen = []
+    monkeypatch.setattr(evaluator, 'runtime_preflight',
+                        lambda source, rev, python, modules, lock, weights:
+                        seen.append(set(weights)) or {'status': 'blocked'})
+    evaluator.check_runtime(tmp_path, 'python', tmp_path/'lock.json', 'static')
+    evaluator.check_runtime(tmp_path, 'python', tmp_path/'lock.json', 'dynamic')
+    evaluator.check_runtime(tmp_path, 'python', tmp_path/'lock.json')
+    assert seen[0] == evaluator.STATIC_WEIGHTS
+    assert seen[1] == evaluator.DYNAMIC_WEIGHTS
+    assert seen[2] == seen[0] | seen[1]
+    assert 'sea_raft' in seen[0] & seen[1]
+    assert not {'raft', 'flowformer'} & seen[2]
+    assert {'clip_iqa_backbone', 'clip_aesthetic_backbone', 'vgg19', 'bert'} <= seen[0]
+
+
 def test_resource_lock_verifies_bytes_and_complete_identities(tmp_path):
     weights = tmp_path/'weights.bin'
     weights.write_bytes(b'unit-fixture-not-model-weights')

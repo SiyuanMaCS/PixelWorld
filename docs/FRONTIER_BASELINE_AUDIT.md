@@ -1,0 +1,65 @@
+# Public frontier-baseline audit
+
+Verified 2026-11-09 from official project pages, leaderboard source/data, and the public papers. This audit does not generate or rescore baseline videos. Raw source snapshots and hashes are retained under the ignored `runs/frontier_baseline_audit_20261109/` directory.
+
+| Benchmark / exact setting | Public comparison examples | Evidence and remaining condition |
+|---|---|---|
+| Physics-IQ **Verified, I2V, BPP**, all 198 inputs | Seedance 2.5 **42.43 ± 0.76**; Wan2.2 14B **32.20 ± 0.60**; Veo3.1 Lite **31.83 ± 0.32**; /100 | [Official README leaderboard](https://github.com/google-deepmind/physics-IQ-benchmark#physics-iq-verified-leaderboard). One run is accepted; four runs with standard deviation are required for an official SOTA claim. BPP supports base or model-specific templating; record this distinction. Do not substitute Original-score or V2V rows. |
+| RoboJudge **shared-50 generation leaderboard**, RoboJudge-9B PA/IA | Wan2.6 Flash PA **3.827**, IA **4.027**, Overall **3.927**; Veo3.1 Lite **3.580 / 3.780 / 3.680**; /5 | [Paper §5.6 and Table 8, Appendix E.2](https://arxiv.org/pdf/2610.27782#page=28). This is 17 generators on 50 shared prompts, distinct from the 800-video judge benchmark and its Pearson leaderboard. Freeze original shared-50 identities, prompt construction, official checkpoint and inference settings. |
+| WBench **Full, text + initial image**, 289 cases / 1,058 turns | Kling 3.0 **79.4**; Wan2.7 **78.4**; Cosmos3-Super **72.5**; /100 | [Official leaderboard](https://meituan-longcat.github.io/WBench/) `Full` table; [official input modes](https://github.com/meituan-longcat/WBench#-implement-your-model). Navi has different scores (Kling3.0 79.0), so do not mix them. The original Doubao judge must match; the README explicitly says Qwen replacement-judge scores are not directly comparable. |
+| WorldArena **Track 1, text-conditioned video quality**, official test set | Veo3.1 Image Quality **0.6557**, Instruction Following **0.9714**; Wan2.6 **0.6736 / 0.8996** | [Official leaderboard](https://huggingface.co/spaces/WorldArena/WorldArena); [Veo3.1 public metric JSON](https://huggingface.co/spaces/WorldArena/WorldArena/blob/main/worldarena-results/Veo3.1.json); [Track-1 guideline](https://github.com/tsinghua-fib-lab/WorldArena/blob/main/assets/README_submission.md). Use initial image + text, 121 frames / 24 fps, recommended ≥640×480. Do not compare with Track-2 policy/data-engine scores. The pinned latest2026-03-06 TEST archive actually contains 1,000 episodes. Older prose/counts require reconciliation with the leaderboard release. The current board code enumerates 15 base fields although comments/docs say 16; freeze actual field coverage and aggregation before quoting a total. |
+| WorldScore **official I2V world-generation setting**, Static and Dynamic separately | WorldScape-0.2(MoE) **85.13 / 76.23**; UniWorld-View **85.53 / 76.09**; /100 | [Official updated HF leaderboard CSV](https://huggingface.co/spaces/Howieeeee/WorldScore_Leaderboard/blob/main/leaderboard.csv). These are 2026 world-model entries, marked I2V and evaluated by submitting teams. The project homepage contains older rows. No Seedance2.5/Veo3.1 comparison row was found. Keep provenance labels and verify full-scope submissions; do not call self-evaluation organizer verification. |
+| **VBench-I2V (VBench++ / `vbench2_beta_i2v`)** | Wan2.2 I2V A14B without prompt optimization: Total **88.16**, I2V **95.82**, Quality **80.50**; LTX-2 I2V: **87.59 / 96.53 / 78.65**; /100 | [Official public leaderboard](https://huggingface.co/spaces/Vchitect/VBench_Leaderboard), `VBench-I2V` tab. Extracted public Gradio configuration contains the exact rows, despite the underlying score CSV requiring auth. [Official protocol](https://github.com/Vchitect/VBench/tree/master/vbench2_beta_i2v) requires **1,118 image/prompt pairs × 5 samples = 5,590 videos** for full scope. A one-sample smoke is not a standard leaderboard result. |
+| PVBench **I2V**, all 600 matched groups | Seedance2.5 GS **50.3**, MFS **43.4**, KP **54.4**, MC **29.0**; MiniMax H3 **48.9 / 34.2 / 50.7 / 20.1**; /100 domain scores | [Paper Table 2](https://arxiv.org/pdf/2610.26711#page=6), [project table](https://kszg-11.github.io/PVBench-Website/). Appendix F specifies 720p, ~10 s, ~240 frames / 24 fps. The [source README](https://github.com/KSZG-11/PVBench#package-reproducibility-and-data-policy) says full benchmark resources are maintained privately and source release remains subject to rights review. Published baseline scores exist, but the complete input/evaluation bundle is not established; do not launch a fake full evaluation. |
+
+## VBench naming correction
+
+`vbench2_beta_i2v` is **VBench-I2V, part of VBench++**. It evaluates image/video subject and background consistency, camera control, and six quality dimensions. It is not VBench-2.0's mechanics/material/thermotics suite.
+
+The same official leaderboard has a separate **VBench-2.0** table: e.g. Veo3 Total 66.72 and Physics 69.35. Those are its standard text-prompt results, not the I2V setting above. No official matching VBench-2.0 I2V suite/baseline was established. Keep VBench-I2V as the I2V candidate with its exact name rather than relabeling its scores as VBench-2.0 physics scores.
+
+## What is ready to compare
+
+Physics-IQ and RoboJudge have clear published baseline rows and small, identified complete settings. WBench has clear Full rows but requires matching the original judge. WorldArena is suitable on Track 1 only, once its actual metric schema and test-set revision are frozen. WorldScore has newer I2V world-model rows, but their team/self-evaluation provenance needs disclosure and full-scope verification. VBench-I2V has certified team-evaluated rows, with substantial required five-sample cost. PVBench remains blocked on the complete resource release.
+
+Generation/metric smoke can use a few official cases, explicitly labeled as smoke. Formal scores must use the complete chosen official setting. Only PixelWorld videos are generated/scored; all comparison numbers above remain the published numbers.
+
+## RoboJudge generation-prefix source correction
+
+Appendix D.2.1 robot prefix 1 is “In a fixed robotic workspace, a rigid and physically consistent embodied robotic arm with high stability and no deformation proceeds to ”. Appendix D.2.2 human prefix 1 is **“In a first-person egocentric video, a real human hand starts to ”**. The dataset’s human corpus IDs are `egodex_human`, `egoscaler_human`, and `epickitchens_human`. The preparer/evaluator now use those exact IDs and that published human prefix. Completed robot smokes are unaffected. The 50 input identities are pinned from public common50 metadata; complete leaderboard generation multiplicity/averaging provenance still needs checking rather than being inferred solely from Table 8. No baseline videos are scored.
+
+## WorldArena scope and export audit (completed infrastructure inspection)
+
+The pinned March 6 test archive contains **1,000 fixed-scene episodes**, each with three official instruction files. The complete local scorer requires **3,000 generated videos per configuration**, since Action Following uses the original and both instruction variants. The public leaderboard separately averages 15 base fields; local code emits 16 indicators. These are not three random repeats of one prompt. Parent generation currently uses only original TEST episode1 and is explicitly a smoke.
+
+The source inspection reproduced two export defects: the official CSV writer uses `JEPA_Similarity` while its allowed column is `JEPA Similarity`, and the core result key `photometric_smoothness` is not mapped to `Photometric Consistency`. Any compatibility export must preserve raw metric values, disclose only the key normalization and use the actual public board aggregation; source/metric math remain pinned. Full baseline comparison also requires all expected fields and exact submission coverage. No incomplete mean is accepted as an official Total.
+
+## Runtime verification update
+
+WBench original-judge availability was actually probed using the existing local API guide route. The exact published judge ID `doubao-seed-2-0-lite-260215` returned HTTP400 / `InvalidEndpoint.ClosedEndpoint`. This verifies a blocker on that route, not an absence of all possible original-judge services. No benchmark/baseline video was scored and no replacement judge was used.
+
+WBench and WorldScore now have dynamic resource preflight and executable original-scoring adapters. WorldScore aggregation follows official applicability: content alignment is skipped on intra-camera entries instead of classifying them as missing results. WorldArena has a named `aggregate-compatible` export that applies only the two verified CSV key corrections, records original/corrected hashes, leaves the tracked source and metric math unchanged, and preserves full coverage checks. Smoke never receives a full Total.
+
+## VBench official result schema and real dimension smokes
+
+All nine leaderboard dimensions now have actual official-function smoke results over selected official pairs, five independent generated samples per pair; temporal flickering is also retained as an extra raw metric. These are integration checks, not full1118-pair scores. Camera motion returns three values: mean, per-camera-type means, and per-video records. A pan-left-only smoke has a finite official mean1.0; untouched raw per-type entries for absent categories are NaN. The adapter now checks that actual schema and requires all categories in standard full mode; it does not invent absent-category scores.
+
+DreamSim resets `torch.hub` to its `./models` directory, overriding `TORCH_HOME`. The exact pinned DINO repository/checkpoint were placed in that selected cache, resolving the observed GitHub403 without changing model versions or metric math. Real background smoke results: I2V background0.9858076, background consistency0.9879565.
+
+## Full VBench aggregation gate
+
+The adapter now calls the unchanged functions from `scripts/cal_i2v_final_score.py` and its pinned constants for Quality, I2V and Total. The source's `submission()` helper fills absent metrics with zeros, so the adapter instead requires complete raw metric fields and their exact per-video counts before calling the original normalization/weighting functions. It only calculates a Total after completed standard1,118-pair/five-sample evaluation; smoke never receives a Total. Temporal flickering stays an extra raw result and is excluded from the nine-field I2V leaderboard calculation.
+
+Full initial-image provisioning is complete: all **355 original images**, **1,118 pairs** and **5,590 sample identifiers** are prepared and validated. The public16:9 Drive folder page contains only50 visible entries; the full official archive was retrieved and its members checked against the metadata, with zero missing or invalid images. Original-byte hashes, crop provenance and archive identities are recorded in the ignored run manifest. Four-model/two-track generation smoke is running on one pair with five independent sessions per configuration; completion and scoring are separate gates.
+
+## Remaining comparison gates
+
+Published numbers alone do not establish that our input, trial count and aggregation match. The remaining gates are:
+
+- **RoboJudge:** exact shared50 generation multiplicity and averaging denominator are not specified in Table8. The original9B weight download and inference smoke are in progress; do not describe the evaluator as passed before real PA/IA predictions exist.
+- **WorldArena:**1,000 original-prompt episodes in the pinned TEST archive; the public board uses15 fields. The local16-field pipeline additionally evaluates2,000 instruction-variant videos. The public submission documentation has not yet established whether variants are required for its15-field table. Keep both scopes separate until released submission metadata resolves this.
+- **WorldScore:** the complete original Evaluator now imports on the GPU runtime, including torch-scatter, spaCy and Mamba. Exact checkpoint provisioning/loading and locking remain in progress. A complete148-frame RGB export exists, but no complete case metric record exists yet. Team-reported frontier rows remain labelled as such.
+- **WBench:** the original published judge is unavailable on the probed API route. A different judge would define a separate experiment and would not establish comparison with the published Full numbers.
+- **PVBench:** full inputs and evaluation resources are not publicly established. No smoke or formal run is claimed.
+
+Physics-IQ and VBench already have actual original-function scoring smoke. A smoke's finite metric is an integration result; it is not a leaderboard Total or evidence that all remaining resource/scope gates passed.

@@ -41,6 +41,8 @@ Static needs all2,000 entries. Dynamic Total additionally needs all1,000 motion 
 
 `tools/evaluate_worldscore.py run` calls the original `Evaluator` with only a model-registration metadata entry for PixelWorld; metric implementation and fixed empirical bounds stay unchanged. Aggregation respects metric applicability: content alignment is skipped on official intra-camera cases, rather than treated as a failed missing score. The current frontier board rows are team self-evaluations without complete public submission/runtime provenance; retain that limitation.
 
+The preflight selects resource identities for `--split static`, `dynamic` or `all`. The pinned default metrics use **SEA-RAFT**; separate RAFT/FlowFormer files are alternate implementations and are not default requirements. Static resources also include the actual BERT, CLIP-IQA+ backbone/head, aesthetic backbone/head and VGG19. Full Evaluator import additionally needs torch-scatter, the spaCy English model and Mamba/CausalConv1D even when evaluating a static case. Base-package importability does not establish metric inference success; require actual predictions and complete applicable metric records.
+
 ## WorldArena
 
 Track1 text output is121 frames/24FPS, recommended640x480. The actual pinned test archive contains1,000 original episodes and two instruction-variant sets. Complete local16-indicator scope includes the variants; the public board averages15 fields and omits Action Following. Preserve this scope distinction instead of silently narrowing full submissions.

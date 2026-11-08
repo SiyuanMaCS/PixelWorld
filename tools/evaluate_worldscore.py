@@ -30,13 +30,23 @@ DYNAMIC = {"motion_accuracy": ("motion_accuracy",), "motion_magnitude": ("optica
            "motion_smoothness": ("motion_smoothness",)}
 CAMERA_HASH = "68265db20d04a867e04130e605ce291877664605fe70b4f0e2dfce1ea3314a2f"
 REQUIRED_MODULES = ('torch', 'numpy', 'cv2', 'omegaconf', 'submitit', 'structlog',
-                    'fire', 'transformers', 'clip', 'open_clip', 'lpips', 'timm', 'einops')
-REQUIRED_WEIGHTS = {'droid', 'groundingdino', 'sam', 'sam2', 'clip', 'clip_iqa',
-                    'clip_aesthetic', 'flowformer', 'raft', 'sea_raft', 'vfimamba'}
+                    'fire', 'transformers', 'clip', 'open_clip', 'lpips', 'timm', 'einops',
+                    'pyiqa', 'torchmetrics', 'torch_scatter', 'spacy', 'hydra',
+                    'mamba_ssm', 'causal_conv1d')
+# The pinned Evaluator selects SEA-RAFT. RAFT/FlowFormer are alternate source
+# implementations, not checkpoints used by the default leaderboard metrics.
+STATIC_WEIGHTS = {'droid', 'groundingdino', 'sam', 'bert', 'clip', 'clip_iqa',
+                  'clip_iqa_backbone', 'clip_aesthetic', 'clip_aesthetic_backbone',
+                  'vgg19', 'sea_raft'}
+DYNAMIC_WEIGHTS = {'groundingdino', 'sam', 'bert', 'sea_raft', 'sam2_base',
+                   'sam2_large', 'vfimamba', 'lpips', 'lpips_backbone'}
+REQUIRED_WEIGHTS = STATIC_WEIGHTS | DYNAMIC_WEIGHTS
 
 
-def check_runtime(source: Path, python: str, lock: Path) -> dict:
-    return runtime_preflight(source, CODE_REVISION, python, REQUIRED_MODULES, lock, REQUIRED_WEIGHTS)
+def check_runtime(source: Path, python: str, lock: Path, movement: str = 'all') -> dict:
+    weights = {'static': STATIC_WEIGHTS, 'dynamic': DYNAMIC_WEIGHTS,
+               'all': REQUIRED_WEIGHTS}[movement]
+    return runtime_preflight(source, CODE_REVISION, python, REQUIRED_MODULES, lock, weights)
 
 
 def check_export_scope(exports: Path, movement: str, scope: str,
@@ -150,6 +160,7 @@ def main() -> None:
     check.add_argument('--weights-lock', type=Path, default=VENDOR/'weights_lock.json')
     check.add_argument('--source', type=Path, default=VENDOR/'source')
     check.add_argument('--output', type=Path)
+    check.add_argument('--split', choices=('static', 'dynamic', 'all'), default='all')
     run = sub.add_parser('run')
     run.add_argument('--exports', type=Path, required=True)
     run.add_argument('--config', type=Path, required=True, help='JSON official Evaluator path/config values')
@@ -162,14 +173,14 @@ def main() -> None:
     run.add_argument('--num-jobs', type=int, default=1)
     args = p.parse_args()
     if args.command == "preflight":
-        report = check_runtime(args.source, args.python, args.weights_lock)
+        report = check_runtime(args.source, args.python, args.weights_lock, args.split)
         if args.output: write_json(args.output, report)
         print(json.dumps(report))
         if report['status'] != 'ready': raise SystemExit(2)
         return
     if args.command == 'run':
         ids = check_export_scope(args.exports, args.split, args.scope)
-        report = check_runtime(args.source, args.python, args.weights_lock)
+        report = check_runtime(args.source, args.python, args.weights_lock, args.split)
         if report['status'] != 'ready':
             print(json.dumps(report)); raise SystemExit(2)
         cfg = read_json(args.config)
