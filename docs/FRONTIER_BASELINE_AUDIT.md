@@ -63,3 +63,11 @@ Published numbers alone do not establish that our input, trial count and aggrega
 - **PVBench:** full inputs and evaluation resources are not publicly established. No smoke or formal run is claimed.
 
 Physics-IQ and VBench already have actual original-function scoring smoke. A smoke's finite metric is an integration result; it is not a leaderboard Total or evidence that all remaining resource/scope gates passed.
+
+## Additional scope findings from released metadata
+
+The input-only RoboJudge identity manifest matches the pinned `bench/common_set_50.json` **50/50**. An older `analysis/fair_common_set_50.json` overlaps only28 of these tasks and must not be substituted. The historical common50 top-up documentation uses one canonical-prompt generation per missing cell and reuses existing sweep outputs. It describes11models, while paper Table8 describes17; the released top-up procedure does **not** establish the paper table's per-generator PA/IA denominator. Sampled official prompt files include both canonical instructions and prefixes. Prefix1 is our disclosed smoke choice, not a verified universal Table8 requirement. No baseline score was recomputed.
+
+WorldArena's March6 dataset card explicitly requests **1,000 original +1,000 variant1 +1,000 variant2 videos** for the complete submission. The archive contains the corresponding inputs, but **does not contain the matching GT videos**. Separately, the current public board averages15 fields and omits Action Following; its Veo/Wan JSONs expose aggregate scalars without episode IDs, sample count or dataset revision. Older paper experiments use500test episodes and different values. Therefore a full local3,000-video protocol and matching published15-field comparison must be recorded as separate requirements until exact baseline/GT provenance is established. The board's display function is not a full-coverage validator, and we do not inherit its omission of missing values into our full-score validation.
+
+These findings strengthen the comparison gates; they do not invalidate the existing input-only preparation or playable generation smokes. The inspected official source URLs, revisions, hashes and quoted evidence are retained in the ignored `infrastructure/baseline_scope_final` report.
