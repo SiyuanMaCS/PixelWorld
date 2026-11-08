@@ -82,6 +82,19 @@ def collect_usage(events: Path, *, finished: bool = True) -> dict:
     }
 
 
+def preserve_completed_request_bound(usage: dict, budget: dict | None) -> dict:
+    """Retain exposed counters on any interruption without inventing final usage."""
+    if usage.get('status')=='recorded' or not budget:
+        return usage
+    total=budget.get('reported_output_tokens')
+    prior=budget.get('prior_output_tokens',0)
+    if isinstance(total,int) and not isinstance(total,bool):
+        usage.update(status='partial',reported_completed_request_output_tokens=max(0,total-prior),
+                     inflight_usage_unknown=True,
+                     source_note='Completed request counter is a lower bound; interrupted request usage was not reported.')
+    return usage
+
+
 def read_json(path: Path) -> dict:
     try:
         value = json.loads(path.read_text())
@@ -99,13 +112,30 @@ def record_run(run: Path) -> bool:
     events = run / "logs/events.jsonl"
     sidecar = run / "logs/token_usage.json"
     prior = read_json(sidecar)
+    budget = read_json(run/'logs/token_budget.json')
+    known=budget.get('reported_output_tokens')
+    expected_bound=max(0,known-budget.get('prior_output_tokens',0)) if isinstance(known,int) else None
+    bound_current=(prior.get('status')=='recorded' or expected_bound is None or
+                   prior.get('reported_completed_request_output_tokens')==expected_bound)
     stat = events.stat() if events.is_file() else None
     if (prior.get("schema_version") == SCHEMA_VERSION
             and prior.get("source_size_bytes") == (stat.st_size if stat else None)
             and prior.get("source_mtime_ns") == (stat.st_mtime_ns if stat else None)
-            and manifest.get("token_usage") == prior):
+            and manifest.get("token_usage") == prior and bound_current):
         return False
     usage = collect_usage(events)
+    usage = preserve_completed_request_bound(usage, budget)
+    if manifest.get('stop_reason') == 'output_token_budget_exhausted' and usage['status'] != 'recorded':
+        try:
+            budget = json.loads((run/'logs/token_budget.json').read_text())
+            known = budget.get('reported_output_tokens')
+            prior_output = budget.get('prior_output_tokens', 0)
+            if isinstance(known, int):
+                usage.update({'status': 'partial',
+                              'reported_completed_request_output_tokens': max(0, known-prior_output),
+                              'inflight_usage_unknown': True})
+        except (OSError, ValueError):
+            pass
     atomic_json(sidecar, usage)
     # Reload so other finalized metadata is preserved if a writer just finished.
     manifest = read_json(manifest_path)

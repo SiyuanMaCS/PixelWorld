@@ -14,6 +14,8 @@ class Provider:
     name: str | None = None
     base_url: str | None = None
     env_key: str | None = None
+    model_catalog_json: str | None = None
+    stream_idle_timeout_ms: int | None = None
 
 
 @dataclass(frozen=True)
@@ -37,6 +39,7 @@ class Benchmark:
     max_attempts: int
     case_ids: tuple[str, ...] | None
     models: tuple[Model, ...]
+    output_token_budget: int | None = None
 
     def model(self, key: str) -> Model:
         matches = [item for item in self.models if item.key == key]
@@ -54,6 +57,9 @@ def load_config(path: str | Path) -> Benchmark:
     source = Path(path).resolve()
     raw = json.loads(source.read_text())
     protocol = raw.get("protocol", DEFAULT_PROTOCOL)
+    token_budget = raw.get('output_token_budget', None if protocol in LEGACY_TRACK_PROTOCOLS else 50000)
+    if token_budget is not None and (not isinstance(token_budget, int) or isinstance(token_budget, bool) or token_budget < 1):
+        raise ValueError('output_token_budget must be a positive integer or null')
     default_tracks = TRACKS if protocol in LEGACY_TRACK_PROTOCOLS else DEFAULT_TRACKS
     base = source.parent.parent if source.parent.name == "configs" else source.parent
     models = []
@@ -64,6 +70,13 @@ def load_config(path: str | Path) -> Benchmark:
             raise ValueError(f"Duplicate model key: {key}")
         keys.add(key)
         provider = Provider(**value.get("provider", {"type": "builtin"}))
+        if provider.model_catalog_json:
+            from dataclasses import replace
+            provider = replace(provider, model_catalog_json=str(_resolve(base, provider.model_catalog_json)))
+        if provider.stream_idle_timeout_ms is not None and (
+                not isinstance(provider.stream_idle_timeout_ms, int) or isinstance(provider.stream_idle_timeout_ms, bool)
+                or provider.stream_idle_timeout_ms <= 0):
+            raise ValueError('stream_idle_timeout_ms must be a positive integer')
         if provider.type not in ("builtin", "responses", "oss"):
             raise ValueError(f"Unsupported provider type for {key}: {provider.type}")
         if provider.type == "responses" and not all(
@@ -90,6 +103,7 @@ def load_config(path: str | Path) -> Benchmark:
         max_attempts=int(raw.get("max_attempts", 2)),
         case_ids=tuple(raw["case_ids"]) if raw.get("case_ids") else None,
         models=tuple(models),
+        output_token_budget=token_budget,
     )
     if min(result.max_concurrency, result.max_per_config, result.max_attempts) < 1:
         raise ValueError("Concurrency and attempt limits must be positive")

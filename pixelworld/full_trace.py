@@ -12,6 +12,49 @@ import shutil
 from .util import atomic_json
 
 
+def archive_referenced_blobs(rollout: Path, logs: Path, blob_root: Path | None) -> dict:
+    """Archive references in every message/return, not only image and call fields."""
+    references = set()
+    def visit(value):
+        if isinstance(value, dict):
+            for child in value.values():
+                visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+        elif isinstance(value, str) and re.fullmatch(
+                r'traex-rollout-blob:v1:sha256:[0-9a-f]{64}:\d+', value):
+            references.add(value)
+    for line in rollout.open():
+        visit(json.loads(line))
+    records = []
+    for reference in sorted(references):
+        match = re.fullmatch(r'traex-rollout-blob:v1:sha256:([0-9a-f]{64}):(\d+)', reference)
+        digest, size = match[1], int(match[2])
+        relative = Path('sha256') / digest[:2] / digest
+        target = logs / 'rollout-blobs' / relative
+        source = target if target.is_file() else (blob_root / relative if blob_root else None)
+        record = {'reference': reference, 'sha256': digest, 'bytes': size, 'available': False}
+        if source is not None and source.is_file():
+            raw = source.read_bytes()
+            if len(raw) == size and hashlib.sha256(raw).hexdigest() == digest:
+                if source != target:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_bytes(raw)
+                record.update({'available': True, 'path': str(target.relative_to(logs))})
+            else:
+                record['error'] = 'Size or SHA256 mismatch'
+        else:
+            record['error'] = 'Referenced content unavailable'
+        records.append(record)
+    summary = {'referenced_blobs': len(records),
+               'archived_blobs': sum(r['available'] for r in records),
+               'unresolved_blobs': sum(not r['available'] for r in records),
+               'records': records}
+    atomic_json(logs / 'rollout_blob_manifest.json', summary)
+    return {k: v for k, v in summary.items() if k != 'records'}
+
+
 def _resolve_blob(value: str, logs: Path, blob_root: Path | None) -> str | None:
     match=re.fullmatch(r'traex-rollout-blob:v1:sha256:([0-9a-f]{64}):(\d+)',value)
     if not match:return value
@@ -28,6 +71,7 @@ def _resolve_blob(value: str, logs: Path, blob_root: Path | None) -> str | None:
 
 
 def extract_tools(rollout: Path, logs: Path, blob_root: Path | None = None) -> dict:
+    blob_summary = archive_referenced_blobs(rollout, logs, blob_root)
     calls = {}
     outputs = {}
     for line in rollout.open():
@@ -86,7 +130,7 @@ def extract_tools(rollout: Path, logs: Path, blob_root: Path | None = None) -> d
         records.append(record)
     result = {'status': 'recorded', 'source': 'full CLI rollout, not stdout projection',
         'tool_calls': records, 'returned_images': returned_images,
-        'unresolved_images':unresolved_images,
+        'unresolved_images':unresolved_images, **blob_summary,
         'limitations': 'Nested tool names are source expressions. Matched image outputs prove images delivered to the model; source text alone does not prove every expression executed.'}
     atomic_json(logs / 'tool_calls.json', result)
     return result

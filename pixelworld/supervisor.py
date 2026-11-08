@@ -58,6 +58,10 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
                     "completed_utc": manifest.get("completed_utc")}
         if manifest.get("status") == "running" and _pid_alive(run / "logs" / "supervisor.pid"):
             return {"state": "running", "attempt": attempt, "run": str(run)}
+        if not manifest.get('retryable', True) and manifest.get('stop_reason') in (
+                'output_token_budget_exhausted', 'token_usage_unavailable', 'prior_token_usage_unavailable'):
+            return {'state': 'exhausted', 'attempt': attempt, 'run': str(run),
+                    'budget_terminal': True, 'reason': manifest['stop_reason']}
         if manifest.get("status") == "failed":
             failed += 1
         else:
@@ -134,9 +138,10 @@ def run(config: Benchmark, interval: float = 5.0) -> None:
     while not stop.exists():
         status, info = snapshot(config, os.getpid())
         atomic_json(config.runs_root / "status.json", status)
-        if status["totals"].get("exhausted", 0):
-            raise RuntimeError("One or more tasks exhausted all attempts; inspect status.json")
-        if status["totals"].get("complete", 0) == status["total_runs"]:
+        # A case-level failure must not cancel unrelated pending cases. Keep
+        # its failure visible and surface it after every other case is terminal.
+        terminal_failures = sum(item['state'] == 'exhausted' for item in info.values())
+        if status["totals"].get("complete", 0) + terminal_failures == status["total_runs"]:
             break
         running_total = status["totals"].get("running", 0)
         capacity = config.max_concurrency - running_total
@@ -153,13 +158,16 @@ def run(config: Benchmark, interval: float = 5.0) -> None:
                            if info[(model.key, track, case_id)]["state"] == "pending"]
                 for case_id, item in pending[:available]:
                     fairness = status["groups"][key]["counts"].get("complete", 0)
-                    candidates.append((fairness, group_order[key], int(case_id), model, track, case_id, item))
+                    candidates.append((fairness, group_order[key], case_id, model, track, case_id, item))
             candidates.sort(key=lambda item: item[:3])
             for _, _, _, model, track, case_id, item in candidates[:capacity]:
                 _launch(config, model, track, case_id, item["attempt"])
         time.sleep(interval)
-    final, _ = snapshot(config, os.getpid())
+    final, final_info = snapshot(config, os.getpid())
     atomic_json(config.runs_root / "status.json", final)
+    if any(item['state'] == 'exhausted' and not item.get('budget_terminal')
+           for item in final_info.values()):
+        raise RuntimeError("Some cases exhausted all attempts; other cases have finished. Inspect status.json")
 
 
 def stop(config: Benchmark) -> None:

@@ -69,6 +69,15 @@ def test_python_division_is_not_an_absolute_file_access(tmp_path):
     assert outside_command_paths('cat /3/26',tmp_path)==['/3/26']
 
 
+def test_shell_wrapped_python_floor_division_does_not_hide_real_file_paths(tmp_path):
+    import shlex
+    script = "python - <<'PY'\na = 123/3//23\nprint(a)\nPY"
+    assert outside_command_paths('/bin/bash -lc ' + shlex.quote(script), tmp_path) == []
+    script = "python - <<'PY'\na = 123/3//23\nopen('/other/case/first_frame.png').read()\nPY"
+    assert '/other/case/first_frame.png' in outside_command_paths(
+        '/bin/bash -lc ' + shlex.quote(script), tmp_path)
+
+
 def test_lossless_time_first_canonicalization(tmp_path):
     workspace = tmp_path / "workspace"
     logs = tmp_path / "logs"
@@ -93,6 +102,28 @@ def test_validation_and_track_visual_boundary(tmp_path):
     ]) + "\n")
     assert not validate(workspace, visual, 0, "text")["pass"]
     assert validate(workspace, visual, 0, "vision-agent")["pass"]
+
+
+def test_frame_zero_is_checked_against_frozen_input(tmp_path):
+    workspace = tmp_path / "workspace"
+    make_artifacts(workspace)
+    original = tmp_path / "input_snapshot" / "first_frame.png"
+    original.parent.mkdir()
+    with Image.open(workspace / "first_frame.png") as im:
+        im.save(original)
+    events = tmp_path / "events.jsonl"
+    events.write_text(json.dumps({"type": "turn.completed"}) + "\n")
+    assert validate(workspace, events, 0, "text")["pass"]
+    # Altering the workspace input must not redefine the original I2V anchor.
+    with Image.open(original) as im:
+        changed = np.asarray(im.convert("RGB")).copy()
+    changed[0, 0] ^= 255
+    Image.fromarray(changed).save(workspace / "first_frame.png")
+    assert validate(workspace, events, 0, "text")["pass"]
+    Image.fromarray(changed).save(workspace / "frames" / "00.png")
+    result = validate(workspace, events, 0, "text")
+    assert result["frame0_exact"] is False
+    assert result["pass"] is False
 
 
 def test_image_return_hidden_by_stdout_projection_enforces_track(tmp_path):

@@ -10,6 +10,13 @@ Output and reasoning counters are stored separately, without inferring their
 inclusion semantics. Hard run-level token enforcement and per-request timing
 remain to implement.
 
+The user selected 50,000 cumulative API output tokens. New non-legacy runs
+now monitor reported usage externally and stop at the threshold; see
+[TOKEN_RUNTIME_BUDGET.md](TOKEN_RUNTIME_BUDGET.md). This is after-request
+threshold enforcement with recorded overshoot, not a strict per-request cap.
+The 900-second runtime prototype was withdrawn. Earlier 32k estimates remain
+retrospective evidence in [TOKEN_BUDGET_RECOMMENDATION.md](TOKEN_BUDGET_RECOMMENDATION.md).
+
 Backfill existing finalized runs and export one CSV row per run/attempt:
 
 ```bash

@@ -63,3 +63,70 @@ def test_relative_paths_are_resolved_from_config(tmp_path):
     config = make_config(tmp_path)
     assert config.inputs_root == tmp_path / "inputs"
     assert config.runs_root == tmp_path / "runs"
+
+
+def test_clean_run_freezes_provider_catalog_without_user_config(tmp_path):
+    from PIL import Image
+    from pixelworld.runner import run_case
+    catalog = tmp_path / 'catalog.json'
+    catalog.write_text('{"models":[{"slug":"actual-model"}]}')
+    config = make_config(tmp_path, {
+        'type':'responses', 'id':'gateway', 'name':'Gateway',
+        'base_url':'http://127.0.0.1:9585/v1', 'env_key':'TEST_KEY',
+        'model_catalog_json':'catalog.json', 'stream_idle_timeout_ms':3600000,
+    })
+    source = config.inputs_root / 'case_alpha'
+    source.mkdir(parents=True)
+    Image.new('RGB', (256,144), 'white').save(source/'first_frame.png')
+    (source/'prompt.txt').write_text('Fixture instruction.')
+    result = run_case(config, 'model-a', 'text', 'case_alpha', dry_run=True)
+    run = config.runs_root/'model-a/text/case_case_alpha_attempt_01'
+    assert result['model_catalog_snapshot']['file']=='model_catalog.json'
+    before=(run/'model_catalog.json').read_bytes()
+    catalog.write_text('{"models":[{"slug":"changed-later"}]}')
+    assert (run/'model_catalog.json').read_bytes()==before
+    assert '--ignore-user-config' in result['command']
+    assert any(v.startswith('model_catalog_json=') and str(run) in v for v in result['command'])
+    assert 'model_providers.gateway.stream_idle_timeout_ms=3600000' in result['command']
+
+
+def test_queue_supports_benchmark_case_names(tmp_path, monkeypatch):
+    from pixelworld import supervisor
+    config=make_config(tmp_path)
+    from dataclasses import replace
+    config=replace(config,case_ids=('sample_2','common50_0001'),max_concurrency=1)
+    launched=[]
+    def launch(config,model,track,case,attempt):
+        launched.append(case)
+        (config.runs_root/'STOP').touch()
+        return 123
+    monkeypatch.setattr(supervisor,'_launch',launch)
+    supervisor.run(config,interval=0.001)
+    assert launched==['common50_0001']
+
+
+def test_failed_case_does_not_cancel_unrelated_pending_cases(tmp_path, monkeypatch):
+    import pytest
+    from dataclasses import replace
+    from pixelworld import supervisor
+    from pixelworld.runner import run_path
+    config = make_config(tmp_path)
+    model = replace(config.models[0], tracks=('text',))
+    config = replace(config, models=(model,), case_ids=('bad', 'good'), max_attempts=1)
+    failed = run_path(config, model, 'text', 'bad', 1)
+    failed.mkdir(parents=True)
+    (failed / 'run_manifest.json').write_text(json.dumps({'status': 'failed'}))
+    launched = []
+    def launch(config, model, track, case, attempt):
+        launched.append(case)
+        run = run_path(config, model, track, case, attempt)
+        run.mkdir(parents=True)
+        (run / 'run_manifest.json').write_text(json.dumps(
+            {'status': 'complete', 'validation': {'pass': True}}))
+        return 123
+    monkeypatch.setattr(supervisor, '_launch', launch)
+    with pytest.raises(RuntimeError, match='other cases have finished'):
+        supervisor.run(config, interval=0.001)
+    assert launched == ['good']
+    final = json.loads((config.runs_root / 'status.json').read_text())
+    assert final['totals'] == {'exhausted': 1, 'complete': 1}

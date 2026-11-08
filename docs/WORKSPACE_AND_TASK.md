@@ -9,11 +9,13 @@ workspace/
   GENERATION_RULES.md   shared output and tool contract
   artifact_io.py        shared serialization/inspection/export helper
   player_template.html shared HTML pixel player
+  task_spec.json       optional task/media specification for an adapted task
   .tmp/                initially empty local temporary directory
 ```
 
-The first two files contain scene information. The other three are identical
-shared infrastructure within a fixed experiment. The image is a single first
+The first two files contain basic I2V scene information. The three shared files
+are fixed infrastructure; an optional task specification declares media type,
+dimensions and legal current controls. The image is a single first
 frame, not a reference continuation or trajectory. The prompt describes the
 requested action, not a scene-specific drawing program.
 
@@ -30,7 +32,8 @@ they are not claimed as model-generated artifacts. Reading them can contribute
 to context and token cost.
 
 For new v2 runs, the agent must create `generate.py` and supply RGB arrays to
-`artifact_io.save`. The helper saves tensors, frame PNGs, inspection images and
+`artifact_io.save`. Keep `generate.py` runnable so it regenerates the submitted
+RGB video. The helper saves tensors, frame PNGs, inspection images and
 the player. `OBSERVATION.md` and `METHOD.md` are optional. The fixed first-frame
 and frame-count requirements remain. The task asks only to save intermediate
 results when producing candidates for inspection; it does not prescribe a
@@ -90,7 +93,8 @@ intact; they are not silently converted to the new minimal v2 contract.
 
 ## Current isolation and enforcement
 
-The command uses ephemeral sessions, ignores user rules/config, disables
+Legacy v1 can use ephemeral sessions. New v2 persists an external rollout without
+resuming it, ignores user rules/config, disables
 bundled skills and memory, restricts tool networking and disallows visual tools
 in the Text Track. Tool logs are audited for violations.
 
@@ -122,7 +126,10 @@ The current Physics-IQ v1 matrix is not modified or restarted by this policy.
   hashes match the observed source. Invalid or in-progress copies are retried
   silently; no quality feedback is emitted.
 - Candidate snapshots do not prove visual inspection or quality improvement.
-  Sampling may miss very short-lived outputs; exact image-payload association
-  and per-request token usage require additional tool/provider instrumentation.
-- Total run token usage continues to be recorded. Neither review count nor
-  generation-token budget is capped by these recording changes.
+  Sampling may miss very short-lived outputs. Full CLI image returns and
+  content-addressed blobs are now archived, and API usage is exported separately.
+- New non-legacy configurations use an external 50k cumulative output threshold,
+  with after-request overshoot recorded. No fixed review count is imposed.
+- Inputs are copied to `input_snapshot/` before CLI startup. SFT-candidate
+  conversation events, token ledgers and candidate indexes are written to
+  `recording/`, outside the model workspace. See [DATA_RECORDING_CONTRACT.md](DATA_RECORDING_CONTRACT.md).

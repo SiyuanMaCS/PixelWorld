@@ -4,6 +4,7 @@ from pathlib import Path
 import io
 import json
 import re
+import shlex
 import shutil
 import tokenize
 import wave
@@ -103,6 +104,16 @@ def _tool_name(item: dict) -> str:
 
 
 def outside_command_paths(command: str, workspace: Path) -> list[str]:
+    # Codex logs shell invocations as /bin/bash -lc "<actual script>".
+    # Unwrap the script before identifying Python heredoc arithmetic; otherwise
+    # the first header is not at line start and division is treated as a path.
+    try:
+        argv = shlex.split(command)
+        if (len(argv) == 3 and Path(argv[0]).name in {"bash", "sh", "zsh"}
+                and argv[1] in {"-c", "-lc", "-cl"}):
+            command = argv[2]
+    except ValueError:
+        pass
     values = []
     workspace_value = str(workspace.resolve()) + "/"
     divisions = set()
@@ -119,8 +130,10 @@ def outside_command_paths(command: str, workspace: Path) -> list[str]:
         try:
             tokens=list(tokenize.generate_tokens(io.StringIO(body).readline))
         except (tokenize.TokenError,IndentationError):continue
-        divisions.update(header.end()+offsets[token.start[0]-1]+token.start[1]
-                         for token in tokens if token.type==tokenize.OP and token.string=='/')
+        for token in tokens:
+            if token.type == tokenize.OP and token.string in {"/", "//"}:
+                start = header.end() + offsets[token.start[0]-1] + token.start[1]
+                divisions.update(range(start, start + len(token.string)))
     for match in ABSOLUTE_PATH_PATTERN.finditer(command):
         if match.start() in divisions:continue
         value = match.group(1).rstrip(".,:)")
@@ -155,7 +168,8 @@ def classify_outside_command_paths(command: str, workspace: Path) -> tuple[list[
 
 
 def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
-             require_reports: bool = True, media: dict | None = None) -> dict:
+             require_reports: bool = True, media: dict | None = None,
+             budget_frozen: bool = False) -> dict:
     spec = media or DEFAULT_MEDIA
     FRAMES, HEIGHT, WIDTH = (spec[k] for k in ("frames", "height", "width"))
     TENSOR_SHAPE = (HEIGHT, WIDTH, FRAMES)
@@ -168,6 +182,11 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
     missing = [name for name in required if not (workspace / name).is_file()]
     frame_paths = sorted((workspace / "frames").glob("*.png")) if (workspace / "frames").is_dir() else []
     frame0_exact = False
+    # Inputs inside workspace-write can be edited. New runs preserve the
+    # original outside the agent workspace; compare RGB to that frozen image.
+    initial_image = workspace.parent / "input_snapshot" / "first_frame.png"
+    if not initial_image.is_file():
+        initial_image = workspace / "first_frame.png"
     tensor_exact = False
     tensor_shape = None
     if not missing and len(frame_paths) == FRAMES:
@@ -175,7 +194,7 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
             pixels = np.load(workspace / "pixels.npz")["pixels"]
             tensor_shape = list(pixels.shape)
             frame0_exact = spec["task_type"] != "i2v" or np.array_equal(
-                np.asarray(Image.open(workspace / "first_frame.png").convert("RGB")),
+                np.asarray(Image.open(initial_image).convert("RGB")),
                 np.asarray(Image.open(workspace / "frames" / "00.png").convert("RGB")),
             )
             tensor_exact = pixels.shape == TENSOR_SHAPE and pixels.dtype == np.uint32
@@ -242,13 +261,15 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
     track_violation = None
     if track in ("text", "vision-input") and visual_calls:
         track_violation = "view_image was invoked in a Track that disables output visual tools"
-    passed = (exit_status == 0 and "turn.completed" in terminal and not missing and
+    completed = (exit_status == 0 and "turn.completed" in terminal) or budget_frozen
+    passed = (completed and not missing and
               len(frame_paths) == FRAMES and frame0_exact and tensor_exact and
               not outside_reads and not outside_changes and not network_commands and
               not subagent_commands and not outside_command_values and not track_violation and
               audio_check is not False)
     return {
         "exit_status": exit_status,
+        "completion_mode": 'budget_frozen' if budget_frozen else 'agent_finished',
         "terminal_events": terminal,
         "missing_required": missing,
         "planning_and_method_reports_required": require_reports,

@@ -104,11 +104,18 @@ def build_parser() -> argparse.ArgumentParser:
     web_build = web_commands.add_parser("build")
     web_build.add_argument("--config", required=True)
     web_build.add_argument("--output", type=Path, default=REPO_ROOT / "site")
+    records = commands.add_parser('export-records')
+    records.add_argument('--run', type=Path, required=True,
+                         help='Export recorded conversation, API usage and candidate indexes without running a model')
     return parser
 
 
 def main() -> None:
     args = build_parser().parse_args()
+    if args.command == 'export-records':
+        from .recording import write_bundle
+        _print(write_bundle(args.run.resolve()))
+        return
     if args.command == "doctor":
         value = doctor(args.config)
         _print(value)
