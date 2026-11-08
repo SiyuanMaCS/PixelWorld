@@ -37,6 +37,33 @@ This is `vbench2_beta_i2v`, not VBench-2.0 T2V physics. Standard scope is all1,1
 
 DreamSim changes Torch Hub to its `models/` directory. Seed the exact pinned DINO repository and checkpoint in that cache, and record the files; do not fetch a newer DINO/DINOv2 model to bypass a download error.
 
+The generation-to-evaluation handoff is executable. Run this service in the
+original VBench GPU environment, separately from agent workspaces:
+
+```bash
+python tools/watch_vbench_evaluation.py \
+  --config configs/vbench_full.json \
+  --input-provenance data/vbench/full_scope_manifest.json \
+  --output evaluation_outputs/vbench_full
+```
+
+These paths refer to your prepared full generation config and the input-only
+archive/crop provenance produced during provisioning. The watcher waits for all
+5,590 accepted sample identities in each configured model/track. It selects the
+supervisor's earliest accepted attempt, requires a distinct recorded session for
+every sample, checks exact official prompts and deterministic conditioning-image
+preprocessing, exports lossless RGB and then invokes standard evaluation. Cached
+exports have source/run/RGB hashes and an exact decode receipt. Missing or
+budget-exhausted deliveries stay visible and prevent full scoring; the watcher
+does not rerun agents, choose by score, or fill absent videos. Original evaluator
+errors are retained and require diagnosis before another scoring attempt.
+
+For a handoff smoke, `tools/prepare_vbench_submission.py` accepts explicit
+`--scope official-data-smoke --pair-index N`. A partial manifest cannot enter
+standard evaluation. The service is bounded by `--max-hours` (default14days),
+supports `--once` for a status check and stops when its evaluator-side `STOP`
+file is created. Only one watcher can own an output directory at a time.
+
 ## WorldScore
 
 Static needs all2,000 entries. Dynamic Total additionally needs all1,000 motion entries. Long static cases have three sequential scene segments; subsequent inputs are only previous generated last RGB plus the next official text control. Export removes repeated anchor frames and matches official camera metadata.

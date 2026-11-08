@@ -189,7 +189,22 @@ def main():
             rows.append({"benchmark": relative.parts[0], "status": "export_pending", "run": str(relative),
                          "error": type(error).__name__})
     body = ('<a class=back href="../hub.html">← PixelWorld 总入口</a><h1>Codex benchmark smoke 与官方协议</h1>'
-            '<p>本轮先验证输入、原生生成、评测与可视化链路。所有下列少量样本均为 smoke，不能作为完整榜单分数。</p>')
+            '<p>本轮先验证输入、原生生成、评测与可视化链路。所有下列少量样本均为 smoke，不能作为完整榜单分数。</p>'
+            '<p><a href="readiness.html">实验准备结论与主实验／消融方案 →</a></p>')
+    for bench, label in [('physics_iq', 'Physics-IQ'), ('vbench_i2v', 'VBench-I2V')]:
+        status_path = root/'generations'/bench/'status.json'
+        if not status_path.exists():
+            continue
+        status = json.loads(status_path.read_text())
+        body += f'<h2>{label} 完整任务进度</h2><p class=status>状态更新 UTC：{html.escape(status.get("updated_utc", "未知"))}。生成进度不代表完整官方评分。</p><div class=scroll><table><tr><th>模型 / Track</th><th>完成 / 总数</th><th>运行中</th><th>预算或尝试耗尽</th><th>最新完成 UTC / Case</th></tr>'
+        for key, group in status.get('groups', {}).items():
+            counts = group.get('counts', {})
+            latest = group.get('latest_completion') or ['—', '—']
+            total = sum(counts.values())
+            body += (f'<tr><td>{html.escape(key)}</td><td>{counts.get("complete", 0)} / {total}</td>'
+                     f'<td>{counts.get("running", 0)}</td><td>{counts.get("exhausted", 0)}</td>'
+                     f'<td>{html.escape(str(latest[0]))}<br>{html.escape(str(latest[1]))}</td></tr>')
+        body += '</table></div>'
     good = [r for r in rows if "model_key" in r]
     for benchmark in sorted({r["benchmark"] for r in good}):
         body += f'<h2>{html.escape(benchmark)}</h2><div class=scroll><table><tr><th>模型</th><th>Text</th><th>Vision-Agent</th></tr>'
@@ -273,7 +288,7 @@ def main():
                       if line.startswith('Error in ')]
         state = '部分指标有执行异常；原始默认惩罚值保留' if errors else str(record.get('status','评分准备中'))
         body += (f'<tr><td>WorldScore · Case80 /256×144</td><td>{html.escape(state)}</td>'
-                 '<td>三段、148帧；原始逐指标结果；无全量 Total。512×288 新生成规格正在单独验证。</td></tr>')
+                 '<td>三段、148帧；原始逐指标结果；无全量 Total。原生512×288 的结果在下方单列。</td></tr>')
         if record.get('raw_metrics'):
             content = '<table><tr><th>Metric</th><th>Raw</th><th>Normalized</th></tr>'
             for aspect, metrics in record['raw_metrics'].items():
@@ -331,6 +346,17 @@ def main():
                  '<div class=scroll><table><tr><th>Model / Track</th><th>I2V subject</th><th>Subject consistency</th>'
                  '<th>Motion smoothness</th><th>Dynamic degree</th><th>Aesthetic</th><th>Imaging</th></tr>'
                  +''.join(cohort_scores)+'</table></div>')
+    scheduler = root/'evaluation/vbench_full_scheduler/scheduler.json'
+    if scheduler.exists():
+        data = json.loads(scheduler.read_text())
+        body += ('<h2>VBench 完整官方评测交接</h2><p>每组齐备1118×5独立有效结果后自动导出并运行原始评测。缺失样本会阻止完整评分。</p>'
+                 '<div class=scroll><table><tr><th>模型 / Track</th><th>有效样本</th><th>阶段</th><th>完整官方 Total</th></tr>')
+        for key, entry in data.get('cohorts', {}).items():
+            aggregate = entry.get('aggregate', {})
+            total = f'{aggregate["total_score"]:.2f}' if entry.get('official_full_score') and 'total_score' in aggregate else '—'
+            body += (f'<tr><td>{html.escape(key)}</td><td>{entry.get("accepted_samples", 0)} / {entry.get("expected_samples", 5590)}</td>'
+                     f'<td>{html.escape(entry.get("phase", "未知"))}</td><td>{total}</td></tr>')
+        body += '</table></div>'
     if (output/'worldscore_case80_complete/index.html').exists():
         body += '<p><a href="worldscore_case80_complete/index.html">▶ WorldScore Case 80：三段合并完整播放</a></p>'
     body += '<h2>已调查的公开 baseline</h2><p class=muted>直接引用公开分数；未生成或重评 baseline 视频。</p><div class=scroll><table><tr><th>官方 setting</th><th>模型</th><th>公开分数</th><th>比较条件</th></tr>'
