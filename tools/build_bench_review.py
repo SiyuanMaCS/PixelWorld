@@ -316,6 +316,21 @@ def main():
                 '<p><a href="worldscore_case80_512_complete/index.html">▶ 完整RGB播放与逐段trace</a></p>'+content+'</table>'))
             body += '<tr><td>WorldScore512逐指标</td><td>原始数值与范围明确</td><td><a href="worldscore_512_metrics.html">查看原始八项结果 →</a></td></tr>'
     body += '</table></div><p><a href="protocol.html">主实验参数与 FPS／分辨率消融方案</a> · <a href="baseline_audit.html">baseline 来源与可比较条件</a></p>'
+    cohort_scores = []
+    for path in sorted((root/'evaluation').glob('vbench_matrix_*_0872/pixelworld_eval_results.json')):
+        provenance = path.parent/'evaluation_provenance.json'
+        if not provenance.exists() or json.loads(provenance.read_text()).get('status') != 'complete':
+            continue
+        name = path.parent.name.removeprefix('vbench_matrix_').removesuffix('_0872')
+        metrics = json.loads(path.read_text())
+        cohort_scores.append('<tr><td>'+html.escape(name)+'</td>' + ''.join(
+            f'<td>{metrics[key][0]:.4f}</td>' for key in
+            ('i2v_subject','subject_consistency','motion_smoothness','dynamic_degree','aesthetic_quality','imaging_quality'))+'</tr>')
+    if cohort_scores:
+        body += ('<h2>VBench 五样本 smoke 对比</h2><p>同一官方 pair872，每组五个独立完成的会话。只展示适用维度原始均值，不计算全量Total或排行榜排名。</p>'
+                 '<div class=scroll><table><tr><th>Model / Track</th><th>I2V subject</th><th>Subject consistency</th>'
+                 '<th>Motion smoothness</th><th>Dynamic degree</th><th>Aesthetic</th><th>Imaging</th></tr>'
+                 +''.join(cohort_scores)+'</table></div>')
     if (output/'worldscore_case80_complete/index.html').exists():
         body += '<p><a href="worldscore_case80_complete/index.html">▶ WorldScore Case 80：三段合并完整播放</a></p>'
     body += '<h2>已调查的公开 baseline</h2><p class=muted>直接引用公开分数；未生成或重评 baseline 视频。</p><div class=scroll><table><tr><th>官方 setting</th><th>模型</th><th>公开分数</th><th>比较条件</th></tr>'
