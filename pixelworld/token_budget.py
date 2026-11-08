@@ -191,6 +191,7 @@ def restore_candidate(workspace: Path, trace: Path, logs: Path, cutoff: str,
             audit = validate(workspace, logs/'events.jsonl', exit_status, track,
                              require_reports=require_reports, media=spec, budget_frozen=True)
             if not audit['pass']:
+                atomic_json(logs/f'budget_candidate_{folder.name}_audit.json', audit)
                 raise ValueError('Snapshot output/tool audit failed')
             selection = {'source': 'last_valid_snapshot_before_token_crossing',
                          'snapshot_round': record['round'], 'snapshot_utc': record['utc'],

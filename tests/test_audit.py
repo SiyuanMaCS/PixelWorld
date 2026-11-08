@@ -5,7 +5,28 @@ import numpy as np
 from PIL import Image
 
 from pixelworld.audit import (canonicalize_tensor, invokes_network, invokes_subagent,
-                              outside_command_paths, classify_outside_command_paths, validate)
+                              outside_command_paths, classify_outside_command_paths, validate,
+                              failed_scratch_path, PLAYWRIGHT_SOFTWARE_CACHE)
+
+
+def test_failed_scratch_denial_does_not_hide_existing_or_reference_reads(tmp_path):
+    missing = '/tmp/pixelworld_nonexistent_audit_fixture_9e2d/file.py'
+    item = {'exit_code':0, 'command':f'cat > {missing}; python generate.py',
+            'aggregated_output':f'/bin/bash: line 1: {missing}: Read-only file system\n'}
+    assert failed_scratch_path(missing,item)
+    assert not failed_scratch_path('/other/case/reference.png',
+                                  {'aggregated_output':'/other/case/reference.png: Read-only file system'})
+    assert not failed_scratch_path(missing, {'aggregated_output':'unrelated error'})
+    assert not failed_scratch_path(missing, {'command':f'python {missing}',
+                                            'aggregated_output':f"can't open file '{missing}': No such file or directory"})
+    existing = tmp_path/'file.py';existing.write_text('fixture')
+    assert not failed_scratch_path(str(existing),{'aggregated_output':str(existing)+': Read-only file system'})
+
+
+def test_installed_browser_cache_is_tool_software_only(tmp_path):
+    assert outside_command_paths(f'python "{PLAYWRIGHT_SOFTWARE_CACHE}/browser/chrome"',tmp_path)==[]
+    assert outside_command_paths(f'cat "{PLAYWRIGHT_SOFTWARE_CACHE}_other/reference.png"',tmp_path)
+    assert outside_command_paths('cat /home/user/.cache/other_case/pixels.npz',tmp_path)
 
 
 def test_failed_literal_cd_is_warning_only_after_explicit_workspace_return(tmp_path):
@@ -47,6 +68,21 @@ def make_artifacts(workspace: Path, time_first=False):
             Image.fromarray(frames[0]).save(workspace / name)
         else:
             (workspace / name).write_text("ok")
+
+
+def test_denied_scratch_in_successful_compound_command_is_warning(tmp_path):
+    workspace=tmp_path/'workspace';make_artifacts(workspace)
+    path='/tmp/pixelworld_nonexistent_audit_fixture_9e2d/file.py'
+    log=tmp_path/'events.jsonl'
+    log.write_text('\n'.join(json.dumps(event) for event in [
+        {'type':'item.completed','item':{'type':'command_execution','status':'completed','exit_code':0,
+          'command':f'cat > {path}; python generate.py',
+          'aggregated_output':f'/bin/bash: line 1: {path}: Read-only file system\n'}},
+        {'type':'turn.completed'}]))
+    result=validate(workspace,log,0,'text')
+    assert result['pass']
+    assert result['failed_outside_scratch_operations']==[path]
+    assert result['outside_workspace_command_paths']==[]
 
 
 def test_command_classification_is_command_level():

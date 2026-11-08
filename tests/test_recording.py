@@ -50,3 +50,36 @@ def test_code_history_is_external_and_includes_pre_generation_changes(tmp_path):
     assert len((trace/'code_history.jsonl').read_text().splitlines()) == 3
     assert len(list((trace/'code_versions').glob('*.py'))) == 2
     assert not (workspace/'code_history.jsonl').exists()
+
+
+def test_late_player_file_creates_complete_candidate_with_same_rgb(tmp_path):
+    import os
+    workspace=tmp_path/'workspace';make_artifacts(workspace)
+    pixels=workspace/'pixels.npz';code=workspace/'generate.py'
+    os.utime(code,ns=(pixels.stat().st_mtime_ns-1,pixels.stat().st_mtime_ns-1))
+    (workspace/'index.html').unlink()
+    first=candidate_key(workspace)
+    a=freeze(workspace,tmp_path/'trace',0,first)
+    assert a and not a['required_output_files_complete']
+    (workspace/'index.html').write_text('complete player')
+    second=candidate_key(workspace)
+    assert second!=first and second[:2]==first[:2]
+    b=freeze(workspace,tmp_path/'trace',1,second)
+    assert b and b['required_output_files_complete']
+    assert b['canonical_rgb_sha256']==a['canonical_rgb_sha256']
+
+
+def test_snapshot_frame_zero_uses_immutable_original(tmp_path):
+    import numpy as np
+    import os
+    from PIL import Image
+    workspace=tmp_path/'workspace';make_artifacts(workspace)
+    original=tmp_path/'input_snapshot';original.mkdir()
+    (original/'first_frame.png').write_bytes((workspace/'first_frame.png').read_bytes())
+    black=np.zeros((144,256,3),dtype=np.uint8)
+    for i in range(20):Image.fromarray(black).save(workspace/'frames'/f'{i:02d}.png')
+    Image.fromarray(black).save(workspace/'first_frame.png')
+    np.savez_compressed(workspace/'pixels.npz',pixels=np.zeros((144,256,20),dtype=np.uint32))
+    pixels=workspace/'pixels.npz';code=workspace/'generate.py'
+    os.utime(code,ns=(pixels.stat().st_mtime_ns-1,pixels.stat().st_mtime_ns-1))
+    assert freeze(workspace,tmp_path/'trace',0,candidate_key(workspace)) is None

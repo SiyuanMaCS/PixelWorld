@@ -295,6 +295,26 @@ def main():
             info = json.loads(report.read_text())
             state = str(info.get('status') or info.get('overall_status') or '详见官方适配报告')
         body += f'<tr><td>{label}</td><td>{html.escape(state)}</td><td>未完成全量官方评分；不填造分数</td></tr>'
+    native512 = root/'evaluation/worldscore_512_scheduler.json'
+    if native512.exists():
+        record = json.loads(native512.read_text())
+        state = record.get('status','准备中')
+        passed = state == 'complete_native512_case_metric_smoke'
+        body += (f'<tr><td>WorldScore · 原生512×288</td><td>{"八项原始指标 smoke 通过" if passed else html.escape(state)}</td>'
+                 '<td>完整三段148帧 /14.8秒；不是2000-case全量分。'
+                 '<a href="worldscore_case80_512_complete/index.html">▶ 原生512完整播放 →</a></td></tr>')
+        if record.get('raw_metrics'):
+            content = '<table><tr><th>Metric</th><th>Raw</th><th>Normalized</th></tr>'
+            for aspect, metrics in record['raw_metrics'].items():
+                for name,item in metrics.items():
+                    content += ('<tr><td>'+html.escape(aspect+'/'+name)+'</td><td>'
+                                +html.escape(json.dumps(item.get('score')))+ '</td><td>'
+                                +html.escape(str(item.get('score_normalized')))+ '</td></tr>')
+            (output/'worldscore_512_metrics.html').write_text(document('WorldScore native512 metric smoke',
+                '<a href="index.html">← 总览</a><h1>WorldScore Case80 · 原生512×288</h1>'
+                '<p>三个独立生成片段顺序衔接；八项原始函数已运行。单例结果不合成全量Total。</p>'
+                '<p><a href="worldscore_case80_512_complete/index.html">▶ 完整RGB播放与逐段trace</a></p>'+content+'</table>'))
+            body += '<tr><td>WorldScore512逐指标</td><td>原始数值与范围明确</td><td><a href="worldscore_512_metrics.html">查看原始八项结果 →</a></td></tr>'
     body += '</table></div><p><a href="protocol.html">主实验参数与 FPS／分辨率消融方案</a> · <a href="baseline_audit.html">baseline 来源与可比较条件</a></p>'
     if (output/'worldscore_case80_complete/index.html').exists():
         body += '<p><a href="worldscore_case80_complete/index.html">▶ WorldScore Case 80：三段合并完整播放</a></p>'

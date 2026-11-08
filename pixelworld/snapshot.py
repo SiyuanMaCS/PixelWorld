@@ -15,6 +15,12 @@ from PIL import Image
 from .util import atomic_json, sha256, utc_now
 from .media import DEFAULT_MEDIA, contract
 
+AUXILIARY_CANDIDATE_FILES = ('transition_check.png', 'index.html', 'OBSERVATION.md', 'METHOD.md')
+
+
+def _optional_digest(path: Path):
+    return sha256(path) if path.is_file() and path.stat().st_size else None
+
 
 def candidate_key(workspace: Path, media: dict | None = None):
     spec = media or DEFAULT_MEDIA
@@ -37,10 +43,12 @@ def candidate_key(workspace: Path, media: dict | None = None):
             pass
     audio = workspace / 'audio.wav'
     audio_sha = sha256(audio) if spec.get('audio') and audio.is_file() else None
-    first = (sha256(code), sha256(pixels), inspection_sha, audio_sha)
+    first = (sha256(code), sha256(pixels), inspection_sha, audio_sha,
+             *(_optional_digest(workspace/name) for name in AUXILIARY_CANDIDATE_FILES))
     time.sleep(.15)
-    second = (sha256(code), sha256(pixels), inspection_sha,
-              sha256(audio) if spec.get('audio') and audio.is_file() else None)
+    second = (sha256(code), sha256(pixels), _optional_digest(inspection),
+              sha256(audio) if spec.get('audio') and audio.is_file() else None,
+              *(_optional_digest(workspace/name) for name in AUXILIARY_CANDIDATE_FILES))
     return first if first == second else None
 
 
@@ -67,6 +75,9 @@ def freeze(workspace: Path, trace: Path, index: int, key, media: dict | None = N
             raise ValueError('Source changed while freezing')
         if spec.get('audio') and (not (temporary/'audio.wav').is_file() or sha256(temporary/'audio.wav') != key[3]):
             raise ValueError('Audio changed while freezing')
+        for name, expected in zip(AUXILIARY_CANDIDATE_FILES, key[4:]):
+            if _optional_digest(temporary/name) != expected:
+                raise ValueError('Auxiliary candidate output changed while freezing')
         with np.load(temporary / 'pixels.npz', allow_pickle=False) as archive:
             pixels = archive['pixels']
         if pixels.dtype != np.uint32 or pixels.shape not in ((h,w,n),(n,h,w)) or np.any(pixels > 0xFFFFFF):
@@ -80,7 +91,10 @@ def freeze(workspace: Path, trace: Path, index: int, key, media: dict | None = N
             if not np.array_equal(packed, frames[i]):
                 raise ValueError('PNG and tensor were written at different times')
         if spec['task_type'] == 'i2v':
-            first = np.asarray(Image.open(workspace / 'first_frame.png').convert('RGB'), dtype=np.uint32)
+            original = workspace.parent / 'input_snapshot/first_frame.png'
+            if not original.is_file():
+                original = workspace / 'first_frame.png'
+            first = np.asarray(Image.open(original).convert('RGB'), dtype=np.uint32)
             if not np.array_equal((first[...,0]<<16)|(first[...,1]<<8)|first[...,2], frames[0]):
                 raise ValueError('Candidate first frame mismatch')
         if (sha256(workspace / 'generate.py'),sha256(workspace / 'pixels.npz')) != key[:2]:
@@ -99,6 +113,8 @@ def freeze(workspace: Path, trace: Path, index: int, key, media: dict | None = N
                   'canonical_rgb_sha256':hashlib.sha256(np.ascontiguousarray(rgb_frames).tobytes()).hexdigest(),
                   'files':copied,'omitted_invalid_optional_images':omitted,
                   'audio_sha256':key[3] if len(key)>3 else None,
+                  'required_output_files_complete': all((temporary/name).is_file() for name in
+                      ('generate.py','pixels.npz','inspection.png','transition_check.png','index.html')),
                   'media_contract':spec,'artifact_checks':{'frame0_exact':True if spec['task_type']=='i2v' else None,'all_png_tensor_exact':True,'copied_code_and_tensor_match_source':True}}
         atomic_json(temporary / 'snapshot.json',record)
         temporary.replace(target)

@@ -29,6 +29,7 @@ NETWORK_PATTERN = re.compile(
 ABSOLUTE_PATH_PATTERN = re.compile(
     r"(?<![A-Za-z0-9_.*])(/[A-Za-z0-9_@%+=:.,-]+/[A-Za-z0-9_@%+=:,./-]*)")
 SYSTEM_READ_PREFIXES = ("/bin/", "/usr/", "/lib/", "/lib64/", "/dev/", "/proc/")
+PLAYWRIGHT_SOFTWARE_CACHE = str(Path.home() / '.cache/ms-playwright')
 
 
 def invokes_subagent(command: str) -> bool:
@@ -141,6 +142,10 @@ def outside_command_paths(command: str, workspace: Path) -> list[str]:
             continue
         if value.startswith(SYSTEM_READ_PREFIXES):
             continue
+        # Installed browser binaries/assets are tools, not case conditioning.
+        # Profiles, screenshots and outputs must still remain in the workspace.
+        if value == PLAYWRIGHT_SOFTWARE_CACHE or value.startswith(PLAYWRIGHT_SOFTWARE_CACHE + '/'):
+            continue
         values.append(value)
     if re.search(r"(?:^|[\s'\"])(?:\.\./)+", command):
         values.append("relative-parent-traversal")
@@ -165,6 +170,23 @@ def classify_outside_command_paths(command: str, workspace: Path) -> tuple[list[
             or Path(outside).exists() or command.count(outside) != 1):
         return paths, []
     return [path for path in paths if path != outside], [outside]
+
+
+def failed_scratch_path(path: str, item: dict) -> bool:
+    """Recognize a denied, nonexistent /tmp scratch target from actual output.
+
+    A failing compound shell's final status may be zero. Do not waive existing
+    /tmp files, other case/reference paths, or paths without a specific denial.
+    """
+    if not path.startswith('/tmp/') or Path(path).exists():
+        return False
+    # It must be a creation/redirection target, not an attempted lookup of an
+    # outside input. A missing Python file alone is insufficient evidence.
+    command = str(item.get('command',''))
+    if not re.search(r'>\s*[\"\x27]?' + re.escape(path) + r'[\"\x27]?(?=\s|$|[;&|])', command):
+        return False
+    lines = str(item.get('aggregated_output', '')).splitlines()
+    return any(path in line and 'Read-only file system' in line for line in lines)
 
 
 def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
@@ -221,6 +243,7 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
             pass
     terminal, commands, reads, failed_reads, file_changes, visual_calls = [], [], [], [], [], []
     failed_file_changes=[]
+    command_items, failed_scratch = [], []
     lines = events_path.read_text(errors="replace").splitlines() if events_path.is_file() else []
     for line in lines:
         try:
@@ -236,10 +259,12 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
         if event.get("type") == "item.completed" and item.get("type") == "command_execution":
             command = item.get("command", "")
             commands.append(command)
+            command_items.append(item)
             succeeded = item.get("status") == "completed" and item.get("exit_code") in (None, 0)
             for action in item.get("command_actions") or []:
                 if action.get("type") == "read":
-                    (reads if succeeded else failed_reads).append(action.get("path", ""))
+                    path = action.get("path", "")
+                    (reads if succeeded and not failed_scratch_path(path, item) else failed_reads).append(path)
         tool = _tool_name(item)
         if event.get("type") in ("item.started", "item.completed") and "view_image" in tool:
             visual_calls.append({"event": event.get("type"), "tool": tool,
@@ -253,7 +278,12 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
     outside_changes = [value for value in file_changes if not _inside(workspace, value)]
     network_commands = [command for command in commands if invokes_network(command)]
     subagent_commands = [command for command in commands if invokes_subagent(command)]
-    path_checks = [classify_outside_command_paths(command, workspace) for command in commands]
+    path_checks = []
+    for item in command_items:
+        blocked, warnings = classify_outside_command_paths(item.get('command',''), workspace)
+        denied = [path for path in blocked if failed_scratch_path(path, item)]
+        failed_scratch.extend(denied)
+        path_checks.append(([path for path in blocked if path not in denied], warnings))
     outside_command_values = sorted({value for blocked, _ in path_checks for value in blocked})
     failed_directory_probes = sorted({value for _, warnings in path_checks for value in warnings})
     generate_runs = sum(bool(re.search(r"\bpython(?:3)?\s+(?:\./)?generate\.py\b", command))
@@ -289,6 +319,7 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
         "subagent_commands": subagent_commands,
         "outside_workspace_command_paths": outside_command_values,
         "failed_outside_directory_probes": failed_directory_probes,
+        "failed_outside_scratch_operations": sorted(set(failed_scratch)),
         "visual_tool_calls": visual_calls,
         "generate_runs": generate_runs,
         "track_violation": track_violation,
