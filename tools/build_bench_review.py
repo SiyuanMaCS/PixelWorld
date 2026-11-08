@@ -55,6 +55,24 @@ def export_pixels(source, target, spec):
     path = source / "pixels.npz"
     if not path.is_file():
         return None
+    source_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    receipt = target / 'export_receipt.json'
+    media = {k: spec[k] for k in ('width', 'height', 'frames', 'fps')}
+    cached = None
+    if receipt.exists():
+        try:
+            saved = json.loads(receipt.read_text())
+            data = saved['video']
+            if (saved.get('source_npz_sha256') == source_hash and saved.get('media') == media
+                    and (target/data['pixels_file']).is_file() and (target/'poster.png').is_file()):
+                cached = data
+        except (ValueError, KeyError, TypeError):
+            pass
+    if cached is not None:
+        for name in ('inspection.png', 'transition_check.png'):
+            if (source/name).is_file():
+                shutil.copy2(source/name, target/name)
+        return cached
     with np.load(path, allow_pickle=False) as d:
         packed = d["pixels"]
         if packed.shape != (spec["height"], spec["width"], spec["frames"]):
@@ -70,7 +88,9 @@ def export_pixels(source, target, spec):
     for name in ("inspection.png", "transition_check.png"):
         if (source / name).is_file():
             shutil.copy2(source / name, target / name)
-    return {**{k: spec[k] for k in ("width", "height", "frames", "fps")}, "pixels_file": filename, "layout": "pixel-time", "last_rgb_sha256": hashlib.sha256(rgb[-1].tobytes()).hexdigest()}
+    video = {**media, "pixels_file": filename, "layout": "pixel-time", "last_rgb_sha256": hashlib.sha256(rgb[-1].tobytes()).hexdigest()}
+    receipt.write_text(json.dumps({'source_npz_sha256':source_hash, 'media':media, 'video':video}))
+    return video
 
 
 def build_case(run, output):
