@@ -17,7 +17,10 @@ from .util import atomic_json, utc_now
 def case_ids(config: Benchmark) -> list[str]:
     if config.case_ids:
         return list(config.case_ids)
-    manifest = config.inputs_root.parent / "manifest.json"
+    # Multiple benchmarks may share an input parent. Prefer their own inventory
+    # rather than a generic file subsequently written by another preparer.
+    named = config.inputs_root.parent / f"{config.inputs_root.name}_manifest.json"
+    manifest = named if named.exists() else config.inputs_root.parent / "manifest.json"
     values = json.loads(manifest.read_text())
     identifiers = [value["id"] for value in values["cases"]]
     if len(identifiers) != len(set(identifiers)):

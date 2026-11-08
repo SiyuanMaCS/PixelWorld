@@ -10,7 +10,7 @@
 | Physics-IQ Verified I2V / BPP | 原始评测函数 smoke；已有完整旧协议结果；缺失模型完整任务已排队 | 新配置必须齐备198个有效输出后才能计算完整分数 | 物理真实性的主定量实验 |
 | VBench-I2V / VBench++ | 九项榜单指标均有真实函数 smoke；七组各五个独立会话已评分；完整输入与自动评测交接已验证 | 完整协议为1118×5，成本大；DeepSeek Text缺两份有效 smoke，保留失败 | 外观、连续性、镜头控制补充 |
 | RoboJudge shared50 | 原始9B权重完整校验；三个模型完成单例PA/IA评分；50个输入身份匹配 | 论文Table8的每模型生成次数、prompt选择与平均分母尚未公开对齐 | 紧凑的具身语义补充，比较口径确认后正式纳入 |
-| WorldArena Track1 | 真实首帧生成、121帧导出和RGB回读验证；4000个输入资产与后续GT包逐字节对齐 | 原始运行环境与完整推理未通过；SAM3资源访问未建立；榜单版本/覆盖尚不明 | 保留空间与动作示例，先通过评分门槛 |
+| WorldArena Track1 | 真实首帧生成、121帧导出和RGB回读验证；4000个输入资产与后续GT包逐字节对齐 | 原版Torch core和2D BF16线性运算已验证；完整模型推理未通过，SAM3访问未建立；榜单版本/覆盖尚不明 | 保留空间与动作示例，先通过评分门槛 |
 | WorldScore | 原生512宽、三段衔接与原始八项指标完整case smoke已通过 | 前沿分数为团队自评，完整提交口径未公开对齐；正式静态集2000条 | 镜头、视差、新显露区域分析示例 |
 | WBench | 官方输入、多轮链路与评分适配已准备 | 原始Doubao judge在当前路由返回ClosedEndpoint，不能替换后声称同榜比较 | 等原始judge可用后再定正式实验 |
 | PVBench | 已核实公开I2V基线与论文规格 | 完整输入与评分资源尚未确认可获取 | 资源候选，当前不宣称 smoke通过 |
@@ -56,6 +56,8 @@ token用于主成本比较；墙钟时间单列，因为API排队与限流会改
 详细设计见[OUTPUT_SPEC_AND_ABLATION_PLAN.md](OUTPUT_SPEC_AND_ABLATION_PLAN.md)。
 
 ## 可复现的评测交接
+
+Physics-IQ现已使用独立198-case清单，现有全部输入的图像/BPP哈希已核对；`watch_physics_evaluation.py`会在完整有效交付后自动评分，避免共用输入父目录的通用manifest被其他bench覆盖。
 
 新增的`prepare_vbench_submission.py`已经用现有五会话完成真实输入/输出检查、
 无损导出与官方preflight。`watch_vbench_evaluation.py`在评测侧等待每组完整

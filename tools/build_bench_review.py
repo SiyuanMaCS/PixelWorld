@@ -269,6 +269,16 @@ def main():
         d = json.loads(physics.read_text())['metrics']
         values = ' / '.join(f'{d[k]:.4f}' for k in ('weighted_spatial_iou_v1_perspective-center', 'weighted_spatial_iou_v2_perspective-center'))
         body += f'<tr><td>Physics-IQ</td><td>官方函数 smoke 已通过</td><td>单 view；weighted spatial IoU v1/v2 {values}，不是 Verified 总分</td></tr>'
+    physics_scheduler = root/'evaluation/physics_full_scheduler/scheduler.json'
+    if physics_scheduler.exists():
+        report = json.loads(physics_scheduler.read_text())
+        for key, entry in report.get('cohorts', {}).items():
+            score = entry.get('score', {})
+            result = (f'完整198-case Verified {score["verified_score"]:.2f} /100；单轮，非组织者发布'
+                      if entry.get('official_full_score') and 'verified_score' in score else
+                      f'{entry.get("accepted_cases", 0)} /198 有效；{entry.get("exhausted_cases", 0)} 预算/尝试耗尽；未计算完整分数')
+            body += (f'<tr><td>Physics-IQ · {html.escape(key)}</td><td>{html.escape(entry.get("phase", "未知"))}</td>'
+                     f'<td>{result}</td></tr>')
     vbench = root / 'evaluation/vbench_subject_smoke/pixelworld_eval_results.json'
     if vbench.exists():
         d = json.loads(vbench.read_text())

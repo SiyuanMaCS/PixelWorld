@@ -16,6 +16,38 @@ Each command verifies an existing pristine pinned checkout, or clones the exact 
 
 Portable audited runtime locks for RoboJudge/VBench are in `configs/evaluation/`. Optional `--venv /path/to/eval-env --python 3.11` recreates those environments with uv. Source packages may additionally require their declared CUDA extensions; they must be built from the pinned source. WorldScore/WorldArena/WBench have separate official environment instructions and cannot be reduced to one generic LLM judge.
 
+## Physics-IQ full evaluation handoff
+
+Physics-IQ uses the pinned198 identities in `data/physics_iq_verified_i2v.json`,
+independently of other benchmarks' prepared manifests. The input preparer now
+also writes `<input-directory-name>_manifest.json` in the input parent; the
+supervisor prefers that inventory. An existing generic manifest belonging to
+another benchmark is preserved. The per-agent five-file input remains unchanged.
+
+Before export, every accepted run is checked against its official case, model,
+track, immutable switch-frame RGB and base BPP hashes, native256×144/4FPS/20-frame
+contract, submitted tensor and matching PNG sequence. A full export requires all
+198 accepted cases and verifies an exact lossless RGB decode. Existing exports
+are preserved rather than overwritten.
+
+`tools/watch_physics_evaluation.py` runs in the evaluation environment and waits
+for full delivery. Example:
+
+```bash
+python tools/watch_physics_evaluation.py \
+  --config configs/physics_full.json \
+  --resource-root /path/to/prepared-physics-resources \
+  --output evaluation_outputs/physics_full
+```
+
+The resource directory contains `upstream/physics-IQ-benchmark`, `.venv`,
+`protocol/descriptions_base.csv`, `protocol/dataset.json`, `tools/bin/ffmpeg`,
+and `data/physics-IQ-benchmark-verified`. Source, descriptions and dataset revision
+are checked before watching. Original inference runs with the declared native
+4FPS grid and one run. Missing outputs prevent a full Verified score; exhausted
+cases are retained. Progress-file counts are waiting hints, never full submission
+proof. Any completed or terminal cohort is rechecked against actual runs.
+
 ## RoboJudge shared50
 
 The input-only original50 identity manifest is `configs/evaluation/robojudge_shared50_inputs.json`. `tools/prepare_robojudge_shared50.py` downloads only the initial image and original instruction at its pinned data revision. Robot/human prefixes are the original paper prefix1; human corpus names and prefix are checked explicitly.
@@ -83,6 +115,22 @@ The unmodified CSV writer has two reproduced key defects. The explicitly named `
 `configs/evaluation/worldarena-hf-models.json` locks the original Qwen3-VL-8B-Instruct and Qwen2.5-VL-7B-Instruct repositories to explicit revisions and canonical object hashes for their configs, tokenizers and all weight shards. The official Qwen3 config does not contain `_name_or_path`; that incidental field is not an identity check. Resource validation uses the complete locked file set instead. These reproducibility pins do not establish which unpublished checkpoint revision was used for a public leaderboard row.
 
 The March6 initial-input archive has no GT video payload. The separately pinned later reference archive is checked against all4,000 original image/instruction assets before staging; this byte alignment is independent of the unresolved per-baseline published test revision. Archive validation preserves path/link/duplicate checks and reads selected payloads sequentially instead of repeatedly seeking through gzip. No reference payload is placed in a generation workspace.
+
+### WorldArena runtime probes and remaining boundary
+
+The exact originalTorch2.10.0+cu128 core was installed and checked on the existing
+V100. Its wheel lists sm70, and FP32 operations/SDPA passed. A small4D GEMM probe
+failed for FP16/BF16, but actual2D `nn.Linear` at64 and512 features passed with
+FP32, FP16 and BF16. Therefore the failed synthetic batched probe does not
+establish that all VLM linear operations fail, nor prove a GPU upgrade necessary.
+Full original-model inference remains the decisive check. No precision, judge,
+attention implementation or model version was changed to manufacture a pass.
+
+Original SAM3 access has not been established, and full Qwen weight sets and
+complete three-stack metric imports remain pending. Modern-GPU resource capacity
+is a separate issue: a visible queue quota is not proof of current-master/queue
+compatibility. Keep preparation, device probes and actual metric inference as
+three different statuses.
 
 ## WBench
 

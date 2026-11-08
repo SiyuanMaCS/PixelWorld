@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import csv
+import hashlib
 import json
 import os
 import shutil
@@ -103,7 +104,11 @@ def setup_inputs(inputs_root: Path, upstream: Path, cache_root: Path | None = No
         "count": len(records),
         "cases": records,
     }
-    atomic_json(inputs_root.parent / "manifest.json", payload)
+    atomic_json(inputs_root.parent / f"{inputs_root.name}_manifest.json", payload)
+    generic = inputs_root.parent / "manifest.json"
+    # Preserve another benchmark's inventory in a shared input parent.
+    if not generic.exists() or json.loads(generic.read_text()).get("dataset_revision") == PHYSICS_IQ_DATASET_REVISION:
+        atomic_json(generic, payload)
     return payload
 
 
@@ -144,20 +149,81 @@ def _ffmpeg() -> str:
     return value
 
 
+def official_cases() -> list[dict]:
+    """Pinned identities are independent of shared prepared-input inventories."""
+    pinned = json.loads(PINNED_MANIFEST.read_text())
+    cases = pinned["cases"]
+    if (pinned.get("dataset_revision") != PHYSICS_IQ_DATASET_REVISION
+            or len(cases) != PHYSICS_IQ_INPUTS
+            or [case["id"] for case in cases] != [f"{i:04d}" for i in range(1, 199)]):
+        raise ValueError("Official Physics-IQ evaluation requires the pinned198 identities")
+    return cases
+
+
+def validated_rgb(run: Path, case: dict) -> tuple[np.ndarray, dict]:
+    """Recheck immutable BPP/initial RGB and current submitted pixels before export."""
+    manifest = json.loads((run / "run_manifest.json").read_text())
+    if manifest.get("status") != "complete" or manifest.get("validation", {}).get("pass") is not True:
+        raise ValueError("Physics-IQ export requires a completed validated run")
+    if manifest.get("case_id") != case["id"]:
+        raise ValueError("Physics-IQ run identity differs from official case")
+    spec = json.loads((run / "media_contract.json").read_text())
+    expected = {"task_type": "i2v", "width": 256, "height": 144, "frames": 20, "fps": 4, "audio": None}
+    if spec != manifest.get("media_contract") or any(spec.get(k) != v for k, v in expected.items()):
+        raise ValueError("Current primary Physics-IQ export requires native256x144/4FPS/20frames")
+    snapshot = run / "input_snapshot"
+    for name, key in [("first_frame.png", "input_image_sha256"), ("prompt.txt", "input_prompt_sha256")]:
+        if sha256(snapshot / name) != manifest.get(key):
+            raise ValueError("Immutable Physics-IQ input changed")
+    prompt = (snapshot / "prompt.txt").read_text().strip()
+    if hashlib.sha256(prompt.encode()).hexdigest() != case["prompt_sha256"]:
+        raise ValueError("Input is not the pinned official base BPP")
+    with Image.open(snapshot / "first_frame.png") as image:
+        initial = np.asarray(image.convert("RGB"))
+    if initial.shape != (144, 256, 3) or hashlib.sha256(initial.tobytes()).hexdigest() != case["resized_rgb_sha256"]:
+        raise ValueError("Input RGB differs from the pinned official switch-frame resize")
+    tensor = run / "workspace/pixels.npz"
+    if manifest.get("pixels_sha256") and sha256(tensor) != manifest["pixels_sha256"]:
+        raise ValueError("Submitted Physics-IQ tensor changed")
+    with np.load(tensor, allow_pickle=False) as data:
+        pixels = data["pixels"]
+        if (pixels.shape != (144, 256, 20) or pixels.dtype.kind not in "ui"
+                or np.any(pixels < 0) or np.any(pixels > 0xFFFFFF)):
+            raise ValueError("Invalid submitted Physics-IQ RGB tensor")
+        packed = pixels.transpose(2, 0, 1).astype(np.uint32)
+        rgb = np.stack([(packed >> s) & 255 for s in (16, 8, 0)], axis=-1).astype(np.uint8)
+    frames = run / "workspace/frames"
+    if {p.name for p in frames.glob("*.png")} != {f"{i:02d}.png" for i in range(20)}:
+        raise ValueError("Incomplete or extra Physics-IQ PNG sequence")
+    for i in range(20):
+        with Image.open(frames / f"{i:02d}.png") as image:
+            if image.mode != "RGB" or not np.array_equal(np.asarray(image), rgb[i]):
+                raise ValueError("Physics-IQ tensor and PNG sequence disagree")
+    if not np.array_equal(rgb[0], initial):
+        raise ValueError("Physics-IQ frame zero differs from conditioning")
+    return rgb, manifest
+
+
 def export_videos(config: Benchmark, model_key: str, track: str, output: Path) -> Path:
     model = config.model(model_key)
-    manifest = json.loads((config.inputs_root.parent / "manifest.json").read_text())
-    cases = manifest["cases"]
-    if len(cases) != PHYSICS_IQ_INPUTS:
-        raise RuntimeError("Official evaluation requires all 198 cases")
-    video_dir = output / f"pixelworld-{model.key}-{track}-bpp-run_01"
-    video_dir.mkdir(parents=True, exist_ok=True)
-    ffmpeg = _ffmpeg()
-
-    def encode(case: dict) -> dict:
+    cases = official_cases()
+    accepted = {}
+    for case in cases:
         info = inspect(config, model, track, case["id"])
         if info["state"] != "complete":
             raise RuntimeError(f"Incomplete case: {model.key}/{track}/{case['id']}")
+        accepted[case["id"]] = info
+    video_dir = output / f"pixelworld-{model.key}-{track}-bpp-run_01"
+    if video_dir.exists():
+        raise FileExistsError("Existing Physics-IQ export must be preserved; use a new evaluation directory")
+    video_dir.mkdir(parents=True)
+    ffmpeg = _ffmpeg()
+
+    def encode(case: dict) -> dict:
+        info = accepted[case["id"]]
+        rgb, run_manifest = validated_rgb(Path(info["run"]), case)
+        if (run_manifest.get("model_key"), run_manifest.get("track")) != (model.key, track):
+            raise ValueError("Physics-IQ run belongs to another model or track")
         workspace = Path(info["run"]) / "workspace"
         frames = workspace / "frames"
         target = video_dir / case["generated_video_name"]
@@ -171,13 +237,14 @@ def export_videos(config: Benchmark, model_key: str, track: str, output: Path) -
             ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(target),
             "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
         ], check=True, stdout=subprocess.PIPE).stdout
-        expected = b"".join(np.asarray(Image.open(frames / f"{index:02d}.png").convert("RGB"),
-                                             dtype=np.uint8).tobytes() for index in range(20))
+        expected = rgb.tobytes()
         if decoded != expected:
             raise RuntimeError(f"Lossless RGB export mismatch: {case['id']}")
         return {"id": case["id"], "filename": target.name,
                 "video_sha256": sha256(target), "decoded_rgb_exact": True,
-                "source_run": info["run"]}
+                "source_run": info["run"], "source_run_manifest_sha256": sha256(Path(info["run"]) / "run_manifest.json"),
+                "source_pixels_sha256": run_manifest.get("pixels_sha256"),
+                "input_rgb_sha256": case["resized_rgb_sha256"], "base_bpp_sha256": case["prompt_sha256"]}
 
     with ThreadPoolExecutor(max_workers=8) as executor:
         records = list(executor.map(encode, cases))
