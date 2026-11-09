@@ -136,6 +136,47 @@ def test_failed_case_does_not_cancel_unrelated_pending_cases(tmp_path, monkeypat
     assert final['totals'] == {'exhausted': 1, 'complete': 1}
 
 
+def test_prior_usage_allows_zero_usage_interrupted_attempt(tmp_path):
+    from dataclasses import replace
+    from pixelworld import runner
+    config = make_config(tmp_path)
+    model = replace(config.models[0], tracks=('text',))
+    config = replace(config, models=(model,), case_ids=('stale',))
+    prior = runner.run_path(config, model, 'text', 'stale', 1)
+    prior.mkdir(parents=True)
+    (prior / 'run_manifest.json').write_text(json.dumps({
+        'status': 'running',
+        'token_usage': {'status': 'pending', 'terminal_events': 0, 'usage_events': 0},
+    }))
+    output, unknown, ignored = runner._prior_attempt_usage(config, model, 'text', 'stale', 2)
+    assert output == 0
+    assert unknown is False
+    assert ignored == [{
+        'attempt': 1,
+        'previous_status': 'running',
+        'usage_status': 'pending',
+        'reason': 'no completed request usage before retry',
+    }]
+
+
+def test_prior_usage_blocks_partial_unknown_terminal_usage(tmp_path):
+    from dataclasses import replace
+    from pixelworld import runner
+    config = make_config(tmp_path)
+    model = replace(config.models[0], tracks=('text',))
+    config = replace(config, models=(model,), case_ids=('partial',))
+    prior = runner.run_path(config, model, 'text', 'partial', 1)
+    prior.mkdir(parents=True)
+    (prior / 'run_manifest.json').write_text(json.dumps({
+        'status': 'failed',
+        'token_usage': {'status': 'partial', 'terminal_events': 1, 'usage_events': 1},
+    }))
+    output, unknown, ignored = runner._prior_attempt_usage(config, model, 'text', 'partial', 2)
+    assert output == 0
+    assert unknown is True
+    assert ignored == []
+
+
 def test_pid_alive_treats_zombie_as_dead(tmp_path):
     import pytest
     from pixelworld import supervisor

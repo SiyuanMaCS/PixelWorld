@@ -193,24 +193,48 @@ def run_path(config: Benchmark, model: Model, track: str, case_id: str, attempt:
     return config.runs_root / model.key / track / f"case_{case_id}_attempt_{attempt:02d}"
 
 
+def _prior_attempt_usage(config: Benchmark, model: Model, track: str, case_id: str,
+                         attempt: int) -> tuple[int, bool, list[dict]]:
+    prior_output, prior_unknown = 0, False
+    ignored = []
+    for index in range(1, attempt):
+        try:
+            previous = json.loads((run_path(config, model, track, case_id, index)/'run_manifest.json').read_text())
+            usage = previous.get('token_usage') or {}
+            amount = usage.get('output_tokens')
+        except (OSError, ValueError):
+            usage, amount, previous = {}, None, {}
+        if isinstance(amount, int) and not isinstance(amount, bool):
+            prior_output += amount
+            continue
+        # A worker killed before any terminal response has no accountable
+        # completed request. Treat it as zero so the retry can run, but record
+        # the decision in the next manifest.
+        if (usage.get('terminal_events') == 0 and usage.get('usage_events') == 0
+                and usage.get('reported_completed_request_output_tokens') is None):
+            ignored.append({
+                'attempt': index,
+                'previous_status': previous.get('status'),
+                'usage_status': usage.get('status'),
+                'reason': 'no completed request usage before retry',
+            })
+            continue
+        prior_unknown = True
+        break
+    return prior_output, prior_unknown, ignored
+
+
 def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attempt: int = 1,
              codex_binary: str | None = None, dry_run: bool = False,
              task_file: Path | None = None, rules_file: Path | None = None,
              extra_inputs: tuple[str,...] = ()) -> dict:
     model = config.model(model_key)
     token_limit = config.output_token_budget
-    prior_output, prior_unknown = 0, False
     if token_limit is not None:
-        for index in range(1, attempt):
-            try:
-                previous = json.loads((run_path(config, model, track, case_id, index)/'run_manifest.json').read_text())
-                amount = (previous.get('token_usage') or {}).get('output_tokens')
-            except (OSError, ValueError):
-                amount = None
-            if not isinstance(amount, int):
-                prior_unknown = True
-                break
-            prior_output += amount
+        prior_output, prior_unknown, ignored_prior_usage = _prior_attempt_usage(
+            config, model, track, case_id, attempt)
+    else:
+        prior_output, prior_unknown, ignored_prior_usage = 0, False, []
     source = config.inputs_root / case_id
     spec = contract(source)
     has_image = spec["task_type"] in ("i2v", "v2v")
@@ -341,6 +365,7 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         "full_trace_capture_enabled": full_trace_enabled,
         "output_token_budget": token_limit,
         "prior_attempt_output_tokens": prior_output,
+        "prior_attempt_usage_ignored": ignored_prior_usage,
         "token_usage": collect_usage(logs / "events.jsonl", finished=False),
     }
     atomic_json(run / "run_manifest.json", manifest)
