@@ -251,6 +251,34 @@ def model_track_matrix(run_root: Path, benchmark: str, status: dict, slug: str) 
     )
 
 
+def evaluation_scheduler_table(path: Path) -> str:
+    scheduler = read_json(path)
+    cohorts = scheduler.get("cohorts", {})
+    if not cohorts:
+        return '<p class="note">Evaluation watcher has not written a scheduler yet.</p>'
+    rows = []
+    for key, item in sorted(cohorts.items()):
+        blocker = item.get("blocker") or item.get("error") or "—"
+        rows.append(
+            "<tr>"
+            f"<td>{html.escape(key)}</td>"
+            f"<td>{html.escape(str(item.get('phase', '—')))}</td>"
+            f"<td>{item.get('accepted_videos', 0)} / {item.get('expected_videos', '—')}</td>"
+            f"<td>{item.get('running_videos', 0)}</td>"
+            f"<td>{item.get('exhausted_videos', 0)}</td>"
+            f"<td>{html.escape(str(blocker))}</td>"
+            "</tr>"
+        )
+    return (
+        f'<p class="note">Scheduler UTC：{html.escape(str(scheduler.get("updated_utc", "—")))} · '
+        f'PID：{html.escape(str(scheduler.get("pid", "—")))}。完整 cohort 前不运行评测；缺 evaluator 时显示 blocker，不补假分。</p>'
+        '<div class=scroll><table><tr><th>Model / Track</th><th>Phase</th><th>Accepted</th>'
+        '<th>Running</th><th>Exhausted</th><th>Blocker / Note</th></tr>'
+        + "".join(rows)
+        + "</table></div>"
+    )
+
+
 def write_full_galleries(run_root: Path, pixelworld: Path, benchmark: str, title: str) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(repo_root))
@@ -354,6 +382,9 @@ def write_vbench_page(run_root: Path, destination: Path) -> None:
         "<h2>Model × Track Progress</h2>"
         + model_track_matrix(run_root, "vbench2_subset_full", status, "vbench2_subset_full")
         +
+        "<h2>Evaluation Watcher</h2>"
+        + evaluation_scheduler_table(run_root / "evaluation/vbench2_subset_full_scheduler/scheduler.json")
+        +
         "<h2>Smoke Gate</h2>"
         f'<p class="note">Smoke status：{html.escape(json.dumps(smoke.get("totals", {}), ensure_ascii=False))}。'
         'Smoke 页面只用于链路验证，不是正式 VBench-2.0 分数。</p>'
@@ -387,6 +418,9 @@ def write_phygen_page(run_root: Path, destination: Path) -> None:
         '<a class="button" href="smoke.html">查看 smoke 视频 →</a></p></div>'
         "<h2>Model × Track Progress</h2>"
         + model_track_matrix(run_root, "phygenbench_full", status, "phygenbench_full")
+        +
+        "<h2>Evaluation Watcher</h2>"
+        + evaluation_scheduler_table(run_root / "evaluation/phygenbench_full_scheduler/scheduler.json")
         +
         "<h2>Smoke Gate</h2>"
         f'<p class="note">Smoke status：{html.escape(json.dumps(smoke.get("totals", {}), ensure_ascii=False))}。'
