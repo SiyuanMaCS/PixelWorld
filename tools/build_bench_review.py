@@ -293,19 +293,26 @@ def main():
     model_names = {'gpt61-sol':'GPT-6.1-Sol', 'gpt56-sol':'GPT-5.6-Sol',
                    'gpt6-astra':'GPT-6-Astra', 'deepseek-v41':'DeepSeek-V4.1-Flash'}
     for model, label in model_names.items():
-        summaries = sorted((root/'evaluation').glob(f'robojudge_{model}_gpu_smoke*/summary.json'))
-        scored = []
-        for path in summaries:
-            record = json.loads(path.read_text())
-            if record.get('valid_paired_count'):
-                scored.append(record)
-        if scored:
-            record = scored[0]
-            values = record.get('shared50_means') or record.get('partial_paired_means')
-            scope = 'shared50 完整均分' if record.get('complete_shared50') else '单例/部分 smoke；不是 shared50 均分'
-            body += (f'<tr><td>RoboJudge · {html.escape(label)}</td><td>原始 9B judge 已评分</td>'
-                     f'<td>{scope}；n={record["valid_paired_count"]}；'
-                     f'PA {values["PA"]:.2f} / IA {values["IA"]:.2f}（1–5）</td></tr>')
+        for track, pattern in (
+            ('text', f'robojudge_{model}_text_gpu_smoke*/summary.json'),
+            ('vision-agent', f'robojudge_{model}_gpu_smoke*/summary.json'),
+        ):
+            summaries = sorted((root/'evaluation').glob(pattern))
+            scored = []
+            for path in summaries:
+                record = json.loads(path.read_text())
+                if record.get('valid_paired_count'):
+                    scored.append(record)
+            if scored:
+                record = scored[0]
+                values = record.get('shared50_means') or record.get('partial_paired_means')
+                scope = 'shared50 完整均分' if record.get('complete_shared50') else '单例/部分 smoke；不是 shared50 均分'
+                case_ids = ', '.join(str(item['case_id']) for item in record.get('items', [])
+                                     if 'case_id' in item)
+                body += (f'<tr><td>RoboJudge · {html.escape(label)} / {track}</td><td>原始 9B judge 已评分</td>'
+                         f'<td>{scope}；n={record["valid_paired_count"]}；'
+                         f'PA {values["PA"]:.2f} / IA {values["IA"]:.2f}（1–5）'
+                         f'<br>Cases：{html.escape(case_ids)}</td></tr>')
     worldscore = root/'evaluation/worldscore_scheduler.json'
     if worldscore.exists():
         record = json.loads(worldscore.read_text())

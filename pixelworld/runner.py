@@ -21,6 +21,7 @@ from .media import contract, task_rules
 
 FILE_CHANGE_STALL_SECONDS = 20 * 60
 WATCHDOG_POLL_SECONDS = 10
+CLI_TEARDOWN_GRACE_SECONDS = 60
 
 
 def _toml(value: str) -> str:
@@ -117,7 +118,8 @@ def _last_event(path: Path) -> dict | None:
 
 def _wait(agent: subprocess.Popen, events: Path, logs: Path,
           stall_seconds: int = FILE_CHANGE_STALL_SECONDS,
-          token_monitor=None) -> tuple[int, dict | None]:
+          token_monitor=None,
+          teardown_grace_seconds: int = CLI_TEARDOWN_GRACE_SECONDS) -> tuple[int, dict | None]:
     watchdog = None
     last_records = -1
     while agent.poll() is None:
@@ -139,6 +141,26 @@ def _wait(agent: subprocess.Popen, events: Path, logs: Path,
         if agent.poll() is not None:
             break
         event = _last_event(events)
+        # The model has explicitly finished. Bound CLI teardown only; never
+        # use this timer while it is generating, checking or waiting for API.
+        if event and event.get('type') == 'turn.completed':
+            output = event.get('usage', {}).get('output_tokens')
+            idle = time.time() - events.stat().st_mtime
+            if isinstance(output, int) and not isinstance(output, bool) and output >= 0 and idle >= teardown_grace_seconds:
+                terminal_source = logs/'events.raw.jsonl'
+                if not terminal_source.is_file():
+                    terminal_source = events
+                watchdog = {'kind': 'cli_shutdown', 'reason': 'CLI did not exit after successful terminal event',
+                            'triggered_utc': utc_now(), 'idle_seconds': idle,
+                            'terminal_completed_utc': event.get('_harness_received', {}).get('utc'),
+                            'events_sha256': sha256(events), 'usage_output_tokens': output,
+                            'terminal_source': terminal_source.name, 'terminal_sha256': sha256(terminal_source)}
+                from .token_budget import stop_agent
+                stop_agent(agent)
+                watchdog['process_exit_status'] = agent.returncode
+                atomic_json(logs/'cli_shutdown.json', watchdog)
+                atomic_json(logs/'watchdog.json', watchdog)
+                break
         if not event or event.get("type") != "item.started":
             continue
         item = event.get("item", {})

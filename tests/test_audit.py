@@ -7,6 +7,7 @@ from PIL import Image
 from pixelworld.audit import (canonicalize_tensor, invokes_network, invokes_subagent,
                               outside_command_paths, classify_outside_command_paths, validate,
                               failed_scratch_path, PLAYWRIGHT_SOFTWARE_CACHE)
+from pixelworld.util import sha256
 
 
 def test_failed_scratch_denial_does_not_hide_existing_or_reference_reads(tmp_path):
@@ -170,6 +171,63 @@ def test_validation_and_track_visual_boundary(tmp_path):
     ]) + "\n")
     assert not validate(workspace, visual, 0, "text")["pass"]
     assert validate(workspace, visual, 0, "vision-agent")["pass"]
+
+
+def test_terminal_cli_shutdown_preserves_exit_and_all_other_gates(tmp_path):
+    workspace = tmp_path/'workspace'
+    make_artifacts(workspace)
+    events = tmp_path/'events.jsonl'
+    events.write_text(json.dumps({'type':'turn.completed', 'usage':{'output_tokens':123}})+'\n')
+    assert not validate(workspace, events, -15, 'text')['pass']
+    receipt = {'kind':'cli_shutdown', 'events_sha256':sha256(events),
+               'process_exit_status':-15, 'usage_output_tokens':123}
+    (tmp_path/'cli_shutdown.json').write_text(json.dumps(receipt))
+    result = validate(workspace, events, -15, 'text')
+    assert result['pass'] and result['exit_status'] == -15
+    assert result['completion_mode'] == 'agent_finished_cli_teardown_recovered'
+    assert not validate(workspace, events, -9, 'text')['pass']
+    # An unchanged receipt cannot bless any later action or modified log.
+    original = events.read_text()
+    events.write_text(original+json.dumps({'type':'item.started'})+'\n')
+    assert not validate(workspace, events, -15, 'text')['pass']
+    events.write_text(original)
+    (workspace/'frames/00.png').unlink()
+    assert not validate(workspace, events, -15, 'text')['pass']
+
+
+def test_cli_teardown_wait_stops_only_after_successful_completion(tmp_path, monkeypatch):
+    import subprocess
+    from pixelworld import runner
+    events = tmp_path/'events.jsonl'
+    events.write_text(json.dumps({'type':'turn.completed', 'usage':{'output_tokens':123}})+'\n')
+    monkeypatch.setattr(runner, 'WATCHDOG_POLL_SECONDS', .01)
+    agent = subprocess.Popen(['python', '-c', 'import time; time.sleep(10)'], start_new_session=True)
+    exit_status, receipt = runner._wait(agent, events, tmp_path, teardown_grace_seconds=0)
+    assert exit_status == -15
+    assert receipt['kind'] == 'cli_shutdown'
+    assert receipt['process_exit_status'] == exit_status
+    assert receipt['events_sha256'] == sha256(events)
+
+
+def test_shutdown_receipt_binds_raw_events_after_historical_image_enrichment(tmp_path):
+    workspace = tmp_path/'workspace'
+    make_artifacts(workspace)
+    raw, events = tmp_path/'events.raw.jsonl', tmp_path/'events.jsonl'
+    terminal = {'type':'turn.completed', 'usage':{'output_tokens':123}}
+    raw.write_text(json.dumps(terminal)+'\n')
+    enriched = {**terminal, '_harness_received':{'utc':'2026-11-09T00:00:00Z'}}
+    events.write_text(json.dumps(enriched)+'\n'+json.dumps({
+        'type':'item.completed', 'item':{'type':'full_trace_image_return', 'images':[]}})+'\n')
+    receipt = {'kind':'cli_shutdown', 'terminal_source':raw.name, 'terminal_sha256':sha256(raw),
+               'process_exit_status':-15, 'usage_output_tokens':123}
+    (tmp_path/'cli_shutdown.json').write_text(json.dumps(receipt))
+    assert validate(workspace, events, -15, 'vision-agent')['pass']
+    assert not validate(workspace, events, -15, 'text')['pass']
+    # Real commands, even added to normalized stdout, cannot be filtered away.
+    with events.open('a') as handle:
+        handle.write(json.dumps({'type':'item.completed', 'item':{'type':'command_execution',
+                     'command':'python generate.py', 'exit_code':0}})+'\n')
+    assert not validate(workspace, events, -15, 'vision-agent')['pass']
 
 
 def test_frame_zero_is_checked_against_frozen_input(tmp_path):

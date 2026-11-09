@@ -265,6 +265,47 @@ def _failed_python_scratch(path: str, item: dict) -> bool:
     return False
 
 
+def terminal_shutdown_verified(events_path: Path, exit_status: int) -> bool:
+    """Accept only a harness-recorded shutdown after the sole successful turn.
+
+    This handles a CLI that hangs during teardown. It does not accept a stopped
+    generation, substitute an exit code, or bypass artifact/access validation.
+    The receipt lives outside the agent workspace and binds the untouched log.
+    """
+    try:
+        receipt = json.loads((events_path.parent/'cli_shutdown.json').read_text())
+        events = [json.loads(line) for line in events_path.read_text().splitlines() if line.strip()]
+        if not isinstance(receipt, dict) or any(not isinstance(e, dict) for e in events):
+            return False
+        source_name = receipt.get('terminal_source', events_path.name)
+        if source_name not in (events_path.name, 'events.raw.jsonl'):
+            return False
+        source = events_path.parent/source_name
+        source_events = [json.loads(line) for line in source.read_text().splitlines() if line.strip()]
+        if any(not isinstance(e, dict) for e in source_events):
+            return False
+        if source != events_path:
+            # Full-rollout capture appends historical image-return evidence
+            # after teardown. All actual CLI events must still match raw stdout.
+            projected = [{k:v for k,v in e.items() if k != '_harness_received'}
+                         for e in events if e.get('item', {}).get('type') != 'full_trace_image_return']
+            if projected != source_events:
+                return False
+        events = source_events
+        terminals = [e.get('type') for e in events if e.get('type') in
+                     ('turn.completed', 'turn.failed', 'turn.cancelled')]
+        output = events[-1].get('usage', {}).get('output_tokens')
+        return (receipt.get('kind') == 'cli_shutdown' and
+                receipt.get('process_exit_status') == exit_status and
+                receipt.get('terminal_sha256', receipt.get('events_sha256')) == sha256(source) and
+                events[-1].get('type') == 'turn.completed' and
+                terminals == ['turn.completed'] and
+                isinstance(output, int) and not isinstance(output, bool) and output >= 0 and
+                receipt.get('usage_output_tokens') == output)
+    except (OSError, ValueError, KeyError, IndexError, AttributeError):
+        return False
+
+
 def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
              require_reports: bool = True, media: dict | None = None,
              budget_frozen: bool = False) -> dict:
@@ -367,7 +408,8 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
     track_violation = None
     if track in ("text", "vision-input") and visual_calls:
         track_violation = "view_image was invoked in a Track that disables output visual tools"
-    completed = (exit_status == 0 and "turn.completed" in terminal) or budget_frozen
+    shutdown_verified = terminal_shutdown_verified(events_path, exit_status)
+    completed = (exit_status == 0 and "turn.completed" in terminal) or budget_frozen or shutdown_verified
     passed = (completed and not missing and
               len(frame_paths) == FRAMES and frame0_exact and tensor_exact and
               not outside_reads and not outside_changes and not network_commands and
@@ -375,7 +417,9 @@ def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
               audio_check is not False)
     return {
         "exit_status": exit_status,
-        "completion_mode": 'budget_frozen' if budget_frozen else 'agent_finished',
+        "completion_mode": ('budget_frozen' if budget_frozen else
+                            'agent_finished_cli_teardown_recovered' if shutdown_verified else 'agent_finished'),
+        "terminal_shutdown_verified": shutdown_verified,
         "terminal_events": terminal,
         "missing_required": missing,
         "planning_and_method_reports_required": require_reports,
