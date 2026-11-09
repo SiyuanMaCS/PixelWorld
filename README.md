@@ -36,6 +36,9 @@ The current main benchmark portfolio is fixed in
 WorldArena, WorldScore, WBench and older multi-benchmark smokes remain
 historical/exploratory pages rather than the main portfolio.
 
+Live run entry points, background supervisors, and score-readiness rules are
+tracked in [docs/LIVE_RUNS_20261109.md](docs/LIVE_RUNS_20261109.md).
+
 ## Included
 
 - Two default capability Tracks: Text and Vision-Agent; historical Vision-Input runs remain supported.

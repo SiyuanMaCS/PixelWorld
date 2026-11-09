@@ -8,7 +8,7 @@
       "task_type": "i2v",
       "scope": "50 shared embodied generation prompts x Text/Vision-Agent",
       "status": "running",
-      "monitor": "https://siyuanmacs.github.io/physics-iq-pixel-preview/robojudge.html",
+      "monitor": "https://siyuanmacs.github.io/pixelworld/robojudge.html",
       "notes": "Original RoboJudge-9B scoring; Table8 comparability remains explicitly gated."
     },
     {
@@ -17,7 +17,7 @@
       "task_type": "i2v",
       "scope": "198 official BPP/I2V prompts x Text/Vision-Agent",
       "status": "running",
-      "monitor": "https://siyuanmacs.github.io/physics-iq-pixel-preview/physics_iq_baseline.html",
+      "monitor": "https://siyuanmacs.github.io/pixelworld/physics_iq_baseline.html",
       "notes": "Native v2 GPT rerun is separate from legacy-v1 reference results."
     },
     {
@@ -34,7 +34,7 @@
         {"name": "Instance_Preservation", "official_prompt_count": 57}
       ],
       "total_prompts_if_deduplicated_by_dimension_file": 291,
-      "monitor": "https://siyuanmacs.github.io/physics-iq-pixel-preview/vbench2_subset.html",
+      "monitor": "https://siyuanmacs.github.io/pixelworld/vbench2_subset.html",
       "notes": "Not the Video-Coder three-dimension setup and not the full 18-dimension VBench-2.0 score."
     },
     {
@@ -51,7 +51,7 @@
         "Physical Properties": "Material",
         "Chemical Properties": "Material"
       },
-      "monitor": "https://siyuanmacs.github.io/physics-iq-pixel-preview/phygenbench.html",
+      "monitor": "https://siyuanmacs.github.io/pixelworld/phygenbench.html",
       "notes": "Small physically interpretable supplement; model scores from Video-Coder paper are shown only as reference."
     }
   ],
