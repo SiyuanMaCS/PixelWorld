@@ -551,6 +551,8 @@ def main() -> None:
                     "iteration": iteration,
                     "updated_unix": time.time(),
                     "duration_seconds": time.time() - started,
+                    "interval_seconds": args.interval,
+                    "next_iteration_unix": None if args.once else time.time() + args.interval,
                     **result,
                 }
             except Exception as exc:  # Keep the watcher alive; make failures inspectable.
@@ -559,6 +561,8 @@ def main() -> None:
                     "iteration": iteration,
                     "updated_unix": time.time(),
                     "duration_seconds": time.time() - started,
+                    "interval_seconds": args.interval,
+                    "next_iteration_unix": None if args.once else time.time() + args.interval,
                     "error": str(exc),
                 }
             args.status.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
