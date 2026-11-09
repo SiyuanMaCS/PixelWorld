@@ -117,8 +117,8 @@ def inspect_workers(run_root: Path) -> list[dict]:
                     or "network retry" in lowered
                 ):
                     reason = "network retry >900s"
-                elif age > 2400 and event_type == "turn.started":
-                    reason = "turn.started >2400s"
+                elif age > 2400 and event_type not in {"turn.completed", "turn.failed", "turn.cancelled"}:
+                    reason = f"{event_type or 'event'} >2400s"
         workers.append({
             "pid": pid,
             "ppid": ppid,
@@ -146,10 +146,10 @@ def main() -> None:
 
     run_root = args.run_root.resolve()
     workers = inspect_workers(run_root)
-    killable = [worker for worker in workers if worker["reason"] in {
-        "network retry >900s",
-        "turn.started >2400s",
-    }]
+    killable = [
+        worker for worker in workers
+        if worker["reason"] == "network retry >900s" or worker["reason"].endswith(" >2400s")
+    ]
     if args.kill_stale:
         for worker in killable:
             try:
