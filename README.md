@@ -17,6 +17,13 @@ repository.
 
 > Status: research preview. Generated quality remains the measured model outcome. No human selects or repairs individual cases.
 
+The current frozen native baseline is documented at
+[baselines/native_v2_100k](baselines/native_v2_100k/README.md), with code commit
+and exact generation-file hashes. It uses100k cumulative reported output tokens,
+Text/Vision-Agent and autonomous review. Start another RoboJudge model from
+[the sanitized config](configs/robojudge.baseline.example.json). RSI variants
+must use separate code checkouts and output directories.
+
 ## Included
 
 - Two default capability Tracks: Text and Vision-Agent; historical Vision-Input runs remain supported.
@@ -33,7 +40,7 @@ The repository does **not** contain Physics-IQ reference videos/masks, generated
 
 ## Quick start
 
-Requirements: Linux, Python 3.11+, [Codex CLI](https://github.com/openai/codex) (validated with 0.166.0), `git`, `ffmpeg`, and `uv` for official evaluation.
+Requirements: Linux, Python 3.11+, [Codex CLI](https://github.com/openai/codex) (current validation0.167.0; legacy0.166.0 preserved), `git`, `ffmpeg`, and `uv` for official evaluation.
 
 ```bash
 git clone https://github.com/SiyuanMaCS/PixelWorld.git

@@ -1,0 +1,23 @@
+{
+  "protocol": "pixelworld-v2",
+  "inputs_root": "data/robojudge_inputs",
+  "runs_root": "runs/robojudge_native100k",
+  "output_token_budget": 100000,
+  "max_concurrency": 4,
+  "max_per_config": 1,
+  "max_attempts": 2,
+  "models": [{
+    "key": "my-model",
+    "model": "YOUR_CODEX_MODEL_ID",
+    "cli_backend": "codex",
+    "reasoning_effort": "high",
+    "tracks": ["text", "vision-agent"],
+    "provider": {
+      "type": "responses",
+      "id": "my_gateway",
+      "name": "User Responses gateway",
+      "base_url": "https://api.example.com/v1",
+      "env_key": "MY_MODEL_API_KEY"
+    }
+  }]
+}

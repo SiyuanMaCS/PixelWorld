@@ -20,6 +20,14 @@ def read(path):
 def write(path,value):
     temp=path.with_suffix('.tmp');temp.write_text(json.dumps(value,indent=2));temp.replace(path)
 
+def completed_scope(config,status):
+    identifiers=config.get('case_ids')
+    if not identifiers:
+        identifiers=[p.name for p in Path(config['inputs_root']).iterdir() if (p/'prompt.txt').is_file()]
+    expected=len(identifiers)*sum(len(m.get('tracks',['text','vision-agent'])) for m in config['models'])
+    counts=status.get('totals',{})
+    return expected>0 and status.get('total_runs')==expected and counts.get('complete',0)+counts.get('exhausted',0)==expected
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--config',type=Path,required=True);p.add_argument('--code-root',type=Path,required=True);p.add_argument('--state',type=Path,required=True);p.add_argument('--resume',action='store_true');a=p.parse_args()
     cfg=read(a.config);root=Path(cfg['runs_root']);root.mkdir(parents=True,exist_ok=True);a.state.parent.mkdir(parents=True,exist_ok=True)
@@ -28,7 +36,7 @@ def main():
     child=None;restarts=0;env=os.environ.copy();env['PYTHONPATH']=str(a.code_root.resolve())
     while not stop.exists() and not managed_stop.exists():
         status=read(root/'status.json');counts=status.get('totals',{});total=status.get('total_runs',0)
-        if total and counts.get('complete',0)+counts.get('exhausted',0)==total:
+        if completed_scope(cfg,status):
             write(a.state,{'phase':'processed_all_requested_tasks','counts':counts,'total':total,'failures_preserved':True,'updated_utc':dt.datetime.now(dt.timezone.utc).isoformat()});return
         owner=status.get('supervisor_pid')
         active=child is not None and child.poll() is None
