@@ -21,7 +21,7 @@ from pathlib import Path
 
 
 HEAVY_BASE = "https://siyuanmacs.github.io/physics-iq-pixel-preview/"
-TARGETS = (
+CORE_TARGETS = (
     "pixelworld/index.html",
     "pixelworld/pixelworld-index.html",
     "pixelworld/physics_iq_baseline.html",
@@ -29,10 +29,15 @@ TARGETS = (
     "pixelworld/matrix_full.html",
     "pixelworld/vbench2_subset.html",
     "pixelworld/phygenbench.html",
-    "pixelworld/vbench2_subset_full",
-    "pixelworld/phygenbench_full",
     "pixelworld/robojudge_assets",
 )
+
+GALLERY_TARGETS = (
+    "pixelworld/vbench2_subset_full",
+    "pixelworld/phygenbench_full",
+)
+
+TARGETS = CORE_TARGETS + GALLERY_TARGETS
 
 CSS = """:root{color-scheme:dark;--bg:#0b0f14;--panel:#141b24;--line:#2b3745;--text:#edf2f7;--muted:#a0adbc;--green:#b8ed94;--blue:#94ccff;--amber:#f4cb91;--red:#ffaaa0}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,sans-serif}a{color:inherit;text-decoration:none}main{max-width:1160px;margin:auto;padding:32px 24px 64px}.top{position:sticky;top:0;background:#0b0f14f2;border-bottom:1px solid var(--line);z-index:5}.top-inner{max-width:1160px;margin:auto;padding:15px 24px;display:flex;justify-content:space-between;gap:18px;align-items:center}.brand{font-weight:850}.nav{display:flex;gap:18px;color:var(--muted);font-size:13px}.nav a:hover,.link{color:var(--blue)}.hero{margin:18px 0 30px}.eyebrow{font-size:11px;letter-spacing:.1em;color:var(--green);margin:0 0 8px}.hero h1{font-size:clamp(30px,4vw,48px);line-height:1.15;margin:0 0 12px;letter-spacing:-.04em}.muted,.desc{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}.card.feature{border-color:#52714a;background:linear-gradient(130deg,#1a2b20,var(--panel) 70%)}.badge{display:inline-block;font-size:11px;border:1px solid #465749;border-radius:6px;padding:3px 8px;color:var(--green)}h2{margin:36px 0 14px;font-size:24px}h3{font-size:21px;margin:12px 0 8px}.button{display:inline-flex;margin-top:10px;border:1px solid #425064;border-radius:8px;padding:9px 14px;background:#202b37;font-weight:700;font-size:13px}.primary{background:var(--green);color:#17220f;border-color:var(--green)}.facts{display:flex;gap:18px;margin:14px 0;color:var(--muted);font-size:12px;flex-wrap:wrap}.facts strong{display:block;color:var(--text);font-size:22px}.scroll{overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel);margin:12px 0 22px}table{border-collapse:collapse;width:100%;min-width:680px}th,td{border-bottom:1px solid var(--line);padding:12px 14px;text-align:left;vertical-align:top}th{color:var(--muted);font-size:12px}.matrix th{text-align:center}.matrix th:first-child,.matrix td:first-child{text-align:left}.run-cell{min-width:270px}.run-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.run-name{font-weight:780}.run-num{font-weight:820}.run-meta{color:var(--muted);font-size:12px;margin-top:6px}.run-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}.ok{color:var(--green)}.bad{color:var(--red)}.live{color:var(--blue)}.note,.status{font-size:12px;color:var(--muted)}.status strong{color:var(--text)}.legacy{border-color:#5b4c31;background:#1c1a15}.warn{color:var(--amber)}@media(max-width:800px){.grid{grid-template-columns:1fr}.top-inner{display:block}.nav{overflow:auto;margin-top:8px}}"""
 
@@ -539,7 +544,7 @@ def write_index_page(destination: Path) -> None:
     destination.write_text(page("PixelWorld Index", body))
 
 
-def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path) -> dict:
+def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: bool = False) -> dict:
     repo_root = Path(__file__).resolve().parents[1]
     legacy_status = heavy_web.parent / "cleanroom_full_matrix_v1/status.json"
 
@@ -577,8 +582,6 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path) -> dict:
     write_legacy_page(pixelworld / "matrix_full.html")
     write_vbench_page(run_root, pixelworld / "vbench2_subset.html")
     write_phygen_page(run_root, pixelworld / "phygenbench.html")
-    write_full_galleries(run_root, pixelworld, "vbench2_subset_full", "VBench-2.0 subset · full")
-    write_full_galleries(run_root, pixelworld, "phygenbench_full", "PhyGenBench · full")
 
     assets_src = heavy_web / "robojudge_assets"
     assets_dst = pixelworld / "robojudge_assets"
@@ -587,17 +590,25 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path) -> dict:
             shutil.rmtree(assets_dst)
         shutil.copytree(assets_src, assets_dst)
 
-    check(["git", "add", *TARGETS], stable_repo)
-    staged = run(["git", "diff", "--cached", "--quiet", "--", *TARGETS], stable_repo)
-    if staged.returncode == 0:
-        return {"changed": False, "commit": None}
+    targets = CORE_TARGETS
+    gallery = {"changed": False, "commit": None}
+    if not core_only:
+        write_full_galleries(run_root, pixelworld, "vbench2_subset_full", "VBench-2.0 subset · full")
+        write_full_galleries(run_root, pixelworld, "phygenbench_full", "PhyGenBench · full")
+        targets = TARGETS
 
-    check(["git", "commit", "-m", "Update PixelWorld benchmark monitor pages"], stable_repo)
+    check(["git", "add", *targets], stable_repo)
+    staged = run(["git", "diff", "--cached", "--quiet", "--", *targets], stable_repo)
+    if staged.returncode == 0:
+        return {"changed": False, "commit": None, "core_only": core_only, "gallery": gallery}
+
+    message = "Update PixelWorld benchmark monitor pages" if core_only else "Update PixelWorld benchmark monitor pages and galleries"
+    check(["git", "commit", "-m", message], stable_repo)
     commit = run(["git", "rev-parse", "HEAD"], stable_repo).stdout.strip()
     push = run(["git", "push", "origin", "main"], stable_repo)
     if push.returncode:
         raise RuntimeError(f"git push failed\nSTDOUT:\n{push.stdout}\nSTDERR:\n{push.stderr}")
-    return {"changed": True, "commit": commit}
+    return {"changed": True, "commit": commit, "core_only": core_only, "gallery": gallery}
 
 
 def main() -> None:
@@ -608,6 +619,7 @@ def main() -> None:
     parser.add_argument("--status", type=Path, required=True)
     parser.add_argument("--interval", type=int, default=600)
     parser.add_argument("--once", action="store_true")
+    parser.add_argument("--core-only", action="store_true", help="sync only lightweight monitor pages, not full galleries")
     args = parser.parse_args()
 
     args.status.parent.mkdir(parents=True, exist_ok=True)
@@ -618,7 +630,12 @@ def main() -> None:
         while True:
             started = time.time()
             try:
-                result = sync_once(args.run_root.resolve(), args.heavy_web.resolve(), args.stable_repo.resolve())
+                result = sync_once(
+                    args.run_root.resolve(),
+                    args.heavy_web.resolve(),
+                    args.stable_repo.resolve(),
+                    core_only=args.core_only,
+                )
                 payload = {
                     "status": "ok",
                     "iteration": iteration,
