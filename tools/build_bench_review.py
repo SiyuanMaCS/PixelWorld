@@ -19,9 +19,7 @@ import numpy as np
 from PIL import Image
 
 
-CSS = """
-:root{color-scheme:dark}*{box-sizing:border-box}body{margin:0;background:#10151b;color:#e6edf3;font:15px/1.65 system-ui,sans-serif}main{max-width:1180px;margin:auto;padding:28px 22px}a{color:#a7d6ff}h1{font-size:29px}h2{font-size:22px}p{max-width:900px}.muted{color:#9bacbe}.box,details{background:#19212b;border:1px solid #354151;border-radius:10px;padding:18px;margin:18px 0}table{border-collapse:collapse;width:100%;margin:15px 0}th,td{text-align:left;padding:13px;border:1px solid #354151;vertical-align:top}th{background:#213044}.scroll{overflow:auto}img{max-width:100%;object-fit:contain}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.5 ui-monospace,monospace;max-height:600px;overflow:auto}.player{max-width:850px}canvas{width:100%;height:auto;background:#070b10;image-rendering:pixelated;border:1px solid #354151}.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0}button,select{background:#26394c;color:white;border:1px solid #657789;border-radius:6px;padding:9px;cursor:pointer}input[type=range]{flex:1;min-width:150px}.strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}.step{border-left:3px solid #78b894;padding-left:15px;margin:22px 0}.badge{color:#bbedac}.status{font-size:12px;color:#b5c6d7}.pill{display:inline-block;padding:2px 8px;background:#293645;border-radius:5px}.back{display:inline-block;margin-bottom:20px}@media(max-width:600px){main{padding:15px}td,th{padding:8px;font-size:12px}}
-"""
+CSS = Path(__file__).with_name('bench_theme.css').read_text()
 
 PLAYER = """
 class PixelPlayer{
@@ -32,20 +30,34 @@ class PixelPlayer{
  pause(){this.playing=false;this.node.querySelector('.play').textContent='▶ 播放'}
  async toggle(){try{await this.load();if(this.playing)this.pause();else{if(this.frame>=this.d.frames-1)this.frame=0;this.start()}}catch(e){}}
 }
-window.__benchPlayers=[];document.querySelectorAll('.player').forEach(n=>window.__benchPlayers.push(new PixelPlayer(n,JSON.parse(n.dataset.video))));window.__benchReady=true;
+window.__benchPlayers=[];document.querySelectorAll('.player').forEach(n=>{let p=new PixelPlayer(n,JSON.parse(n.dataset.video));n.dataset.state='idle';let start=p.start.bind(p),pause=p.pause.bind(p);p.start=()=>{n.dataset.state='playing';start()};p.pause=()=>{n.dataset.state='paused';pause()};n.querySelector('canvas').onclick=()=>p.toggle();let overlay=n.querySelector('.play-overlay');if(overlay)overlay.onclick=()=>p.toggle();window.__benchPlayers.push(p)});window.__benchReady=true;
+document.querySelectorAll('[data-panel]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-panel]').forEach(x=>x.setAttribute('aria-selected',String(x===b)));document.querySelectorAll('.benchmark-panel').forEach(x=>x.hidden=x.id!==b.dataset.panel)});
 """
 
 
-def document(title, body):
-    return ("<!doctype html><html lang=zh><meta charset=utf-8>"
+def document(title, body, depth=0, case_page=False):
+    overview = '../'*depth+'index.html'
+    home = '../'*(depth+1)+'index.html'
+    nav = ((('视频','#video'),('逐轮候选','#candidates'),('工具记录','#trace')) if case_page else
+           (('模型对照',overview+'#models'),('评测结果',overview+'#evaluation'),('参数与协议','../'*depth+'protocol.html')))
+    header = ('<header class=top><div class=top-inner><a class=brand href="'+home+'">'
+              '<span class=pixel aria-hidden=true></span>PixelWorld</a><nav class=nav aria-label="实验导航">'
+              + ''.join(f'<a href="{href}">{label}</a>' for label,href in nav)+'</nav></div></header>')
+    if '<h1>' in body and '<section class=hero>' not in body:
+        before,after=body.split('<h1>',1)
+        heading,rest=after.split('</h1>',1)
+        body=before+'<section class=hero><p class=eyebrow>CODING AGENTS AS PIXEL WORLD MODELS</p><h1>'+heading+'</h1></section>'+rest
+    return ("<!doctype html><html lang=zh data-theme=pixelworld><meta charset=utf-8>"
             "<meta name=viewport content='width=device-width,initial-scale=1'>"
-            f"<title>{html.escape(title)}</title><style>{CSS}</style><main>{body}</main>"
-            f"<script>{PLAYER}</script></html>")
+            f"<title>{html.escape(title)}</title><style>{CSS}</style><body>{header}<main>{body}"
+            '<footer><span>PixelWorld · 研究预览</span><span>视频 · 候选版本 · 可观测生成过程</span></footer></main>'
+            f"<script>{PLAYER}</script></body></html>")
 
 
 def player(data):
     return (f"<div class=player data-video='{html.escape(json.dumps(data), quote=True)}'>"
-            "<canvas></canvas><div class=controls><button class=play>▶ 播放</button>"
+            '<div class=player-frame><canvas aria-label="生成视频"></canvas><button class=play-overlay aria-label="播放视频">▶</button></div>'
+            "<div class=controls><button class=play>▶ 播放</button>"
             "<button class=replay>↻ 重播</button><input class=seek type=range min=0 step=1 value=0>"
             "</div><p class=status>点击播放 · 原生 RGB 像素</p></div>")
 
@@ -105,20 +117,24 @@ def build_case(run, output):
     if count is None:
         count = usage.get("reported_completed_request_output_tokens")
     body = f'<a class=back href="../../../../index.html">← 本轮 smoke 总览</a><h1>{html.escape(title)}</h1>'
-    body += (f'<p class=muted>{manifest["track"]} · {spec["width"]}×{spec["height"]} · '
-             f'{spec["fps"]} FPS · {spec["frames"]} 帧 · 状态 {manifest["status"]} · 输出 tokens {count}</p>'
-             f'<div class=box><strong>原始任务</strong><p>{html.escape(prompt)}</p></div>')
+    body += (f'<div class=case-meta><span class=badge>{manifest["track"]}</span>'
+             f'<span class=pill>{spec["width"]}×{spec["height"]}</span><span class=pill>{spec["fps"]} FPS · {spec["frames"]} 帧</span>'
+             f'<span class=pill>{html.escape(manifest["status"])}</span></div>')
     video = export_pixels(ws, output / "final", spec)
     if video:
-        body += '<h2>当前保存结果</h2>' + player({**video, "pixels": "final/" + video["pixels_file"], "poster": "final/poster.png"})
+        body += '<div class=case-layout id=video><div>'+player({**video, "pixels": "final/" + video["pixels_file"], "poster": "final/poster.png"})+'</div>'
+        body += ('<aside class=card><span class=badge>首帧续写</span><h3 style="margin-top:14px">原始任务</h3>'
+                 f'<p>{html.escape(prompt)}</p><div class=facts><div><strong>{spec["frames"]/spec["fps"]:.2f}s</strong>视频时长</div>'
+                 f'<div><strong>{count if count is not None else "—"}</strong>输出 tokens</div></div>'
+                 '<p class=tiny>下方可播放每次保存的候选，查看检查图与代码变化。</p></aside></div>')
         if manifest["status"] != "complete":
             body += '<p class=muted>此结果可播放，但该运行尚未通过最终提交审核。页面展示不代表评测通过。</p>'
     else:
-        body += '<p class=box>尚无格式正确的 RGB 视频；保留真实执行状态。</p>'
+        body += f'<div class=box id=video><h3>尚未保存可播放视频</h3><p class=desc>{html.escape(prompt)}</p><span class=pill>{html.escape(manifest["status"])}</span></div>'
     rounds = sorted((run / "trace").glob("round_*"))
     rounds += sorted((run / "recovery_01/trace").glob("round_*"))
-    body += ('<h2>已保存候选与代码修改</h2><p class=muted>这里按时间展示外部捕获的候选，'
-             '每份均可单独播放。保存新版本不等于完成视觉检查；下方工具证据记录实际看过的图。</p>')
+    body += ('<div class=section-head id=candidates><h2>逐轮保存的候选</h2><p>回放视频、检查图与代码变化。</p></div>'
+             '<p class=note>每份候选均可单独播放。实际图片检查记录在下方工具轨迹中。</p>')
     previous = ""
     valid_rounds = 0
     for i, source in enumerate(rounds):
@@ -134,13 +150,15 @@ def build_case(run, output):
                                           fromfile="上一保存版本", tofile="本次保存版本"))
         previous = code
         prefix = f"candidate_{i:02d}"
-        body += (f'<details><summary>候选 {i+1:02d} · {html.escape(stamp)} · 点开播放与检查图</summary>'
+        body += (f'<details class=candidate{" open" if i==0 else ""}><summary><strong>候选 {i+1:02d}</strong><span class=status>播放与检查图</span><time>{html.escape(stamp)}</time></summary><div class=candidate-content>'
                  + player({**data, "pixels": f"{prefix}/{data['pixels_file']}", "poster": f"{prefix}/poster.png"}))
+        body += '<div class=checks>'
         for name in ("inspection.png", "transition_check.png"):
             if (output / prefix / name).exists():
-                body += f'<p>{name}</p><img loading=lazy src="{prefix}/{name}">'
-        body += f'<details><summary>代码变化</summary><pre>{html.escape(diff or "代码未变化；重新保存了产物。")}</pre></details></details>'
-    body += '<h2>可观测工具行为</h2>'
+                label = '时间点检查图' if name=='inspection.png' else '首帧与过渡检查'
+                body += f'<figure><a href="{prefix}/{name}" target=_blank><img loading=lazy src="{prefix}/{name}"></a><figcaption>{label} · 点击查看原图</figcaption></figure>'
+        body += f'</div><details class=code><summary>展开代码变化</summary><pre>{html.escape(diff or "代码未变化；重新保存了产物。")}</pre></details></div></details>'
+    body += '<div class=section-head id=trace><h2>可观测工具轨迹</h2><p>实际执行的命令与返回图片。</p></div>'
     files = [run / "logs/events.jsonl", run / "recovery_01/logs/events.jsonl"]
     commands = images = 0
     seen_calls = set()
@@ -159,8 +177,8 @@ def build_case(run, output):
             if item.get("type") == "command_execution":
                 commands += 1
                 command = item.get("command", "").replace(str(ws), ".")
-                body += (f'<div class=step><strong>命令 {commands} · {html.escape(stamp)}</strong>'
-                         f'<pre>{html.escape(command)}</pre><span class=pill>exit {item.get("exit_code")}</span></div>')
+                body += (f'<details class=command><summary><strong>命令 {commands}</strong><time>{html.escape(stamp)}</time>'
+                         f'<span class=pill>exit {item.get("exit_code")}</span></summary><pre>{html.escape(command)}</pre></details>')
             if item.get("type") == "full_trace_image_return" and item.get("call_id") not in seen_calls:
                 seen_calls.add(item.get("call_id"))
                 for image in item.get("returned_images", []):
@@ -173,10 +191,10 @@ def build_case(run, output):
                     images += 1
                     target = output / f"tool_view_{images:02d}.png"
                     shutil.copy2(source, target)
-                    body += (f'<details><summary>视觉工具实际返回图片 {images}</summary>'
+                    body += (f'<details class=tool-image><summary>视觉工具实际返回图片 {images}</summary>'
                              f'<img loading=lazy src="{target.name}"></details>')
     body += f'<p class=muted>保存候选 {valid_rounds} 份；完成命令 {commands} 次；可验证图片返回 {images} 张。原始 API 响应与完整日志保留在本地。</p>'
-    (output / "index.html").write_text(document(title, body))
+    (output / "index.html").write_text(document(title, body, depth=4, case_page=True))
     return {"model": manifest["model"], "model_key": manifest["model_key"], "track": manifest["track"],
             "case_id": manifest["case_id"], "status": manifest["status"], "output_tokens": count,
             "candidates": valid_rounds, "visual_returns": images, "playable": bool(video),
@@ -213,29 +231,57 @@ def main():
         except (OSError, ValueError, KeyError, EOFError, zipfile.BadZipFile) as error:
             rows.append({"benchmark": relative.parts[0], "status": "export_pending", "run": str(relative),
                          "error": type(error).__name__})
-    body = ('<a class=back href="../hub.html">← PixelWorld 总入口</a><h1>Codex benchmark smoke 与官方协议</h1>'
-            '<p>本轮先验证输入、原生生成、评测与可视化链路。所有下列少量样本均为 smoke，不能作为完整榜单分数。</p>'
-            '<p><a href="readiness.html">实验准备结论与主实验／消融方案 →</a></p>')
+    good = [r for r in rows if "model_key" in r]
+    model_names = {'gpt61-sol':'GPT-6.1-Sol', 'gpt56-sol':'GPT-5.6-Sol',
+                   'gpt6-astra':'GPT-6-Astra', 'deepseek-v41':'DeepSeek-V4.1-Flash'}
+    bench_names = {'physics_iq':'Physics-IQ', 'vbench_i2v':'VBench-I2V · VBench++',
+                   'robojudge':'RoboJudge', 'worldarena':'WorldArena', 'worldscore':'WorldScore', 'wbench':'WBench'}
+    unique = {}
+    for row in good:
+        key = (row['benchmark'], row['model_key'], row['track'], row['case_id'])
+        if key not in unique or (unique[key]['status'] != 'complete' and row['status'] == 'complete'):
+            unique[key] = row
+    complete = sum(row['status']=='complete' for row in unique.values())
+    example = next((r for r in good if r['benchmark']=='robojudge' and r['model_key']=='gpt61-sol'
+                    and r['track']=='text' and r['status']=='complete'), None)
+    body = ('<a class=back href="../index.html">← 实验导航</a><h1>视频生成与模型对照</h1>'
+            '<p class=muted>从首帧续写视频，比较不同模型与输入条件，查看每轮候选和实际工具记录。</p>'
+            '<div class=experiment-grid><article class="card feature"><span class=badge>当前批次 · I2V</span>'
+            '<h3>多模型像素视频生成</h3><p class=desc>按 benchmark 切换，进入每个模型的 Text 与 Vision-Agent 视频画廊。</p>'
+            f'<div class=facts><div><strong>4</strong>模型</div><div><strong>2</strong>Tracks</div><div><strong>{complete}</strong>有效交付</div></div>'
+            '<div class=actions><a class="button primary" href="#models">查看模型对照 →</a>'
+            '<a class=button href="#progress">全量运行进度</a></div></article>'
+            '<article class=card><span class=pill>视频 · 检查图 · 代码</span><h3 style="margin-top:14px">查看 Agent 的生成过程</h3>'
+            '<p class=desc>每次保存的结果都可以播放。展开候选查看时间点检查图，以及前后代码变化。</p>'
+            f'<div class=actions><a class=button href="{example["url"] if example else "#models"}">▶ 打开一个示例</a>'
+            '<a class=button href="readiness.html">实验与参数方案</a></div><p class=tiny>少量样本的评分标注为 smoke；完整官方成绩单独展示。</p></article></div>')
+    progress = ''
     for bench, label in [('physics_iq', 'Physics-IQ'), ('vbench_i2v', 'VBench-I2V')]:
         status_path = root/'generations'/bench/'status.json'
         if not status_path.exists():
             continue
         status = json.loads(status_path.read_text())
-        body += f'<h2>{label} 完整任务进度</h2><p class=status>状态更新 UTC：{html.escape(status.get("updated_utc", "未知"))}。生成进度不代表完整官方评分。</p><div class=scroll><table><tr><th>模型 / Track</th><th>完成 / 总数</th><th>运行中</th><th>预算或尝试耗尽</th><th>最新完成 UTC / Case</th></tr>'
+        counts = status.get('totals', {})
+        progress += f'<details class=report><summary>{label} <span class=status>· {counts.get("complete",0)} 有效交付 · {counts.get("running",0)} 运行中</span></summary><p>状态更新 UTC：{html.escape(status.get("updated_utc", "未知"))}。生成进度不代表完整官方评分。</p><div class=scroll><table><tr><th>模型 / Track</th><th>完成 / 总数</th><th>运行中</th><th>预算或尝试耗尽</th><th>最新完成 UTC / Case</th></tr>'
         for key, group in status.get('groups', {}).items():
             counts = group.get('counts', {})
             latest = group.get('latest_completion') or ['—', '—']
             total = sum(counts.values())
-            body += (f'<tr><td>{html.escape(key)}</td><td>{counts.get("complete", 0)} / {total}</td>'
+            display_key = model_names.get(group.get('model_key'), key.split('/')[0])+' / '+group.get('track',key.split('/')[-1])
+            progress += (f'<tr><td>{html.escape(display_key)}</td><td>{counts.get("complete", 0)} / {total}</td>'
                      f'<td>{counts.get("running", 0)}</td><td>{counts.get("exhausted", 0)}</td>'
                      f'<td>{html.escape(str(latest[0]))}<br>{html.escape(str(latest[1]))}</td></tr>')
-        body += '</table></div>'
-    good = [r for r in rows if "model_key" in r]
-    for benchmark in sorted({r["benchmark"] for r in good}):
-        body += f'<h2>{html.escape(benchmark)}</h2><div class=scroll><table><tr><th>模型</th><th>Text</th><th>Vision-Agent</th></tr>'
+        progress += '</table></div></details>'
+    benchmarks = sorted({r['benchmark'] for r in good}, key=lambda x:(x!='robojudge',x))
+    body += '<div class=section-head id=models><h2>模型与 Track 对照</h2><p>行是模型，列是输入条件。点击进入整组视频。</p></div><div class=tabs role=tablist aria-label="Benchmark">'
+    for i,benchmark in enumerate(benchmarks):
+        body += f'<button role=tab aria-selected={str(i==0).lower()} data-panel="panel-{benchmark}">{html.escape(bench_names.get(benchmark,benchmark))}</button>'
+    body += '</div>'
+    for i,benchmark in enumerate(benchmarks):
+        body += f'<section class=benchmark-panel id="panel-{benchmark}"{ " hidden" if i else ""}><h3>{html.escape(bench_names.get(benchmark,benchmark))}</h3><div class=scroll><table class=matrix><tr><th>模型</th><th>Text</th><th>Vision-Agent</th></tr>'
         models = ["gpt61-sol", "gpt56-sol", "gpt6-astra", "deepseek-v41"]
         for model in models:
-            body += f'<tr><th>{model}</th>'
+            body += f'<tr><th>{model_names[model]}</th>'
             for track in ("text", "vision-agent"):
                 entries = [r for r in good if (r["benchmark"], r["model_key"], r["track"]) == (benchmark, model, track)]
                 cell = "本轮尚未启动"
@@ -245,7 +291,7 @@ def main():
                     cases = {}
                     for entry in entries:
                         current = cases.get(entry['case_id'])
-                        if current is None or entry['status'] == 'complete':
+                        if current is None or (current['status'] != 'complete' and entry['status'] == 'complete'):
                             cases[entry['case_id']] = entry
                     completed = sum(e['status'] == 'complete' for e in cases.values())
                     gallery_url = f'{benchmark}/{model}/{track}/index.html'
@@ -254,21 +300,25 @@ def main():
                     for entry in sorted(cases.values(), key=lambda e: e['case_id']):
                         case_dir = Path(entry['url']).parent.name
                         poster = f'{case_dir}/final/poster.png'
-                        picture = f'<img loading=lazy src="{poster}" alt="{entry["case_id"]}">' if entry['playable'] else ''
-                        cards.append(f'<div class=box><a href="{case_dir}/index.html">{picture}<strong>{entry["case_id"]}</strong> · {entry["status"]}</a><p class=status>{entry["candidates"]} 候选 · {entry["output_tokens"]} output tokens</p></div>')
+                        picture = f'<img loading=lazy src="{poster}" alt="{entry["case_id"]}">' if entry['playable'] else '<div class=placeholder>尚无可播放结果</div>'
+                        attempts = [e for e in entries if e['case_id']==entry['case_id']]
+                        history = ('<details class=attempts><summary>查看全部 '+str(len(attempts))+' 次运行记录</summary>'+
+                                   ''.join(f'<a href="{Path(e["url"]).parent.name}/index.html">{Path(e["url"]).parent.name.rsplit("attempt_",1)[-1]} · {html.escape(e["status"])} · {e["candidates"]} 保存候选</a>' for e in attempts)+'</details>') if len(attempts)>1 else ''
+                        cards.append(f'<article class=sample><a href="{case_dir}/index.html">{picture}<div class=sample-body><span class=pill>{entry["status"]}</span><h3>{entry["case_id"]} ↗</h3><p>{entry["candidates"]} 保存候选 · {entry["output_tokens"] if entry["output_tokens"] is not None else "—"} 输出 tokens</p></div></a>{history}</article>')
                     gallery = output / benchmark / model / track / 'index.html'
                     gallery.parent.mkdir(parents=True, exist_ok=True)
-                    gallery.write_text(document(f'{model} / {track}',
-                        '<a href="../../../index.html">← 本轮总览</a>'
-                        f'<h1>{benchmark} · {model} · {track}</h1><p>{completed} 已完成 · {len(cases)} 已有记录。点击 case 查看最终视频、候选和工具 Trace。</p><div class=strip>'
-                        + ''.join(cards) + '</div>'))
+                    gallery.write_text(document(f'{model_names[model]} / {track}',
+                        '<a class=back href="../../../index.html#models">← 模型对照</a>'
+                        f'<h1>{bench_names.get(benchmark,benchmark)} · {model_names[model]}</h1><div class=case-meta><span class=badge>{track}</span><span class=pill>{completed} 有效交付</span><span class=pill>{len(cases)} 个任务已有记录</span></div><p class=desc>点击样本查看视频、逐轮候选和实际工具记录。</p><div class=video-grid>'
+                        + ''.join(cards) + '</div>',depth=3))
                 elif benchmark == 'physics_iq' and model in ('gpt61-sol', 'gpt56-sol'):
                     slug = 'gpt-6-1' if model == 'gpt61-sol' else 'gpt-5-6'
                     cell = f'<a href="../matrix_{slug}-{track}.html">已有全量 198/198 →</a><br><span class=status>复用旧协议；不重复生成</span>'
                 body += f'<td>{cell}</td>'
             body += '</tr>'
-        body += '</table></div>'
-    body += '<h2>官方评测链路状态</h2><div class=scroll><table><tr><th>评测</th><th>本轮状态</th><th>范围与数值</th></tr>'
+        body += '</table></div></section>'
+    body += '<h2 id=progress>全量运行进度</h2>'+progress
+    body += '<h2 id=evaluation>评分与评测状态</h2><details class=report><summary>展开原版评测结果与运行阶段</summary><div class=scroll><table><tr><th>评测</th><th>本轮状态</th><th>范围与数值</th></tr>'
     physics = root / 'evaluation/physics_deepseek_per_view/per_view_metrics.json'
     if physics.exists():
         d = json.loads(physics.read_text())['metrics']
@@ -297,6 +347,7 @@ def main():
         body += f'<tr><td>VBench 补充维度</td><td>官方函数已评分</td><td>同一 pair 的五份样本；原始值：{values}</td></tr>'
     model_names = {'gpt61-sol':'GPT-6.1-Sol', 'gpt56-sol':'GPT-5.6-Sol',
                    'gpt6-astra':'GPT-6-Astra', 'deepseek-v41':'DeepSeek-V4.1-Flash'}
+    single_case_scores = {}
     for model, label in model_names.items():
         for track, pattern in (
             ('text', f'robojudge_{model}_text_gpu_smoke*/summary.json'),
@@ -314,10 +365,22 @@ def main():
                 scope = 'shared50 完整均分' if record.get('complete_shared50') else '单例/部分 smoke；不是 shared50 均分'
                 case_ids = ', '.join(str(item['case_id']) for item in record.get('items', [])
                                      if 'case_id' in item)
+                if record['valid_paired_count']==1 and case_ids=='common50_0001':
+                    single_case_scores[(model,track)] = values
                 body += (f'<tr><td>RoboJudge · {html.escape(label)} / {track}</td><td>原始 9B judge 已评分</td>'
                          f'<td>{scope}；n={record["valid_paired_count"]}；'
                          f'PA {values["PA"]:.2f} / IA {values["IA"]:.2f}（1–5）'
                          f'<br>Cases：{html.escape(case_ids)}</td></tr>')
+    if single_case_scores:
+        summary = '<h3>RoboJudge · 同一示例的评分</h3><p class=desc>common50_0001 · 原始 9B judge · 单例 smoke，非 shared50 全量均分。</p><div class=scroll><table class=matrix><tr><th>模型</th><th>Text · PA / IA</th><th>Vision-Agent · PA / IA</th></tr>'
+        for model,label in model_names.items():
+            summary += f'<tr><th>{html.escape(label)}</th>'
+            for track in ('text','vision-agent'):
+                value = single_case_scores.get((model,track))
+                summary += f'<td>{value["PA"]:.0f} / {value["IA"]:.0f}</td>' if value else '<td class=muted>—</td>'
+            summary += '</tr>'
+        summary += '</table></div>'
+        body = body.replace('<h2 id=evaluation>评分与评测状态</h2>', '<h2 id=evaluation>评分与评测状态</h2>'+summary)
     worldscore = root/'evaluation/worldscore_scheduler.json'
     if worldscore.exists():
         record = json.loads(worldscore.read_text())
@@ -372,7 +435,7 @@ def main():
                 '<p>三个独立生成片段顺序衔接；八项原始函数已运行。单例结果不合成全量Total。</p>'
                 '<p><a href="worldscore_case80_512_complete/index.html">▶ 完整RGB播放与逐段trace</a></p>'+content+'</table>'))
             body += '<tr><td>WorldScore512逐指标</td><td>原始数值与范围明确</td><td><a href="worldscore_512_metrics.html">查看原始八项结果 →</a></td></tr>'
-    body += '</table></div><p><a href="protocol.html">主实验参数与 FPS／分辨率消融方案</a> · <a href="baseline_audit.html">baseline 来源与可比较条件</a></p>'
+    body += '</table></div></details><p class=desc><a href="protocol.html">主实验参数与 FPS／分辨率消融方案 →</a> · <a href="baseline_audit.html">公开模型分数与比较条件 →</a></p>'
     cohort_scores = []
     for path in sorted((root/'evaluation').glob('vbench_matrix_*_0872/pixelworld_eval_results.json')):
         provenance = path.parent/'evaluation_provenance.json'
@@ -384,33 +447,46 @@ def main():
             f'<td>{metrics[key][0]:.4f}</td>' for key in
             ('i2v_subject','subject_consistency','motion_smoothness','dynamic_degree','aesthetic_quality','imaging_quality'))+'</tr>')
     if cohort_scores:
-        body += ('<h2>VBench 五样本 smoke 对比</h2><p>同一官方 pair872，每组五个独立完成的会话。只展示适用维度原始均值，不计算全量Total或排行榜排名。</p>'
+        body += ('<details class=report><summary>VBench-I2V · 五样本 smoke 对比</summary><p>同一官方 pair872，每组五个独立完成的会话。只展示适用维度原始均值，不计算全量Total或排行榜排名。</p>'
                  '<div class=scroll><table><tr><th>Model / Track</th><th>I2V subject</th><th>Subject consistency</th>'
                  '<th>Motion smoothness</th><th>Dynamic degree</th><th>Aesthetic</th><th>Imaging</th></tr>'
-                 +''.join(cohort_scores)+'</table></div>')
+                 +''.join(cohort_scores)+'</table></div></details>')
     scheduler = root/'evaluation/vbench_full_scheduler/scheduler.json'
     if scheduler.exists():
         data = json.loads(scheduler.read_text())
-        body += ('<h2>VBench 完整官方评测交接</h2><p>每组齐备1118×5独立有效结果后自动导出并运行原始评测。缺失样本会阻止完整评分。</p>'
+        body += ('<details class=report><summary>VBench-I2V · 完整评测交接</summary><p>每组齐备1118×5独立有效结果后自动导出并运行原始评测。缺失样本会阻止完整评分。</p>'
                  '<div class=scroll><table><tr><th>模型 / Track</th><th>有效样本</th><th>阶段</th><th>完整官方 Total</th></tr>')
         for key, entry in data.get('cohorts', {}).items():
             aggregate = entry.get('aggregate', {})
             total = f'{aggregate["total_score"]:.2f}' if entry.get('official_full_score') and 'total_score' in aggregate else '—'
             body += (f'<tr><td>{html.escape(key)}</td><td>{entry.get("accepted_samples", 0)} / {entry.get("expected_samples", 5590)}</td>'
                      f'<td>{html.escape(entry.get("phase", "未知"))}</td><td>{total}</td></tr>')
-        body += '</table></div>'
+        body += '</table></div></details>'
     if (output/'worldscore_case80_complete/index.html').exists():
         body += '<p><a href="worldscore_case80_complete/index.html">▶ WorldScore Case 80：三段合并完整播放</a></p>'
-    body += '<h2>已调查的公开 baseline</h2><p class=muted>直接引用公开分数；未生成或重评 baseline 视频。</p><div class=scroll><table><tr><th>官方 setting</th><th>模型</th><th>公开分数</th><th>比较条件</th></tr>'
+    body += '<h2>公开模型参考</h2><details class=report><summary>展开已调查的公开 baseline</summary><p>直接引用公开分数；各模型的比较条件单独标注。</p><div class=scroll><table><tr><th>官方 setting</th><th>模型</th><th>公开分数</th><th>比较条件</th></tr>'
     for row in BASELINES:
         body += '<tr>' + ''.join(f'<td>{html.escape(cell)}</td>' for cell in row) + '</tr>'
-    body += ('</table></div><p><a href="https://github.com/SiyuanMaCS/PixelWorld">PixelWorld 代码库</a> · '
+    body += ('</table></div></details><p class=desc><a href="https://github.com/SiyuanMaCS/PixelWorld">PixelWorld 代码库</a> · '
              '<a href="https://github.com/google-deepmind/physics-IQ-benchmark#physics-iq-verified-leaderboard">Physics-IQ 官方榜</a> · '
              '<a href="https://huggingface.co/spaces/Vchitect/VBench_Leaderboard">VBench 官方榜</a></p>')
     latest = max((r["latest"] for r in good), default="")
     body += f'<p class=muted>最近一条运行记录：{html.escape(latest)}。生成中间保存历史属于外部记录；不向 agent 提供评测反馈。</p>'
     (output / "index.html").write_text(document("PixelWorld Codex smoke", body))
     (output / "status.json").write_text(json.dumps({"runs": rows, "latest_run": latest}, indent=2))
+    # These merged sequence pages are built separately from per-case exports.
+    # Retheme their existing player and links without changing pixel artifacts.
+    for name in ('worldscore_case80_complete','worldscore_case80_512_complete'):
+        page = output/name/'index.html'
+        if not page.is_file():
+            continue
+        saved = page.read_text()
+        if saved.split('<style>',1)[-1].split('</style>',1)[0] == CSS:
+            continue
+        if '<main>' in saved:
+            content = saved.split('<main>',1)[1].split('</main>',1)[0].split('<footer>',1)[0]
+            title = html.unescape(saved.split('<title>',1)[1].split('</title>',1)[0])
+            page.write_text(document(title,content,depth=1))
     print(json.dumps({"runs": len(rows), "complete": sum(r["status"] == "complete" for r in rows),
                       "playable": sum(r.get("playable", False) for r in rows), "output": str(output)}))
 
