@@ -624,12 +624,28 @@ def main() -> None:
 
     args.status.parent.mkdir(parents=True, exist_ok=True)
     lock_path = args.status.with_suffix(".lock")
-    with lock_path.open("w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        iteration = 0
-        while True:
-            started = time.time()
-            try:
+    iteration = 0
+    while True:
+        started = time.time()
+        try:
+            with lock_path.open("w") as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    payload = {
+                        "status": "skipped_lock_busy",
+                        "iteration": iteration,
+                        "updated_unix": time.time(),
+                        "duration_seconds": time.time() - started,
+                        "interval_seconds": args.interval,
+                        "next_iteration_unix": None if args.once else time.time() + args.interval,
+                    }
+                    print(json.dumps(payload, ensure_ascii=False), flush=True)
+                    if args.once:
+                        break
+                    iteration += 1
+                    time.sleep(args.interval)
+                    continue
                 result = sync_once(
                     args.run_root.resolve(),
                     args.heavy_web.resolve(),
@@ -645,22 +661,23 @@ def main() -> None:
                     "next_iteration_unix": None if args.once else time.time() + args.interval,
                     **result,
                 }
-            except Exception as exc:  # Keep the watcher alive; make failures inspectable.
-                payload = {
-                    "status": "error",
-                    "iteration": iteration,
-                    "updated_unix": time.time(),
-                    "duration_seconds": time.time() - started,
-                    "interval_seconds": args.interval,
-                    "next_iteration_unix": None if args.once else time.time() + args.interval,
-                    "error": str(exc),
-                }
+                args.status.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
+        except Exception as exc:  # Keep the watcher alive; make failures inspectable.
+            payload = {
+                "status": "error",
+                "iteration": iteration,
+                "updated_unix": time.time(),
+                "duration_seconds": time.time() - started,
+                "interval_seconds": args.interval,
+                "next_iteration_unix": None if args.once else time.time() + args.interval,
+                "error": str(exc),
+            }
             args.status.write_text(json.dumps(payload, indent=2, ensure_ascii=False))
-            print(json.dumps(payload, ensure_ascii=False), flush=True)
-            if args.once:
-                break
-            iteration += 1
-            time.sleep(args.interval)
+        print(json.dumps(payload, ensure_ascii=False), flush=True)
+        if args.once:
+            break
+        iteration += 1
+        time.sleep(args.interval)
 
 
 if __name__ == "__main__":
