@@ -8,7 +8,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from tools.build_bench_review import document, player, export_pixels
+from tools.build_bench_review import document, player, export_pixels, build_case
 
 MODELS={'gpt61-sol':'GPT-6.1-Sol','gpt56-sol':'GPT-5.6-Sol',
         'gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash'}
@@ -85,6 +85,7 @@ def build(run,web):
             body+='<div class=robo-videos>'
             for model,track,(path,manifest) in entries:
                 folder=path.name;relative=f'{STUDY}/robojudge/{model}/{track}/{folder}'
+                build_case(path,web/relative)
                 asset=web/relative/'final';spec=read(path/'media_contract.json')
                 video=export_pixels(path/'workspace',asset,spec)
                 body+=f'<article class=card><h3>{MODELS[model]}</h3><p><span class=badge>{track}</span> <span class=pill>{manifest["status"]}</span></p>'
