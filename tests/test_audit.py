@@ -105,6 +105,38 @@ def test_python_division_is_not_an_absolute_file_access(tmp_path):
     assert outside_command_paths('cat /3/26',tmp_path)==['/3/26']
 
 
+def test_python_file_heredoc_tuple_division_preserves_literal_path_checks(tmp_path):
+    import shlex
+    script="cat > generate.py <<'PY'\ncenter=(x+w//2,y+h//2)\nopen('/other/case/input.png').read()\nPY\npython generate.py"
+    assert outside_command_paths('/bin/bash -lc '+shlex.quote(script),tmp_path)==['/other/case/input.png']
+    literal="cat > generate.py <<'PY'\nopen('/2,y+h//2').read()\nPY"
+    assert outside_command_paths(literal,tmp_path)==['/2,y+h//2']
+
+
+def test_failed_opencv_writer_does_not_imply_outside_input_read(tmp_path):
+    path='/tmp/pixelworld_codec_audit_nonexistent_6139.mp4'
+    command=f"python - <<'PY'\nimport cv2\np={path!r}\nw=cv2.VideoWriter(p,0,16,(256,144))\nprint('opened',w.isOpened())\nif w.isOpened():\n c=cv2.VideoCapture(p)\nPY"
+    item={'command':command,'exit_code':0,'aggregated_output':'opened False\n'}
+    assert failed_scratch_path(path,item)
+    # An unguarded reader or a fabricated print is not evidence of failed I/O.
+    assert not failed_scratch_path(path,{**item,'command':command.replace(' c=cv2.VideoCapture(p)',' pass\nc=cv2.VideoCapture(p)')})
+    assert not failed_scratch_path(path,{**item,'command':command.replace("print('opened',w.isOpened())","print('opened False')")})
+    existing=tmp_path/'existing.mp4';existing.write_text('unscored fixture')
+    assert not failed_scratch_path(str(existing),{**item,'command':command.replace(path,str(existing))})
+
+
+def test_empty_or_unexecuted_imageio_probe_preserves_real_read_boundary():
+    path='/tmp/pixelworld_empty_writer_audit_nonexistent_6139.gif'
+    command=f"python - <<'PY'\nimport imageio.v2 as imageio,os\nw=imageio.get_writer({path!r},mode='I')\nw.close()\nprint(os.path.getsize({path!r}))\nPY"
+    item={'command':command,'exit_code':0,'aggregated_output':f"FileNotFoundError [Errno 2] No such file or directory: {path!r}\n"}
+    assert failed_scratch_path(path,item)
+    assert not failed_scratch_path(path,{**item,'command':command.replace('w.close()','w.append_data(frame)\nw.close()')})
+    assert not failed_scratch_path(path,{**item,'command':command.replace('w.close()','open('+repr(path)+',"rb").read()\nw.close()')})
+    before=f"python - <<'PY'\nimport imageio\nprint(imageio.config.plugins['FFMPEG'])\ntry:\n print(imageio.get_writer({path!r},mode='I'))\nexcept Exception:pass\nPY"
+    error='Traceback (most recent call last):\n  File "<stdin>", line 2, in <module>\nTypeError: module object is not subscriptable\n'
+    assert failed_scratch_path(path,{'command':before,'exit_code':1,'aggregated_output':error})
+
+
 def test_shell_wrapped_python_floor_division_does_not_hide_real_file_paths(tmp_path):
     import shlex
     script = "python - <<'PY'\na = 123/3//23\nprint(a)\nPY"

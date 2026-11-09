@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import ast
 import io
 import json
 import re
@@ -104,28 +105,41 @@ def _tool_name(item: dict) -> str:
     return " ".join(str(value) for value in values if value).lower()
 
 
-def outside_command_paths(command: str, workspace: Path) -> list[str]:
-    # Codex logs shell invocations as /bin/bash -lc "<actual script>".
-    # Unwrap the script before identifying Python heredoc arithmetic; otherwise
-    # the first header is not at line start and division is treated as a path.
+def _unwrap_shell(command: str) -> str:
     try:
         argv = shlex.split(command)
         if (len(argv) == 3 and Path(argv[0]).name in {"bash", "sh", "zsh"}
                 and argv[1] in {"-c", "-lc", "-cl"}):
-            command = argv[2]
+            return argv[2]
     except ValueError:
         pass
+    return command
+
+
+def _python_sections(command: str, include_written: bool = False):
+    executable = r"python(?:3)?\s+-"
+    written = r"cat\s*>\s*(?:'[^'\n]+\.py'|\"[^\"\n]+\.py\"|[^\s<>;'\"]+\.py)"
+    prefix = f"(?:{executable}|{written})" if include_written else executable
+    pattern = rf"(?m)^{prefix}\s+<<\s*['\"]?(?P<tag>[A-Za-z_]\w*)['\"]?\s*\n"
+    for header in re.finditer(pattern, command):
+        tail = command[header.end():]
+        end = re.search(r'(?m)^'+re.escape(header.group('tag'))+r'\s*$',tail)
+        if end:
+            yield header.end(), tail[:end.start()]
+
+
+def outside_command_paths(command: str, workspace: Path) -> list[str]:
+    # Codex logs shell invocations as /bin/bash -lc "<actual script>".
+    # Unwrap the script before identifying Python heredoc arithmetic; otherwise
+    # the first header is not at line start and division is treated as a path.
+    command = _unwrap_shell(command)
     values = []
     workspace_value = str(workspace.resolve()) + "/"
     divisions = set()
     # A slash in an actual Python division expression is not a file path.
     # Restrict lexical parsing to Python heredoc bodies; shell paths and
     # quoted Python filenames remain subject to the original checks.
-    for header in re.finditer(r"(?m)^python(?:3)?\s+-\s+<<\s*['\"]?(?P<tag>[A-Za-z_]\w*)['\"]?\s*\n", command):
-        tail=command[header.end():]
-        end=re.search(r'(?m)^'+re.escape(header.group('tag'))+r'\s*$',tail)
-        if not end:continue
-        body=tail[:end.start()]
+    for body_start, body in _python_sections(command, include_written=True):
         offsets=[0]
         for line in body.splitlines(keepends=True):offsets.append(offsets[-1]+len(line))
         try:
@@ -133,7 +147,7 @@ def outside_command_paths(command: str, workspace: Path) -> list[str]:
         except (tokenize.TokenError,IndentationError):continue
         for token in tokens:
             if token.type == tokenize.OP and token.string in {"/", "//"}:
-                start = header.end() + offsets[token.start[0]-1] + token.start[1]
+                start = body_start + offsets[token.start[0]-1] + token.start[1]
                 divisions.update(range(start, start + len(token.string)))
     for match in ABSOLUTE_PATH_PATTERN.finditer(command):
         if match.start() in divisions:continue
@@ -183,10 +197,72 @@ def failed_scratch_path(path: str, item: dict) -> bool:
     # It must be a creation/redirection target, not an attempted lookup of an
     # outside input. A missing Python file alone is insufficient evidence.
     command = str(item.get('command',''))
-    if not re.search(r'>\s*[\"\x27]?' + re.escape(path) + r'[\"\x27]?(?=\s|$|[;&|])', command):
-        return False
     lines = str(item.get('aggregated_output', '')).splitlines()
-    return any(path in line and 'Read-only file system' in line for line in lines)
+    if (re.search(r'>\s*[\"\x27]?' + re.escape(path) + r'[\"\x27]?(?=\s|$|[;&|])', command)
+            and any(path in line and 'Read-only file system' in line for line in lines)):
+        return True
+    return _failed_python_scratch(path, item)
+
+
+def _failed_python_scratch(path: str, item: dict) -> bool:
+    """Recognize narrow, evidenced failed codec probes, not arbitrary Python I/O."""
+    output = str(item.get('aggregated_output', ''))
+    for _, body in _python_sections(_unwrap_shell(str(item.get('command', '')))):
+        try:
+            tree = ast.parse(body)
+        except SyntaxError:
+            continue
+        bindings = {}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                bindings.setdefault(node.targets[0].id, []).append(node.value)
+        def target(node):
+            if isinstance(node, ast.Constant): return node.value == path
+            if isinstance(node, ast.Name) and len(bindings.get(node.id, [])) == 1:
+                value = bindings[node.id][0]
+                return isinstance(value, ast.Constant) and value.value == path
+            return False
+        writes = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and n.args and target(n.args[0])
+                  and isinstance(n.func, ast.Attribute) and n.func.attr in ('VideoWriter', 'get_writer')]
+        if len(writes) != 1:
+            continue
+        write = writes[0]
+        # A traceback before the sole later path expression proves it never ran.
+        trace_lines = re.findall(r'File "<stdin>", line (\d+)', output)
+        if item.get('exit_code') not in (None, 0) and trace_lines and int(trace_lines[-1]) < write.lineno:
+            earlier = [n for n in ast.walk(tree) if isinstance(n, ast.Call) and n.args
+                       and target(n.args[0]) and n.lineno <= int(trace_lines[-1])]
+            if not earlier:
+                return True
+        writer = next((name for name, values in bindings.items() if len(values) == 1 and values[0] is write), None)
+        def is_opened(node):
+            return (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)
+                    and node.func.attr == 'isOpened' and isinstance(node.func.value, ast.Name)
+                    and node.func.value.id == writer)
+        printed_false = any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name) and n.func.id == 'print'
+                            and len(n.args) == 2 and isinstance(n.args[0], ast.Constant)
+                            and n.args[0].value == 'opened' and is_opened(n.args[1]) for n in ast.walk(tree))
+        opened_false = write.func.attr == 'VideoWriter' and printed_false and 'opened False' in output.splitlines()
+        inactive = {id(n) for branch in ast.walk(tree) if isinstance(branch, ast.If) and opened_false and is_opened(branch.test)
+                    for statement in branch.body for n in ast.walk(statement)}
+        active = [n for n in ast.walk(tree) if id(n) not in inactive]
+        # Existing input reads remain blocked. A codec read under the proven
+        # false isOpened branch is unexecuted; other target uses are conservative.
+        unsafe = [n for n in active if isinstance(n, ast.Call) and n.args and target(n.args[0])
+                  and n is not write and not (isinstance(n.func, ast.Name) and n.func.id == 'print')
+                  and not (isinstance(n.func, ast.Attribute) and n.func.attr == 'getsize')]
+        if unsafe:
+            continue
+        if opened_false:
+            return True
+        missing = any(path in line and 'No such file or directory' in line for line in output.splitlines())
+        # Empty ImageIO writers create no file. Do not waive a writer that
+        # actually received frames or deleted a previously created output.
+        mutates = any(isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                      and n.func.attr in ('append_data','write','unlink','remove','rename','replace') for n in active)
+        if write.func.attr == 'get_writer' and missing and not mutates:
+            return True
+    return False
 
 
 def validate(workspace: Path, events_path: Path, exit_status: int, track: str,
