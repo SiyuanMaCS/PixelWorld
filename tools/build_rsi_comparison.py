@@ -1,6 +1,7 @@
 """Render the observed RSI pair without claiming an unevaluated quality gain."""
 from pathlib import Path
 import argparse,json,sys
+import datetime as dt
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from tools.build_bench_review import document,player,build_case,export_pixels
 
@@ -15,6 +16,16 @@ def quality(run,label):
             if len(items)==1 and not report.get('parse_failures') and not report.get('prediction_failures'):
                 return f'{items[0]["PA"]} / {items[0]["IA"]}'
     return '待原版9B评分'
+
+def observed_cost(path):
+    m=json.loads((path/'run_manifest.json').read_text())
+    snapshots=[json.loads(p.read_text()) for p in (path/'trace').glob('round_*/snapshot.json')]
+    snapshots=[s for s in snapshots if s.get('required_output_files_complete')]
+    first=min((dt.datetime.fromisoformat(s['utc']) for s in snapshots),default=None)
+    start=dt.datetime.fromisoformat(m['started_utc'])
+    return {'first_saved_seconds':(first-start).total_seconds() if first else None,
+            'wall_seconds':m.get('duration_seconds'),'output_tokens':m.get('token_usage',{}).get('output_tokens'),
+            'distinct_rgb_candidates':len({s.get('canonical_rgb_sha256') for s in snapshots if s.get('canonical_rgb_sha256')})}
 
 def build(run,web):
     report=json.loads((run/'analysis/rsi_v1_pair.json').read_text())
@@ -56,6 +67,24 @@ def build(run,web):
             if video:body+=player({**video,'pixels':f'rsi_assets/{asset_key}/final/'+video['pixels_file'],'poster':f'rsi_assets/{asset_key}/final/poster.png'})
             body+=f'<p><a href="rsi_assets/{asset_key}/index.html">每轮候选播放、检查图与工具轨迹 →</a></p></article>'
         body+='</div><p><a href="https://github.com/SiyuanMaCS/PixelWorld/tree/main/research/rsi_v2">RSI v2任务提示与设计说明 →</a></p>'
+    probe=run/'rsi_v3_started.json'
+    if probe.exists():
+        state=json.loads(probe.read_text());path=Path(state['run']);m=json.loads((path/'run_manifest.json').read_text()) if (path/'run_manifest.json').exists() else {}
+        body+='<h2>RSI v3 · 从首帧可见姿态继续</h2><p class=muted>GPT-6.1-Sol / Vision-Agent · RoboJudge common50_0003 · 第三个独立开发样本。</p>'
+        body+=f'<div class=box><p>当前状态：{m.get("status","initializing")}。减少未观测几何假设，同时保留自主生成、检查和修订。首次候选和最终结果均保留。</p></div>'
+        control=run/'generations/robojudge/gpt61-sol/vision-agent/case_common50_0003_attempt_01'
+        body+='<div class=video-grid>'
+        for key,source,label in [('native_v3',control,'Baseline · 原生自主生成'),('rsi_v3',path,'RSI v3 · 首帧姿态提示')]:
+            if not (source/'run_manifest.json').exists():continue
+            out=web/'rsi_assets'/key;build_case(source,out);page=out/'index.html';page.write_text(page.read_text().replace('../../../../../index.html','../../index.html').replace('../../../../index.html','../../index.html'))
+            spec=json.loads((source/'media_contract.json').read_text());video=export_pixels(source/'workspace',out/'final',spec)
+            body+=f'<article class=card><h3>{label}</h3>'
+            if video:body+=player({**video,'pixels':f'rsi_assets/{key}/final/'+video['pixels_file'],'poster':f'rsi_assets/{key}/final/poster.png'})
+            cost=observed_cost(source)
+            body+=f'<p>已记录不同RGB候选：{cost["distinct_rgb_candidates"]}；PA / IA：{quality(run,key)}</p>'
+            if cost['output_tokens'] is not None:body+=f'<p>输出tokens：{cost["output_tokens"]}；最终墙钟：{cost["wall_seconds"]:.1f}秒</p>'
+            body+=f'<p><a href="rsi_assets/{key}/index.html">候选、检查图与工具轨迹 →</a></p></article>'
+        body+='</div><p><a href="https://github.com/SiyuanMaCS/PixelWorld/tree/main/research/rsi_v3">RSI v3任务提示与实验设计 →</a></p>'
     body+='<p class=note>PA与IA是原版RoboJudge-9B对本开发样本的1–5评分，不是完整shared50均值，也不是排行榜分数。评测结果不进入任何baseline生成上下文。</p>'
     page=document('RSI development comparison · PixelWorld',body).replace('href="../index.html"','href="index.html"').replace('href="protocol.html"','href="bench_smoke_codex_20261109/protocol.html"')
     (web/'rsi_comparison.html').write_text(page)
