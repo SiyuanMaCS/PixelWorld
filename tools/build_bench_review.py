@@ -233,9 +233,14 @@ def main():
                          "error": type(error).__name__})
     good = [r for r in rows if "model_key" in r]
     model_names = {'gpt61-sol':'GPT-6.1-Sol', 'gpt56-sol':'GPT-5.6-Sol',
-                   'gpt6-astra':'GPT-6-Astra', 'deepseek-v41':'DeepSeek-V4.1-Flash'}
+                   'gpt6-astra':'GPT-6-Astra', 'deepseek-v41':'DeepSeek-V4.1-Flash',
+                   'seed21-pro':'Seed-2.1-Pro-0915'}
     bench_names = {'physics_iq':'Physics-IQ', 'vbench_i2v':'VBench-I2V · VBench++',
-                   'robojudge':'RoboJudge', 'worldarena':'WorldArena', 'worldscore':'WorldScore', 'wbench':'WBench'}
+                   'robojudge':'RoboJudge', 'worldarena':'WorldArena', 'worldscore':'WorldScore', 'wbench':'WBench',
+                   'vbench2_subset_full':'VBench-2.0 subset · full',
+                   'vbench2_subset_smoke':'VBench-2.0 subset · smoke',
+                   'phygenbench_full':'PhyGenBench · full',
+                   'phygenbench_smoke':'PhyGenBench · smoke'}
     unique = {}
     for row in good:
         key = (row['benchmark'], row['model_key'], row['track'], row['case_id'])
@@ -279,9 +284,13 @@ def main():
     body += '</div>'
     for i,benchmark in enumerate(benchmarks):
         body += f'<section class=benchmark-panel id="panel-{benchmark}"{ " hidden" if i else ""}><h3>{html.escape(bench_names.get(benchmark,benchmark))}</h3><div class=scroll><table class=matrix><tr><th>模型</th><th>Text</th><th>Vision-Agent</th></tr>'
-        models = ["gpt61-sol", "gpt56-sol", "gpt6-astra", "deepseek-v41"]
+        preferred_models = ["gpt61-sol", "gpt56-sol", "gpt6-astra", "deepseek-v41", "seed21-pro"]
+        present_models = sorted({r["model_key"] for r in good if r["benchmark"] == benchmark})
+        models = [model for model in preferred_models if model in present_models]
+        models += [model for model in present_models if model not in models]
         for model in models:
-            body += f'<tr><th>{model_names[model]}</th>'
+            label = model_names.get(model, model)
+            body += f'<tr><th>{html.escape(label)}</th>'
             for track in ("text", "vision-agent"):
                 entries = [r for r in good if (r["benchmark"], r["model_key"], r["track"]) == (benchmark, model, track)]
                 cell = "本轮尚未启动"
@@ -307,9 +316,9 @@ def main():
                         cards.append(f'<article class=sample><a href="{case_dir}/index.html">{picture}<div class=sample-body><span class=pill>{entry["status"]}</span><h3>{entry["case_id"]} ↗</h3><p>{entry["candidates"]} 保存候选 · {entry["output_tokens"] if entry["output_tokens"] is not None else "—"} 输出 tokens</p></div></a>{history}</article>')
                     gallery = output / benchmark / model / track / 'index.html'
                     gallery.parent.mkdir(parents=True, exist_ok=True)
-                    gallery.write_text(document(f'{model_names[model]} / {track}',
+                    gallery.write_text(document(f'{label} / {track}',
                         '<a class=back href="../../../index.html#models">← 模型对照</a>'
-                        f'<h1>{bench_names.get(benchmark,benchmark)} · {model_names[model]}</h1><div class=case-meta><span class=badge>{track}</span><span class=pill>{completed} 有效交付</span><span class=pill>{len(cases)} 个任务已有记录</span></div><p class=desc>点击样本查看视频、逐轮候选和实际工具记录。</p><div class=video-grid>'
+                        f'<h1>{bench_names.get(benchmark,benchmark)} · {label}</h1><div class=case-meta><span class=badge>{track}</span><span class=pill>{completed} 有效交付</span><span class=pill>{len(cases)} 个任务已有记录</span></div><p class=desc>点击样本查看视频、逐轮候选和实际工具记录。</p><div class=video-grid>'
                         + ''.join(cards) + '</div>',depth=3))
                 elif benchmark == 'physics_iq' and model in ('gpt61-sol', 'gpt56-sol'):
                     slug = 'gpt-6-1' if model == 'gpt61-sol' else 'gpt-5-6'

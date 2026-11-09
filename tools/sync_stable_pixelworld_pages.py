@@ -28,6 +28,8 @@ TARGETS = (
     "pixelworld/matrix_full.html",
     "pixelworld/vbench2_subset.html",
     "pixelworld/phygenbench.html",
+    "pixelworld/vbench2_subset_full",
+    "pixelworld/phygenbench_full",
     "pixelworld/robojudge_assets",
 )
 
@@ -88,7 +90,7 @@ def group_rows(status: dict, heavy_slug: str) -> str:
         total = sum(counts.values())
         model = group.get("model", group.get("model_key", key.split("/")[0]))
         track = group.get("track", key.split("/")[-1])
-        link = f'{HEAVY_BASE}bench_smoke_codex_20261109/{heavy_slug}/{group.get("model_key", key.split("/")[0])}/{track}/index.html'
+        link = f'{heavy_slug}/{group.get("model_key", key.split("/")[0])}/{track}/index.html'
         rows.append(
             "<tr>"
             f"<td>{html.escape(str(model))}<br><span class=status>{html.escape(track)}</span></td>"
@@ -101,6 +103,69 @@ def group_rows(status: dict, heavy_slug: str) -> str:
             "</tr>"
         )
     return "".join(rows)
+
+
+def write_full_galleries(run_root: Path, pixelworld: Path, benchmark: str, title: str) -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    sys.path.insert(0, str(repo_root))
+    from tools.build_bench_review import build_case, document  # Imported lazily to avoid side effects during help output.
+
+    source = run_root / "generations" / benchmark
+    target = pixelworld / benchmark
+    target.mkdir(parents=True, exist_ok=True)
+    model_labels = {"gpt56-sol": "GPT-5.6-Sol"}
+    track_dirs = []
+    for model_dir in sorted([p for p in source.iterdir() if p.is_dir() and not p.name.startswith("_")]) if source.exists() else []:
+        for track_dir in sorted([p for p in model_dir.iterdir() if p.is_dir()]):
+            entries = []
+            for manifest_path in sorted(track_dir.glob("case_*_attempt_*/run_manifest.json")):
+                manifest = read_json(manifest_path)
+                if not manifest:
+                    continue
+                run = manifest_path.parent
+                case_dir = target / model_dir.name / track_dir.name / run.name
+                if manifest.get("status") == "complete" and manifest.get("validation", {}).get("pass") is True:
+                    build_case(run, case_dir)
+                entries.append((manifest, run.name))
+            gallery = target / model_dir.name / track_dir.name / "index.html"
+            gallery.parent.mkdir(parents=True, exist_ok=True)
+            cards = []
+            for manifest, run_name in entries:
+                case_id = manifest.get("case_id", run_name)
+                status = manifest.get("status", "unknown")
+                usage = manifest.get("token_usage") or {}
+                tokens = usage.get("output_tokens")
+                poster = Path(run_name) / "final/poster.png"
+                if (gallery.parent / poster).exists():
+                    preview = f'<img loading=lazy src="{poster.as_posix()}" alt="{html.escape(case_id)}">'
+                else:
+                    preview = '<div class=placeholder>尚无可播放结果</div>'
+                cards.append(
+                    f'<article class=sample><a href="{run_name}/index.html">{preview}'
+                    f'<div class=sample-body><span class=pill>{html.escape(status)}</span>'
+                    f'<h3>{html.escape(case_id)} ↗</h3>'
+                    f'<p>{tokens if tokens is not None else "—"} output tokens</p></div></a></article>'
+                )
+            complete = sum(1 for manifest, _ in entries if manifest.get("status") == "complete")
+            model_label = model_labels.get(model_dir.name, model_dir.name)
+            body = (
+                '<a class=back href="../../../index.html#benchmarks">← PixelWorld Index</a>'
+                f'<h1>{html.escape(title)} · {html.escape(model_label)}</h1>'
+                f'<div class=case-meta><span class=badge>{html.escape(track_dir.name)}</span>'
+                f'<span class=pill>{complete} complete</span><span class=pill>{len(entries)} records</span></div>'
+                '<p class=desc>点击样本查看视频、逐轮候选和实际工具记录。失败/运行中的样本保留状态但不计入有效结果。</p>'
+                '<div class=video-grid>' + "".join(cards) + "</div>"
+            )
+            gallery.write_text(document(f"{title} / {track_dir.name}", body, depth=3))
+            track_dirs.append(str(gallery.relative_to(pixelworld)))
+    index_body = (
+        '<a class=back href="../index.html#benchmarks">← PixelWorld Index</a>'
+        f'<h1>{html.escape(title)} · generated galleries</h1>'
+        '<div class=scroll><table><tr><th>Gallery</th></tr>'
+        + "".join(f'<tr><td><a href="{html.escape(path)}">{html.escape(path)}</a></td></tr>' for path in track_dirs)
+        + "</table></div>"
+    )
+    (target / "index.html").write_text(document(f"{title} galleries", index_body, depth=1))
 
 
 def status_facts(status: dict) -> str:
@@ -254,6 +319,8 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path) -> dict:
     write_legacy_page(pixelworld / "matrix_full.html")
     write_vbench_page(run_root, pixelworld / "vbench2_subset.html")
     write_phygen_page(run_root, pixelworld / "phygenbench.html")
+    write_full_galleries(run_root, pixelworld, "vbench2_subset_full", "VBench-2.0 subset · full")
+    write_full_galleries(run_root, pixelworld, "phygenbench_full", "PhyGenBench · full")
 
     assets_src = heavy_web / "robojudge_assets"
     assets_dst = pixelworld / "robojudge_assets"
