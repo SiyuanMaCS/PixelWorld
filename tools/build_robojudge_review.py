@@ -24,6 +24,7 @@ def build(run,web):
     cases=sorted(p.name for p in inputs.iterdir() if (p/'first_frame.png').is_file())
     if len(cases)!=50:raise ValueError('RoboJudge page requires the actual complete50 input inventory')
     output=web/'robojudge_assets';output.mkdir(exist_ok=True)
+    progress=read(generation/'status.json');groups=progress.get('groups',{})
     records={};scores={}
     for model in MODELS:
         for track in TRACKS:
@@ -48,7 +49,7 @@ def build(run,web):
           '<p class=muted>共享50个操作任务，比较不同模型的像素视频生成、物理合理性和指令遵循。</p>'
           '<div class=experiment-grid><article class="card feature"><span class=badge>主实验 · Shared50</span><h3>模型与输入条件对照</h3>'
           '<div class=facts><div><strong>50</strong>共享任务</div><div><strong>4</strong>模型</div><div><strong>2</strong>Tracks</div></div>'
-          '<p class=desc>当前展示已经完成的单例 smoke。完整50任务生成与正式均分尚未完成。</p></article>'
+          '<p class=desc>完整50任务的后台队列已启动。这里显示已生成视频和既有单例评分，完整均分仍等待到齐。</p></article>'
           '<article class=card><span class=pill>原始 RoboJudge-9B</span><h3 style="margin-top:14px">两项评分</h3>'
           '<p class=desc>PA：物理合理性。IA：指令遵循。评分范围1–5。只有实际有效视频才显示已有评分。</p>'
           '<p class=tiny>新预算为累计100k输出token；已有50k阶段记录保留。Table8的prompt与聚合口径仍在核对。</p></article></div>'
@@ -60,7 +61,11 @@ def build(run,web):
             valid=sum(m.get('status')=='complete' and m.get('validation',{}).get('pass') for _,m in entries)
             value=scores.get((model,track,'common50_0001'))
             score=f'单例 PA {value["PA"]} / IA {value["IA"]}' if value else '单例评分 —'
-            body+=(f'<td><strong>{valid} /50 有效视频</strong><span class=status>{len(entries)} 个任务有运行记录 · {score}</span>'
+            group=groups.get(model+'/'+track,{});counts=group.get('counts',{})
+            latest=group.get('latest_completion') or ['—','—']
+            run_count=counts.get('running',0);fail_count=counts.get('exhausted',0)
+            body+=(f'<td><strong>{valid} /50 有效视频</strong><span class=status>{run_count} 运行中 · {fail_count} 终止 · {score}</span>'
+                   f'<span class=status>最近完成 UTC：{html.escape(str(latest[0]))}<br>{html.escape(str(latest[1]))}</span>'
                    f'<a href="{STUDY}/robojudge/{model}/{track}/index.html">打开此组视频与 Trace →</a></td>')
         body+='</tr>'
     body+=('</table></div><p class=note>当前这些单例分数不是shared50均分。正式对榜需要完整任务和一致的prompt、采样及聚合口径。</p>'
