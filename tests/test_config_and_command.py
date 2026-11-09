@@ -1,5 +1,9 @@
 import json
 from pathlib import Path
+import os
+import subprocess
+import sys
+import time
 
 from pixelworld.config import load_config
 from pixelworld.runner import codex_command
@@ -130,3 +134,37 @@ def test_failed_case_does_not_cancel_unrelated_pending_cases(tmp_path, monkeypat
     assert launched == ['good']
     final = json.loads((config.runs_root / 'status.json').read_text())
     assert final['totals'] == {'exhausted': 1, 'complete': 1}
+
+
+def test_pid_alive_treats_zombie_as_dead(tmp_path):
+    import pytest
+    from pixelworld import supervisor
+    if not Path('/proc').exists() or not hasattr(os, 'fork'):
+        pytest.skip('requires Linux /proc and fork')
+    script = (
+        "import os,time\n"
+        "pid=os.fork()\n"
+        "if pid==0: os._exit(0)\n"
+        "print(pid, flush=True)\n"
+        "time.sleep(10)\n"
+        "os.waitpid(pid, 0)\n"
+    )
+    proc = subprocess.Popen([sys.executable, '-c', script],
+                            stdout=subprocess.PIPE, text=True)
+    try:
+        assert proc.stdout is not None
+        child_pid = int(proc.stdout.readline().strip())
+        stat_path = Path('/proc') / str(child_pid) / 'stat'
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            if stat_path.exists() and stat_path.read_text().rsplit(') ', 1)[1].split()[0] == 'Z':
+                break
+            time.sleep(0.05)
+        else:
+            pytest.skip('could not observe zombie state')
+        pid_file = tmp_path / 'supervisor.pid'
+        pid_file.write_text(f'{child_pid}\n')
+        assert supervisor._pid_alive(pid_file) is False
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)

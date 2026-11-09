@@ -34,7 +34,19 @@ def configurations(config: Benchmark) -> list[tuple[Model, str]]:
 
 def _pid_alive(path: Path) -> bool:
     try:
-        os.kill(int(path.read_text().strip()), 0)
+        pid = int(path.read_text().strip())
+        os.kill(pid, 0)
+        proc = Path("/proc")
+        if proc.exists():
+            try:
+                stat = (proc / str(pid) / "stat").read_text()
+            except FileNotFoundError:
+                return False
+            except OSError:
+                return True
+            state = stat.rsplit(") ", 1)[1].split()[0]
+            if state == "Z":
+                return False
         return True
     except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
         return False
