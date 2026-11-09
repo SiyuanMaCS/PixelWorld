@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import fcntl
+import hashlib
 import html
 import json
 import re
@@ -328,6 +329,28 @@ def evaluation_scheduler_table(path: Path) -> str:
     )
 
 
+def case_page_is_current(run: Path, case_dir: Path) -> bool:
+    workspace = run / "workspace"
+    pixels = workspace / "pixels.npz"
+    receipt = case_dir / "final" / "export_receipt.json"
+    index = case_dir / "index.html"
+    poster = case_dir / "final" / "poster.png"
+    if not (pixels.is_file() and receipt.is_file() and index.is_file() and poster.is_file()):
+        return False
+    try:
+        saved = json.loads(receipt.read_text())
+    except (OSError, ValueError):
+        return False
+    expected_hash = saved.get("source_npz_sha256")
+    if not expected_hash:
+        return False
+    try:
+        current_hash = hashlib.sha256(pixels.read_bytes()).hexdigest()
+    except OSError:
+        return False
+    return current_hash == expected_hash
+
+
 def write_full_galleries(run_root: Path, pixelworld: Path, benchmark: str, title: str) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(repo_root))
@@ -349,7 +372,8 @@ def write_full_galleries(run_root: Path, pixelworld: Path, benchmark: str, title
                 case_dir = target / model_dir.name / track_dir.name / run.name
                 playable = manifest.get("status") == "complete" and manifest.get("validation", {}).get("pass") is True
                 if playable:
-                    build_case(run, case_dir)
+                    if not case_page_is_current(run, case_dir):
+                        build_case(run, case_dir)
                 entries.append((manifest, run.name))
             gallery = target / model_dir.name / track_dir.name / "index.html"
             gallery.parent.mkdir(parents=True, exist_ok=True)
