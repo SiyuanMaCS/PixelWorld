@@ -72,6 +72,46 @@ def video_export(path, asset, spec):
 def generation_root(run, model):
     return run/'generations/robojudge_seed21_native_v2' if model=='seed21-pro' else run/'generations/robojudge'
 
+def scheduler_rows(run):
+    rows=[]
+    for title,path in [
+        ('baseline100k',run/'evaluation/robojudge_full_baseline100k/scheduler.json'),
+        ('seed21-native-v2',run/'evaluation/robojudge_seed21_native_v2_full/scheduler.json'),
+    ]:
+        scheduler=read(path)
+        done=scheduler.get('done',{})
+        for key,group in sorted(scheduler.get('groups',{}).items()):
+            counts=group.get('counts',{})
+            phase=done.get(key,{}).get('phase')
+            if not phase:
+                if counts.get('complete',0)==50 and not counts.get('exhausted',0):
+                    phase='ready_or_scoring'
+                else:
+                    phase='waiting_for_generation'
+            running=', '.join(group.get('running_cases') or [])
+            exhausted=', '.join((group.get('exhausted_cases') or [])[:6])
+            note='—'
+            if phase=='existing_incomplete_evaluation_needs_review':
+                note='已有不完整评测目录，需要人工确认后才可重跑；不计作 full score'
+            elif counts.get('exhausted',0):
+                note=f'{counts.get("exhausted",0)} exhausted; full shared50 前不评分'
+            rows.append(
+                '<tr>'
+                f'<td>{html.escape(title)}</td><td>{html.escape(key)}</td>'
+                f'<td>{html.escape(phase)}</td>'
+                f'<td>{counts.get("complete",0)}/50</td>'
+                f'<td>{counts.get("running",0)}</td><td>{counts.get("pending",0)}</td>'
+                f'<td>{html.escape(running) if running else "—"}</td>'
+                f'<td>{html.escape(note)}'
+                + (f'<br><span class=status>exhausted: {html.escape(exhausted)}</span>' if exhausted else '')
+                + '</td></tr>'
+            )
+    if not rows:
+        return '<p class=note>RoboJudge watcher 尚未写入 scheduler 状态。</p>'
+    return ('<div class=scroll><table><tr><th>Scheduler</th><th>Model / Track</th><th>Phase</th>'
+            '<th>Complete</th><th>Running</th><th>Pending</th><th>Running case</th><th>Blocker / Note</th></tr>'
+            + ''.join(rows) + '</table></div>')
+
 def build(run,web):
     inputs=run/'inputs/robojudge';generation=run/'generations/robojudge'
     cases=sorted(p.name for p in inputs.iterdir() if (p/'first_frame.png').is_file())
@@ -135,6 +175,9 @@ def build(run,web):
             body+=stats_cell(completed_stats(generation_root(run,model),model,track))
         body+='</tr>'
     body+=('</table></div>'
+           '<h2 id=watcher>评测 Watcher 状态</h2>'
+           '<p class=desc>完整 shared50 cohort 到齐前只等待；已有不完整评测目录、GPU不可用等情况以 blocker/note 展示，不补假分。</p>'
+           + scheduler_rows(run) +
            '<h2 id=videos>按任务查看视频</h2><label for=case_select class=status>选择共享任务</label> <select id=case_select>')
     selected='common50_0001'
     for case in cases:
