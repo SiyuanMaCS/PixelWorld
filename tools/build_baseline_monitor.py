@@ -2,6 +2,7 @@
 from pathlib import Path
 import argparse,json,html,sys
 import statistics
+import time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from tools.build_bench_review import document
 
@@ -15,6 +16,36 @@ def fmt(value, digits=1):
     if value is None:return '—'
     if isinstance(value, int):return f'{value:,}'
     return f'{value:,.{digits}f}'
+
+def fmt_age(seconds):
+    seconds=max(0,float(seconds))
+    if seconds<60:return f'{seconds:.0f}s'
+    return f'{seconds/60:.1f}m'
+
+def event_status(generation, model, track, case):
+    attempts=sorted((generation/model/track).glob(f'case_{case}_attempt_*/logs/events.jsonl'))
+    if not attempts:return 'event: no log yet'
+    path=max(attempts,key=lambda p:p.stat().st_mtime)
+    age=max(0,time.time()-path.stat().st_mtime)
+    try:lines=path.read_text(errors='ignore').splitlines()
+    except OSError:return 'event: log unreadable'
+    events=[]
+    for line in lines[-12:]:
+        try:events.append(json.loads(line))
+        except ValueError:pass
+    last=events[-1] if events else {}
+    typ=str(last.get('type','unknown'));msg=str(last.get('message',''))
+    if 'Connection failed' in msg or 'Reconnecting... waiting for network' in msg:
+        label='network retry';css='warn'
+    elif typ in ('item.started','item.completed','turn.completed'):
+        label='recent output/tool activity';css='live'
+    elif typ=='turn.failed':
+        label='turn failed';css='bad'
+    elif age>900:
+        label='stale event log';css='warn'
+    else:
+        label=typ.replace('_',' ');css='live'
+    return f'<span class="{css}">{html.escape(label)}</span> · {fmt_age(age)} ago'
 
 def completed_stats(root, model, track):
     rows=[]
@@ -76,8 +107,16 @@ def build(run,web,legacy):
             else:
                 bench_dir='physics_iq_gpt_native_v2' if model in ('gpt61-sol','gpt56-sol') else ('physics_iq_seed21_native_v2' if model=='seed21-pro' else 'physics_iq')
                 running_cases=', '.join(entry.get('running_cases') or [])
+                activity=''
+                if entry.get('running_cases'):
+                    gen_root=run/'generations'/bench_dir
+                    activity='<br>'.join(
+                        f'{html.escape(case)}: {event_status(gen_root,model,track,case)}'
+                        for case in (entry.get('running_cases') or [])[:3]
+                    )
                 body+=(f'<td>{activity_badge(c)} <strong>{c.get("complete",0)}/198 有效视频</strong><span class=status>{c.get("running",0)}运行中 · {c.get("exhausted",0)}终止 · {c.get("pending",198-c.get("complete",0)-c.get("running",0)-c.get("exhausted",0))}待生成</span>'
                        + (f'<span class=status>正在跑：{html.escape(running_cases)}</span>' if running_cases else '')
+                       + (f'<span class=status>最近事件：{activity}</span>' if activity else '')
                        + f'<span class=status>最新完成 UTC：{html.escape(str(last[0]))}<br>{html.escape(str(last[1]))}</span>'
                        f'<a href="bench_smoke_codex_20261109/{bench_dir}/{model}/{track}/index.html">视频与逐轮候选 →</a></td>')
         body+='</tr>'

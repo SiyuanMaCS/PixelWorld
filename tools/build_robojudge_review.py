@@ -5,6 +5,7 @@ import html
 import json
 import shutil
 import statistics
+import time
 from pathlib import Path
 import sys
 
@@ -25,6 +26,36 @@ def fmt(value, digits=1):
     if value is None:return '—'
     if isinstance(value, int):return f'{value:,}'
     return f'{value:,.{digits}f}'
+
+def fmt_age(seconds):
+    seconds=max(0,float(seconds))
+    if seconds<60:return f'{seconds:.0f}s'
+    return f'{seconds/60:.1f}m'
+
+def event_status(generation, model, track, case):
+    attempts=sorted((generation/model/track).glob(f'case_{case}_attempt_*/logs/events.jsonl'))
+    if not attempts:return 'event: no log yet'
+    path=max(attempts,key=lambda p:p.stat().st_mtime)
+    age=max(0,time.time()-path.stat().st_mtime)
+    try:lines=path.read_text(errors='ignore').splitlines()
+    except OSError:return 'event: log unreadable'
+    events=[]
+    for line in lines[-12:]:
+        try:events.append(json.loads(line))
+        except ValueError:pass
+    last=events[-1] if events else {}
+    typ=str(last.get('type','unknown'));msg=str(last.get('message',''))
+    if 'Connection failed' in msg or 'Reconnecting... waiting for network' in msg:
+        label='network retry';css='warn'
+    elif typ in ('item.started','item.completed','turn.completed'):
+        label='recent output/tool activity';css='live'
+    elif typ=='turn.failed':
+        label='turn failed';css='bad'
+    elif age>900:
+        label='stale event log';css='warn'
+    else:
+        label=typ.replace('_',' ');css='live'
+    return f'<span class="{css}">{html.escape(label)}</span> · {fmt_age(age)} ago'
 
 def completed_stats(generation, model, track):
     rows=[]
@@ -161,8 +192,16 @@ def build(run,web):
             latest=group.get('latest_completion') or ['—','—']
             run_count=counts.get('running',0);fail_count=counts.get('exhausted',0)
             running_cases=', '.join(group.get('running_cases') or [])
+            activity=''
+            if group.get('running_cases'):
+                gen=generation_root(run,model)
+                activity='<br>'.join(
+                    f'{html.escape(case)}: {event_status(gen,model,track,case)}'
+                    for case in (group.get('running_cases') or [])[:3]
+                )
             body+=(f'<td>{activity_badge(counts)} <strong>{valid} /50 有效视频</strong><span class=status>{run_count} 运行中 · {fail_count} 终止 · {score}</span>'
                    + (f'<span class=status>正在跑：{html.escape(running_cases)}</span>' if running_cases else '')
+                   + (f'<span class=status>最近事件：{activity}</span>' if activity else '')
                    + f'<span class=status>最近完成 UTC：{html.escape(str(latest[0]))}<br>{html.escape(str(latest[1]))}</span>'
                    f'<a href="{STUDY}/robojudge/{model}/{track}/index.html">打开此组视频与 Trace →</a></td>')
         body+='</tr>'

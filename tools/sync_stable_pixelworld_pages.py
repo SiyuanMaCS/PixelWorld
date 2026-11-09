@@ -103,6 +103,44 @@ def fmt_seconds(value) -> str:
     return f"{seconds / 60:.1f}m"
 
 
+def latest_event_status(source: Path, model: str, track: str, case_id: str) -> str:
+    attempts = sorted((source / model / track).glob(f"case_{case_id}_attempt_*/logs/events.jsonl"))
+    if not attempts:
+        return "event: no log yet"
+    path = max(attempts, key=lambda p: p.stat().st_mtime)
+    age = max(0.0, time.time() - path.stat().st_mtime)
+    try:
+        lines = path.read_text(errors="ignore").splitlines()
+    except OSError:
+        return "event: log unreadable"
+    events = []
+    for line in lines[-12:]:
+        try:
+            events.append(json.loads(line))
+        except ValueError:
+            continue
+    last = events[-1] if events else {}
+    typ = str(last.get("type", "unknown"))
+    message = str(last.get("message", ""))
+    if "Connection failed" in message or "Reconnecting... waiting for network" in message:
+        label = "network retry"
+        css = "warn"
+    elif typ in {"item.started", "item.completed", "turn.completed"}:
+        label = "recent output/tool activity"
+        css = "live"
+    elif age > 900:
+        label = "stale event log"
+        css = "warn"
+    else:
+        label = typ.replace("_", " ")
+        css = "live"
+    if typ == "turn.failed":
+        label = "turn failed"
+        css = "bad"
+    age_text = fmt_seconds(age)
+    return f'<span class="{css}">{html.escape(label)}</span> · {html.escape(age_text)} ago'
+
+
 def group_manifest_stats(run_root: Path, benchmark: str) -> dict[tuple[str, str], dict]:
     source = run_root / "generations" / benchmark
     stats: dict[tuple[str, str], dict] = {}
@@ -195,6 +233,7 @@ def group_rows(status: dict, heavy_slug: str) -> str:
 
 
 def model_track_matrix(run_root: Path, benchmark: str, status: dict, slug: str) -> str:
+    source = run_root / "generations" / benchmark
     manifest_stats = group_manifest_stats(run_root, benchmark)
     groups = status.get("groups", {})
     seen_models = {key.split("/")[0] for key in groups}
@@ -222,6 +261,15 @@ def model_track_matrix(run_root: Path, benchmark: str, status: dict, slug: str) 
             stats = manifest_stats.get((model_key, track), {})
             gallery = f"{slug}/{model_key}/{track}/index.html"
             running_cases = ", ".join(group.get("running_cases") or [])
+            running_activity = ""
+            if group.get("running_cases"):
+                parts = []
+                for case_id in (group.get("running_cases") or [])[:3]:
+                    parts.append(
+                        f"{html.escape(case_id)}: "
+                        f"{latest_event_status(source, model_key, track, case_id)}"
+                    )
+                running_activity = "<br>".join(parts)
             exhausted_cases = ", ".join((group.get("exhausted_cases") or [])[:3])
             activity = "ACTIVE" if running else ("DONE" if complete >= total and total else "IDLE")
             activity_class = "badge" if activity == "ACTIVE" else "pill"
@@ -238,6 +286,7 @@ def model_track_matrix(run_root: Path, benchmark: str, status: dict, slug: str) 
                 f'avg output {fmt_number(stats.get("avg_output_tokens"))} tok · '
                 f'avg reasoning {fmt_number(stats.get("avg_reasoning_tokens"))} tok</div>'
                 + (f'<div class="run-meta">running case: {html.escape(running_cases)}</div>' if running_cases else "")
+                + (f'<div class="run-meta">activity: {running_activity}</div>' if running_activity else "")
                 + (f'<div class="run-meta warn">recent exhausted: {html.escape(exhausted_cases)}</div>' if exhausted_cases else "")
                 + f'<div class="run-links"><a class="link" href="{gallery}">视频与逐轮候选 →</a></div>'
                 '</td>'
