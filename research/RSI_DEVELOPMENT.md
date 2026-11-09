@@ -5,7 +5,7 @@ Baseline generation runs from immutable commit
 under `research/` and use independent clean contexts/output directories.
 Generation never receives an evaluator score or reference continuation.
 
-Two prompt-only development probes have generated validated RGB submissions.
+Three prompt-only development probes have generated validated RGB submissions.
 The measurements below describe individual runs, not repeated-trial estimates.
 Original9B development scoring is pending; no full-benchmark RSI improvement
 is claimed.
@@ -16,11 +16,18 @@ is claimed.
 | shared0000 | Candidate-first v1 | 221.1 | 740.1 | 22,795 |
 | shared0002 | Native | 260.4 | 357.2 | 13,328 |
 | shared0002 | Scene-structure v2 | 340.6 | 576.9 | 18,902 |
+| shared0003 | Native | 210.8 | 487.4 | 15,336 |
+| shared0003 | Observed-pose v3 | 259.0 | 528.4 | 13,993 |
 
 Earlier saving is not the same as cheaper final generation. V1 reduced time
 to the first candidate but increased final time and tokens. V2 increased both.
 API waiting affects wall time, so token use and actual candidate counts must
 also be inspected.
+
+V3 used about9% fewer output tokens on its development task, but saved its
+first candidate later and increased final wall time by about8%. It retained
+four distinct RGB candidates versus three for the native program. This is a
+mixed cost result; quality scoring is pending and no general benefit is inferred.
 
 For shared0000 the initial native attempt produced pixels but was rejected by
 the frozen directory audit: a relative-parent path string was a label, not the
