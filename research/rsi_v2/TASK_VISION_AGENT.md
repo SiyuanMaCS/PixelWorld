@@ -1,0 +1,3 @@
+Generate the RGB video requested in `prompt.txt`, following `GENERATION_RULES.md`. `first_frame.png` is attached visually. Visual image tools are available.
+
+Before drawing motion, distinguish fixed scene anchors, moving objects, and connected articulated parts. Preserve their connections and support/contact relationships across frames. Reusing source pixels is allowed; choose transformations that fit the represented geometry. Produce and save an end-to-end candidate, then check continuity, occlusion and the requested action, making targeted revisions for concrete problems. Aim for high-quality output while considering efficiency.
