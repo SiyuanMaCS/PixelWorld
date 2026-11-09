@@ -101,7 +101,9 @@ def build_case(run, output):
     prompt = (run / "input_snapshot/prompt.txt").read_text()
     title = f'{manifest["model"]} · {manifest["case_id"]}'
     usage = manifest.get("token_usage") or {}
-    count = usage.get("output_tokens") or usage.get("reported_completed_request_output_tokens")
+    count = usage.get("output_tokens")
+    if count is None:
+        count = usage.get("reported_completed_request_output_tokens")
     body = f'<a class=back href="../../../../index.html">← 本轮 smoke 总览</a><h1>{html.escape(title)}</h1>'
     body += (f'<p class=muted>{manifest["track"]} · {spec["width"]}×{spec["height"]} · '
              f'{spec["fps"]} FPS · {spec["frames"]} 帧 · 状态 {manifest["status"]} · 输出 tokens {count}</p>'
@@ -162,8 +164,11 @@ def build_case(run, output):
             if item.get("type") == "full_trace_image_return" and item.get("call_id") not in seen_calls:
                 seen_calls.add(item.get("call_id"))
                 for image in item.get("returned_images", []):
-                    source = path.parent / image["path"]
-                    if not source.is_file():
+                    name = image.get('path')
+                    if not isinstance(name, str) or image.get('available') is False:
+                        continue
+                    source = (path.parent / name).resolve()
+                    if not source.is_relative_to(path.parent.resolve()) or not source.is_file():
                         continue
                     images += 1
                     target = output / f"tool_view_{images:02d}.png"

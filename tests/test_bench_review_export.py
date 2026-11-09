@@ -3,8 +3,9 @@ import json
 import sys
 
 import numpy as np
+from PIL import Image
 
-from tools.build_bench_review import export_pixels
+from tools.build_bench_review import export_pixels, build_case
 from tools.build_bench_review import main
 
 
@@ -48,3 +49,39 @@ def test_robojudge_text_and_vision_scores_keep_track_and_partial_scope(tmp_path,
     assert 'PA 3.00 / IA 5.00' in page
     assert page.count('不是 shared50 均分') == 2
     assert page.count('Cases：common50_0001') == 2
+
+
+def test_actual_full_trace_images_are_displayed_once_and_missing_blobs_are_skipped(tmp_path):
+    run, output = tmp_path/'run', tmp_path/'public'
+    workspace, logs = run/'workspace', run/'logs'
+    workspace.mkdir(parents=True)
+    (logs/'tool_images').mkdir(parents=True)
+    spec = {'width':2, 'height':2, 'frames':2, 'fps':4}
+    (run/'media_contract.json').write_text(json.dumps(spec))
+    (run/'input_snapshot').mkdir()
+    (run/'input_snapshot/prompt.txt').write_text('Move the ball.')
+    np.savez_compressed(workspace/'pixels.npz', pixels=np.full((2,2,2), 0x102030, dtype=np.uint32))
+    (workspace/'prompt.txt').write_text('Move the ball.')
+    (run/'run_manifest.json').write_text(json.dumps({
+        'model':'test-model', 'model_key':'test-model', 'case_id':'case1', 'track':'vision-agent',
+        'status':'complete', 'media_contract':spec, 'started_utc':'2026-11-09T00:00:00Z',
+        'token_usage':{'output_tokens':0},
+    }))
+    image = logs/'tool_images/view.png'
+    Image.new('RGB',(3,2),(100,110,120)).save(image)
+    events = [
+        {'type':'item.completed','item':{'type':'full_trace_image_return','call_id':'view-1',
+         'returned_images':[{'path':'tool_images/view.png','available':True}, {'path':None,'available':False}]}},
+        {'type':'item.completed','item':{'type':'full_trace_image_return','call_id':'view-1',
+         'returned_images':[{'path':'tool_images/view.png','available':True}]}},
+        {'type':'item.completed','item':{'type':'full_trace_image_return','call_id':'missing',
+         'returned_images':[{'path':'tool_images/missing.png','available':False}]}}
+    ]
+    (logs/'events.jsonl').write_text('\n'.join(json.dumps(event) for event in events)+'\n')
+    result = build_case(run,output)
+    assert result['visual_returns'] == 1
+    assert result['output_tokens'] == 0
+    assert (output/'tool_view_01.png').read_bytes() == image.read_bytes()
+    page = (output/'index.html').read_text()
+    assert '视觉工具实际返回图片 1' in page and 'tool_view_01.png' in page
+    assert not (output/'tool_view_02.png').exists()
