@@ -35,17 +35,22 @@ def parse_utc(value: str | None) -> dt.datetime | None:
     return parsed
 
 
-def is_provider_queue_failure(case_dir: Path, manifest: dict) -> bool:
+def is_provider_infra_failure(case_dir: Path, manifest: dict) -> bool:
     if manifest.get("status") != "failed":
         return False
-    if manifest.get("stop_reason") == "provider_queue_exceeded":
+    if manifest.get("stop_reason") in {"provider_queue_exceeded", "provider_connection_failed"}:
         return True
     events = case_dir / "logs" / "events.jsonl"
     try:
         text = events.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
-    return "request queue size is exceed" in text or "Code 4050" in text or '"code": 4050' in text
+    return (
+        "request queue size is exceed" in text
+        or "Code 4050" in text
+        or '"code": 4050' in text
+        or "Connection failed: error sending request" in text
+    )
 
 
 def iter_case_dirs(generations: Path):
@@ -90,7 +95,7 @@ def main() -> None:
             continue
         if until and (completed is None or completed > until):
             continue
-        if not is_provider_queue_failure(case_dir, manifest):
+        if not is_provider_infra_failure(case_dir, manifest):
             continue
         matches.append({
             "completed_utc": manifest.get("completed_utc"),
@@ -121,7 +126,7 @@ def main() -> None:
             shutil.move(str(source), str(target))
             moved.append({**item, "to": str(target)})
         (quarantine / "audit.json").write_text(json.dumps({
-            "reason": "Provider queue 4050 failures are infrastructure failures; attempts moved so cases can retry.",
+            "reason": "Provider queue/connection failures are infrastructure failures; attempts moved so cases can retry.",
             "since_utc": since.isoformat() if since else None,
             "until_utc": until.isoformat() if until else None,
             "count": len(moved),

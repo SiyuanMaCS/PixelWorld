@@ -116,12 +116,16 @@ def _last_event(path: Path) -> dict | None:
     return None
 
 
-def _provider_queue_failure(events: Path) -> bool:
+def _provider_infra_failure(events: Path) -> str | None:
     try:
         text = events.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return False
-    return "request queue size is exceed" in text or "Code 4050" in text or '"code": 4050' in text
+        return None
+    if "request queue size is exceed" in text or "Code 4050" in text or '"code": 4050' in text:
+        return "provider_queue_exceeded"
+    if "Connection failed: error sending request" in text:
+        return "provider_connection_failed"
+    return None
 
 
 def _wait(agent: subprocess.Popen, events: Path, logs: Path,
@@ -492,11 +496,11 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
                             'reported_completed_request_output_tokens': token_monitor.output if token_monitor.record_count else None,
                             'inflight_usage_unknown': True,
                             'source_note': 'Completed request tokens are a lower bound after interruption, not a final run total.'})
-    provider_queue_failed = (
-        not budget_stopped and not validation["pass"] and _provider_queue_failure(logs / "events.jsonl")
+    provider_infra_failure = (
+        None if budget_stopped or validation["pass"] else _provider_infra_failure(logs / "events.jsonl")
     )
-    if provider_queue_failed:
-        validation["infra_error"] = "provider_queue_exceeded"
+    if provider_infra_failure:
+        validation["infra_error"] = provider_infra_failure
     atomic_json(logs / "token_usage.json", token_usage)
     manifest.update({
         "status": "complete" if validation["pass"] else "failed",
@@ -518,7 +522,7 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         },
         "token_budget": token_monitor.report() if token_monitor is not None else None,
         "submission_selection": submission_selection,
-        "stop_reason": watchdog['reason'] if budget_stopped else ("provider_queue_exceeded" if provider_queue_failed else None),
+        "stop_reason": watchdog['reason'] if budget_stopped else provider_infra_failure,
         "retryable": not budget_stopped,
     })
     if watchdog:
