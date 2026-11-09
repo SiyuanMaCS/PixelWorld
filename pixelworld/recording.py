@@ -6,6 +6,7 @@ reconstruct unexposed provider context or hidden reasoning.
 from __future__ import annotations
 
 import base64
+from collections import Counter
 import datetime as dt
 import hashlib
 import json
@@ -44,12 +45,48 @@ def _write_jsonl(path, rows):
     path.write_text(''.join(json.dumps(row, ensure_ascii=False) + '\n' for row in rows))
 
 
+def _recorded_archives(run: Path):
+    """Use complete resumed history when it covers the original archive exactly.
+
+    Preserve all raw files. Otherwise retain the ordered union with maximum
+    occurrence counts, so copied history is not counted twice and new events
+    are not silently omitted.
+    """
+    paths=[run/'logs/full_rollout.jsonl']+sorted(run.glob('recovery_*/logs/full_rollout.jsonl'))
+    if len(paths)==1:
+        raw,malformed=_jsonl(paths[0])
+        source='../logs/full_rollout.jsonl'
+        sources=[{'path':source,'sha256':sha256(paths[0]),'events':len(raw),'malformed_events':malformed}] if paths[0].is_file() else []
+        return [(i,{**event,'_recording_source_archive':source,'_recording_source_event_index':i})
+                for i,event in raw],malformed,sources,paths[0]
+    raw=[];counts=Counter();sources=[];malformed=0;selected=paths[0]
+    for path in paths:
+        if not path.is_file():continue
+        entries,errors=_jsonl(path);malformed+=errors
+        fingerprint=lambda event:json.dumps(event,sort_keys=True,ensure_ascii=False)
+        present=Counter(fingerprint(event) for _,event in entries)
+        sources.append({'path':'../'+str(path.relative_to(run)),'sha256':sha256(path),
+                        'events':len(entries),'malformed_events':errors})
+        annotate=lambda event,index:{**event,'_recording_source_archive':'../'+str(path.relative_to(run)),
+                                      '_recording_source_event_index':index}
+        if not (counts-present):
+            raw=[(i,annotate(event,index)) for i,(index,event) in enumerate(entries)]
+            counts=present;selected=path
+        else:
+            observed=Counter()
+            for index,event in entries:
+                key=fingerprint(event);observed[key]+=1
+                if observed[key]>counts[key]:raw.append((len(raw),annotate(event,index)))
+            counts |= present
+    return raw,malformed,sources,selected
+
+
 def write_bundle(run: Path) -> dict:
     """Export already-recorded data outside the model workspace; no model calls."""
     manifest = _json(run/'run_manifest.json')
     target = run/'recording';target.mkdir(exist_ok=True)
     logs = run/'logs'
-    raw, malformed = _jsonl(logs/'full_rollout.jsonl')
+    raw, malformed, raw_archives, selected_archive = _recorded_archives(run)
     events, event_errors = _jsonl(logs/'events.jsonl')
     workspace = run/'workspace'
     problems = []
@@ -64,7 +101,9 @@ def write_bundle(run: Path) -> dict:
             match = re.fullmatch(r'traex-rollout-blob:v1:sha256:([0-9a-f]{64}):(\d+)', value)
             if match:
                 digest, count = match[1], int(match[2])
-                file = logs/'rollout-blobs/sha256'/digest[:2]/digest
+                candidates=[logs/'rollout-blobs/sha256'/digest[:2]/digest]+[
+                    p/'rollout-blobs/sha256'/digest[:2]/digest for p in sorted(run.glob('recovery_*/logs'))]
+                file=next((p for p in candidates if p.is_file()),candidates[0])
                 if not file.is_file():
                     missing_blobs.add(value);return {'unavailable_blob': value}
                 data = file.read_bytes()
@@ -114,15 +153,20 @@ def write_bundle(run: Path) -> dict:
                 continue
             key = item.get('id') or (kind, item.get('call_id')) if item.get('id') or item.get('call_id') else ('position', index, offset)
             if key not in items:order.append(key)
-            first = items.get(key) or {'source_event_index': index, 'source_utc': event.get('timestamp')}
+            first = items.get(key) or {'source_event_index': index, 'source_utc': event.get('timestamp'),
+                                      'source_archive':event.get('_recording_source_archive'),
+                                      'source_archive_event_index':event.get('_recording_source_event_index')}
             items[key] = {'item': item, 'source_event_index': first['source_event_index'],
-                          'source_utc': first['source_utc'], 'last_update_event_index': index}
+                          'source_utc': first['source_utc'], 'last_update_event_index': index,
+                          'source_archive':first['source_archive'],
+                          'source_archive_event_index':first['source_archive_event_index']}
     conversation = []
     for key in order:
         original = items[key];item = resolve(original['item']);kind = item['type']
         common = {'native_type': kind, 'source_item_id': item.get('id'),
                   'source_event_index': original['source_event_index'], 'source_utc': original['source_utc'],
                   'last_update_event_index': original['last_update_event_index']}
+        common.update(source_archive=original['source_archive'],source_archive_event_index=original['source_archive_event_index'])
         if kind == 'message':
             common.update({'kind': 'message', 'role': item['role'],
                            'content': [image_block(b) for b in item.get('content', [])],
@@ -150,13 +194,19 @@ def write_bundle(run: Path) -> dict:
     for index, event in api_rows:
         payload = event['payload'];identity = (payload.get('session_id'), payload.get('turn_id'), payload.get('response_id'))
         if identity in seen:continue
-        seen.add(identity);usage = payload.get('usage') or {}
+        seen.add(identity);usage = dict(payload.get('usage') or {})
+        if usage.get('cache_creation_input_tokens') is None:
+            usage['cache_creation_input_tokens']=usage.get('cache_write_input_tokens')
         for field in FIELDS:
             amount = usage.get(field)
             if isinstance(amount, int):totals[field] += amount
         cumulative = payload.get('thread_token_usage') or payload.get('turn_token_usage') or totals.copy()
+        if cumulative.get('cache_creation_input_tokens') is None and cumulative.get('cache_write_input_tokens') is not None:
+            cumulative={**cumulative,'cache_creation_input_tokens':cumulative['cache_write_input_tokens']}
         ledger.append({'record_kind': 'api_request_usage', 'response_id': payload.get('response_id'),
                        'utc': event.get('timestamp'), 'source_event_index': index,
+                       'source_archive':event.get('_recording_source_archive'),
+                       'source_archive_event_index':event.get('_recording_source_event_index'),
                        'usage': {k: usage.get(k) for k in FIELDS},
                        'cumulative': {k: cumulative.get(k) for k in FIELDS}})
     if not ledger:
@@ -175,7 +225,8 @@ def write_bundle(run: Path) -> dict:
                                'source_event_index': index, 'usage': event['usage'], 'cumulative': None})
 
     candidates = []
-    for folder in sorted((run/'trace').glob('round_*')):
+    folders=sorted((run/'trace').glob('round_*'))+sorted(run.glob('recovery_*/trace/round_*'))
+    for folder in folders:
         record = _json(folder/'snapshot.json')
         if not record:continue
         stamp = record.get('utc');prior = []
@@ -184,7 +235,7 @@ def write_bundle(run: Path) -> dict:
                 if item.get('utc') and dt.datetime.fromisoformat(item['utc']) <= dt.datetime.fromisoformat(stamp):
                     prior.append(item)
         water = prior[-1].get('cumulative') if prior else None
-        candidates.append({'snapshot': folder.name, 'path': '../trace/'+folder.name,
+        candidates.append({'snapshot': folder.name, 'path': '../'+str(folder.relative_to(run)),
                            'utc': stamp, 'code_sha256': record.get('generate_sha256'),
                            'rgb_sha256': record.get('canonical_rgb_sha256'),
                            'tensor_sha256': record.get('pixels_sha256'),
@@ -242,7 +293,8 @@ def write_bundle(run: Path) -> dict:
                        'source_usage':'prepared-task trajectory; benchmark test origins must remain distinguishable'})
     index = {'schema':SCHEMA,'provenance':provenance,'initial_assets':assets,
              'initial_image_attachment_configured':bool(manifest.get('initial_image_attached')),
-             'raw_rollout':'../logs/full_rollout.jsonl','conversation_events':'conversation_events.jsonl',
+             'raw_rollout':'../'+str(selected_archive.relative_to(run)),'raw_archives':raw_archives,
+             'conversation_events':'conversation_events.jsonl',
              'api_usage':'api_usage.jsonl','candidates':'candidates.jsonl','media_files':len(list((target/'media').glob('*'))),
              'status':manifest.get('status'),'stop_reason':manifest.get('stop_reason'),
              'sft_full_trajectory_candidate':not problems,'training_ready':False,
@@ -251,7 +303,7 @@ def write_bundle(run: Path) -> dict:
              'tool_returns_without_calls':orphan_returns,
              'initial_asset_coverage':'immutable_before_run' if initial.is_dir() else 'legacy_workspace_fallback',
              'analysis_eligible':True,'candidate_history_coverage':'observed saved snapshots, not every file write',
-             'raw_rollout_sha256':sha256(logs/'full_rollout.jsonl') if (logs/'full_rollout.jsonl').is_file() else None,
+             'raw_rollout_sha256':sha256(selected_archive) if selected_archive.is_file() else None,
              'api_usage_records':len(ledger),'conversation_event_count':len(conversation),
              'candidate_count':len(candidates)}
     index['usage_coverage'] = 'per_request' if api_rows else (

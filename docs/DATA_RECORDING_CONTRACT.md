@@ -61,3 +61,18 @@ python -m pixelworld.cli export-records --run /path/to/run
 ```
 
 该命令只读原run并建立`recording/`导出，不改变其生成结果、状态或模型上下文。新run在结束后自动执行同样的导出。
+
+## 原生恢复会话的记录
+
+恢复目录下的 `recovery_*/logs/full_rollout.jsonl` 也参与导出。若恢复档案逐条
+覆盖原始档案，使用它保留完整历史；否则保留有序事件并集。所有原文不覆盖，
+`raw_archives` 列出每个档案与SHA，规范化事件和用量行保存来源档案/事件位置。
+逐请求usage按session/turn/response身份去重，复制的旧历史不重复计费。
+恢复目录内的候选路径独立保留，不能与主目录的同名round混为一份。
+
+`cache_write_input_tokens` 按已上报字段语义映射为cache creation，原API报文仍保留。
+累计下界与最终用量分开：预算中断时若最终output_tokens未知，记录已完成请求的
+已上报下界和inflight unknown标记，不填0，也不把下界冒充最终总量。
+
+运行结束后的重新导出只更新 `recording/`；`run_manifest.recording_bundle` 是上次
+自动导出的摘要，当前导出结果以 `recording/index.json` 为准。
