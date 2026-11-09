@@ -57,7 +57,7 @@ def load_config(path: str | Path) -> Benchmark:
     source = Path(path).resolve()
     raw = json.loads(source.read_text())
     protocol = raw.get("protocol", DEFAULT_PROTOCOL)
-    token_budget = raw.get('output_token_budget', None if protocol in LEGACY_TRACK_PROTOCOLS else 50000)
+    token_budget = raw.get('output_token_budget', None if protocol in LEGACY_TRACK_PROTOCOLS else 100000)
     if token_budget is not None and (not isinstance(token_budget, int) or isinstance(token_budget, bool) or token_budget < 1):
         raise ValueError('output_token_budget must be a positive integer or null')
     default_tracks = TRACKS if protocol in LEGACY_TRACK_PROTOCOLS else DEFAULT_TRACKS

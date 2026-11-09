@@ -132,7 +132,7 @@ def build_case(run, output):
     else:
         body += f'<div class=box id=video><h3>尚未保存可播放视频</h3><p class=desc>{html.escape(prompt)}</p><span class=pill>{html.escape(manifest["status"])}</span></div>'
     rounds = sorted((run / "trace").glob("round_*"))
-    rounds += sorted((run / "recovery_01/trace").glob("round_*"))
+    rounds += [p for recovery in sorted(run.glob('recovery_*')) for p in sorted((recovery/'trace').glob('round_*'))]
     body += ('<div class=section-head id=candidates><h2>逐轮保存的候选</h2><p>回放视频、检查图与代码变化。</p></div>'
              '<p class=note>每份候选均可单独播放。实际图片检查记录在下方工具轨迹中。</p>')
     previous = ""
@@ -159,7 +159,7 @@ def build_case(run, output):
                 body += f'<figure><a href="{prefix}/{name}" target=_blank><img loading=lazy src="{prefix}/{name}"></a><figcaption>{label} · 点击查看原图</figcaption></figure>'
         body += f'</div><details class=code><summary>展开代码变化</summary><pre>{html.escape(diff or "代码未变化；重新保存了产物。")}</pre></details></div></details>'
     body += '<div class=section-head id=trace><h2>可观测工具轨迹</h2><p>实际执行的命令与返回图片。</p></div>'
-    files = [run / "logs/events.jsonl", run / "recovery_01/logs/events.jsonl"]
+    files = [run / "logs/events.jsonl"]+[recovery/'logs/events.jsonl' for recovery in sorted(run.glob('recovery_*'))]
     commands = images = 0
     seen_calls = set()
     for path in files:

@@ -31,8 +31,9 @@ def event(output, stamp, response='r', delta=None):
                         'thread_token_usage': {'output_tokens': output}}}
 
 
-def test_default_is_50k_and_legacy_is_explicit(tmp_path):
-    assert cfg(tmp_path).output_token_budget == 50000
+def test_default_is_100k_and_legacy_is_explicit(tmp_path):
+    assert cfg(tmp_path).output_token_budget == 100000
+    assert cfg(tmp_path, output_token_budget=50000).output_token_budget == 50000
     assert cfg(tmp_path, protocol='pixelworld-v1').output_token_budget is None
     assert cfg(tmp_path, output_token_budget=None).output_token_budget is None
 

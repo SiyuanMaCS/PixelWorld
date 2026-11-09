@@ -1,10 +1,13 @@
-# PixelWorld：50k 外部 token 阈值
+# PixelWorld：100k 外部 token 阈值
 
-用户在2026-11-08选择每条视频任务累计 **50,000 API output tokens**。新非legacy配置默认采用：
+用户在2026-11-09将新任务预算提高至累计 **100,000 API output tokens**。
+此前50k运行、失败、候选和用量记录保留；明确的同上下文续跑继续累计旧用量，
+不重新分配一份100k。已经启动的旧进程仍保留原始限制，新的任务采用新配置。
+新非legacy配置默认采用：
 
 ```json
 {
-  "output_token_budget": 50000
+  "output_token_budget": 100000
 }
 ```
 
@@ -12,7 +15,7 @@ legacy v1未明确设置该字段时保留旧协议；`null`可用于明确的�
 
 ## 记录与执行
 
-- 预算跨请求累计；同模型/track/case的恢复attempt共享50k，不重置。已有attempt用量不明时不分配新的完整预算。
+- 预算跨请求累计；同模型/track/case的恢复attempt共享100k，不重置。已有attempt用量不明时不分配新的完整预算。
 - TRAE后端读取持久化会话的逐请求`token_usage_record`；Codex后端读取`token_count.info.total_token_usage`。不按时间或文本长度估算，不重复加总output中的reasoning。
 - 外部每0.25秒检查上报用量。达到阈值后终止CLI及其拥有的工具进程，停止该case的自动重试；其他case可以继续。
 - 取首次越过阈值的用量事件时间作为候选截止边界，恢复之前最后一个可校验的快照。完整RGB/首帧/PNG一致性和工具审计仍须通过。真实CLI退出码保留，预算保留的产物标记`completion_mode=budget_frozen`。
@@ -21,7 +24,7 @@ legacy v1未明确设置该字段时保留旧协议；`null`可用于明确的�
 
 ## 这是请求结束后的阈值控制
 
-上报用量在请求结束后出现，因此单次请求可能跨过50k。记录实际已上报量和overshoot；此实现不是精确的50k硬请求上限。严格预算需要在API请求边界用剩余量限制输出，并阻止后续请求。
+上报用量在请求结束后出现，因此单次请求可能跨过100k。记录实际已上报量和overshoot；此实现不是精确的100k硬请求上限。严格预算需要在API请求边界用剩余量限制输出，并阻止后续请求。
 
 被中断请求的完整usage可能不返回。此时保存已完成请求output的下界，标记`inflight_usage_unknown`，不把下界填成精确总量。没有15分钟墙钟截止；API等待不会按分钟扣掉token预算。既有局部工具卡死保护仍单独存在。
 
