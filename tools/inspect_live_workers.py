@@ -43,10 +43,17 @@ def _process_rows() -> list[tuple[int, int, str, str, str]]:
     )
     rows = []
     for line in result.stdout.splitlines():
-        if "pixelworld.cli run-case" not in line:
-            continue
         parts = line.strip().split(None, 4)
         if len(parts) < 5:
+            continue
+        try:
+            tokens = shlex.split(parts[4])
+        except ValueError:
+            continue
+        if "-m" not in tokens:
+            continue
+        module_index = tokens.index("-m")
+        if tokens[module_index:module_index + 3] != ["-m", "pixelworld.cli", "run-case"]:
             continue
         rows.append((int(parts[0]), int(parts[1]), parts[2], parts[3], parts[4]))
     return rows
@@ -163,8 +170,12 @@ def main() -> None:
             for key, value in sorted(Counter(
                 (worker["bench"], worker["model"], worker["track"])
                 for worker in workers
-            ).items())
+            ).items(), key=lambda item: tuple(str(part) for part in item[0]))
         },
+        "unparsed_or_missing_workers": [
+            worker for worker in workers
+            if worker["reason"] in {"unparsed command", "no events"}
+        ],
         "stale": killable,
         "oldest": sorted(
             workers,
