@@ -1,0 +1,70 @@
+{
+  "schema": "pixelworld-benchmark-portfolio-v1",
+  "updated": "2026-11-09",
+  "primary_benchmarks": [
+    {
+      "id": "robojudge_shared50",
+      "label": "RoboJudge shared-50",
+      "task_type": "i2v",
+      "scope": "50 shared embodied generation prompts x Text/Vision-Agent",
+      "status": "running",
+      "monitor": "https://siyuanmacs.github.io/physics-iq-pixel-preview/robojudge.html",
+      "notes": "Original RoboJudge-9B scoring; Table8 comparability remains explicitly gated."
+    },
+    {
+      "id": "physics_iq_verified",
+      "label": "Physics-IQ Verified",
+      "task_type": "i2v",
+      "scope": "198 official BPP/I2V prompts x Text/Vision-Agent",
+      "status": "running",
+      "monitor": "https://siyuanmacs.github.io/physics-iq-pixel-preview/physics_iq_baseline.html",
+      "notes": "Native v2 GPT rerun is separate from legacy-v1 reference results."
+    },
+    {
+      "id": "vbench2_five_dim_subset",
+      "label": "VBench-2.0 five-dimension subset",
+      "task_type": "t2v",
+      "scope": "Five official VBench-2.0 dimensions selected for dynamic world-model behavior.",
+      "status": "configured",
+      "dimensions": [
+        {"name": "Mechanics", "official_prompt_count": 57},
+        {"name": "Material", "official_prompt_count": 50},
+        {"name": "Motion_Rationality", "official_prompt_count": 58},
+        {"name": "Dynamic_Spatial_Relationship", "official_prompt_count": 69},
+        {"name": "Instance_Preservation", "official_prompt_count": 57}
+      ],
+      "total_prompts_if_deduplicated_by_dimension_file": 291,
+      "monitor": "https://siyuanmacs.github.io/physics-iq-pixel-preview/vbench2_subset.html",
+      "notes": "Not the Video-Coder three-dimension setup and not the full 18-dimension VBench-2.0 score."
+    },
+    {
+      "id": "phygenbench_160",
+      "label": "PhyGenBench",
+      "task_type": "t2v",
+      "scope": "160 prompts covering mechanics/optics/thermal/material physical concepts.",
+      "status": "configured",
+      "source": "/mnt/bn/embodied-lf3/masiyuan/PhysFix-workspace/phygenbench/phygen_prompts.json",
+      "category_mapping": {
+        "Force": "Mechanics",
+        "Light": "Optics",
+        "Heat": "Thermal",
+        "Physical Properties": "Material",
+        "Chemical Properties": "Material"
+      },
+      "monitor": "https://siyuanmacs.github.io/physics-iq-pixel-preview/phygenbench.html",
+      "notes": "Small physically interpretable supplement; model scores from Video-Coder paper are shown only as reference."
+    }
+  ],
+  "legacy_pages": [
+    {
+      "label": "Legacy Physics-IQ full matrix",
+      "url": "https://siyuanmacs.github.io/physics-iq-pixel-preview/matrix_full.html",
+      "reason": "Historical legacy-v1 runs and older Track definitions; not counted as native_v2 main results."
+    },
+    {
+      "label": "Older multi-benchmark smoke",
+      "url": "https://siyuanmacs.github.io/physics-iq-pixel-preview/bench_smoke_20261106/index.html",
+      "reason": "Exploratory smoke examples; not part of the four-benchmark main portfolio."
+    }
+  ]
+}

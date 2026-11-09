@@ -24,6 +24,18 @@ Text/Vision-Agent and autonomous review. Start another RoboJudge model from
 [the sanitized config](configs/robojudge.baseline.example.json). RSI variants
 must use separate code checkouts and output directories.
 
+The current main benchmark portfolio is fixed in
+[docs/MAIN_BENCHMARKS_20261109.md](docs/MAIN_BENCHMARKS_20261109.md) and
+[configs/benchmark_portfolio_20261109.json](configs/benchmark_portfolio_20261109.json):
+
+- RoboJudge shared-50;
+- Physics-IQ Verified;
+- VBench-2.0 five-dimension subset;
+- PhyGenBench 160 prompts.
+
+WorldArena, WorldScore, WBench and older multi-benchmark smokes remain
+historical/exploratory pages rather than the main portfolio.
+
 ## Included
 
 - Two default capability Tracks: Text and Vision-Agent; historical Vision-Input runs remain supported.

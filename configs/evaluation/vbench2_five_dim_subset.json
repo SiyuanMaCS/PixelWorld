@@ -1,0 +1,26 @@
+{
+  "schema": "pixelworld-vbench2-subset-v1",
+  "source": {
+    "repo": "https://github.com/Vchitect/VBench",
+    "local_source": "vendor/vbench-i2v-night/source/VBench-2.0",
+    "pinned_commit_available": "fd18b3d055cb0fc6f066ca90fe2c3c8cbb698490"
+  },
+  "selected_dimensions": [
+    {"name": "Mechanics", "prompt_file": "prompts/meta_info/Mechanics.json", "official_prompt_count": 57},
+    {"name": "Material", "prompt_file": "prompts/meta_info/Material.json", "official_prompt_count": 50},
+    {"name": "Motion_Rationality", "prompt_file": "prompts/meta_info/Motion_Rationality.json", "official_prompt_count": 58},
+    {"name": "Dynamic_Spatial_Relationship", "prompt_file": "prompts/meta_info/Dynamic_Spatial_Relationship.json", "official_prompt_count": 69},
+    {"name": "Instance_Preservation", "prompt_file": "prompts/meta_info/Instance_Preservation.json", "official_prompt_count": 57}
+  ],
+  "total_dimension_prompt_rows": 291,
+  "not_selected_video_coder_dimensions": ["Thermotics"],
+  "not_full_vbench2": true,
+  "generation_contract": {
+    "task_type": "t2v",
+    "frames": 20,
+    "fps": 4,
+    "duration_seconds": 5,
+    "resolution_policy": "PixelWorld baseline default unless dimension-specific adapter changes it"
+  },
+  "evaluation_note": "Report selected-dimension plausibility only. Do not call this a full VBench-2.0 total score."
+}

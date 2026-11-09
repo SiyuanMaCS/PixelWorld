@@ -1,6 +1,7 @@
 """Publish fixed-baseline Physics-IQ progress, including explicitly reused legacy groups."""
 from pathlib import Path
 import argparse,json,html,sys
+import statistics
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from tools.build_bench_review import document
 
@@ -10,8 +11,43 @@ def read(p):
     try:return json.loads(p.read_text())
     except (OSError,ValueError):return {}
 
+def fmt(value, digits=1):
+    if value is None:return '—'
+    if isinstance(value, int):return f'{value:,}'
+    return f'{value:,.{digits}f}'
+
+def completed_stats(root, model, track):
+    rows=[]
+    for path in sorted((root/model/track).glob('case_*_attempt_*/run_manifest.json')):
+        manifest=read(path)
+        if manifest.get('status')!='complete' or manifest.get('validation',{}).get('pass') is not True:
+            continue
+        usage=manifest.get('token_usage') or {}
+        duration=manifest.get('duration_seconds')
+        output=usage.get('output_tokens')
+        input_tokens=usage.get('input_tokens')
+        if isinstance(duration,(int,float)) and isinstance(output,int):
+            rows.append({'duration':duration,'output':output,
+                         'input':input_tokens if isinstance(input_tokens,int) else None})
+    if not rows:return None
+    durations=[x['duration']/60 for x in rows]
+    outputs=[x['output'] for x in rows]
+    inputs=[x['input'] for x in rows if isinstance(x['input'],int)]
+    return {'n':len(rows),'avg_min':statistics.mean(durations),'p50_min':statistics.median(durations),
+            'avg_output':statistics.mean(outputs),'p50_output':statistics.median(outputs),
+            'avg_input':statistics.mean(inputs) if inputs else None,'p50_input':statistics.median(inputs) if inputs else None}
+
+def stats_cell(stats):
+    if not stats:return '<td>—</td>'
+    return (f'<td><strong>{stats["n"]}</strong><span class=status>'
+            f'耗时 avg {fmt(stats["avg_min"])}m / p50 {fmt(stats["p50_min"])}m<br>'
+            f'output avg {fmt(stats["avg_output"],0)} / p50 {fmt(stats["p50_output"],0)}<br>'
+            f'input avg {fmt(stats["avg_input"],0)} / p50 {fmt(stats["p50_input"],0)}</span></td>')
+
 def build(run,web,legacy):
-    status=read(run/'generations/physics_iq/status.json');old=read(legacy);groups=status.get('groups',{});frozen=read(run/'BASELINE_FROZEN.json')
+    status=read(run/'generations/physics_iq/status.json')
+    gpt_status=read(run/'generations/physics_iq_gpt_native_v2/status.json')
+    old=read(legacy);groups={**status.get('groups',{}),**gpt_status.get('groups',{})};frozen=read(run/'BASELINE_FROZEN.json')
     body=('<a class=back href="index.html">← 实验导航</a><h1>Physics-IQ · Baseline 全量</h1>'
           '<p class=muted>完整198个I2V/BPP输入，每模型Text与Vision-Agent。已完成的旧协议结果复用，不重复生成。</p>'
           '<div class="card feature"><span class=badge>冻结原生 harness · 100k</span>'
@@ -22,16 +58,48 @@ def build(run,web,legacy):
     for model,label in MODELS.items():
         body+=f'<tr><th>{label}</th>'
         for track in ['text','vision-agent']:
-            if model in ('gpt61-sol','gpt56-sol'):
-                slug='gpt-6-1' if model=='gpt61-sol' else 'gpt-5-6';entry=old.get('configs',{}).get(slug+'-'+track,{});n=entry.get('counts',{}).get('complete',0)
-                body+=f'<td><strong>{n}/198 已完成</strong><span class=status>复用legacy结果 · 原有协议与预算</span><a href="matrix_{slug}-{track}.html">打开已有全量视频 →</a></td>'
+            entry=groups.get(model+'/'+track,{})
+            c=entry.get('counts',{})
+            last=entry.get('latest_completion') or ['—','—']
+            if not c and model in ('gpt61-sol','gpt56-sol'):
+                slug='gpt-6-1' if model=='gpt61-sol' else 'gpt-5-6'
+                legacy_entry=old.get('configs',{}).get(slug+'-'+track,{})
+                legacy_n=legacy_entry.get('counts',{}).get('complete',0)
+                body+=(f'<td><strong>0/198 native_v2</strong><span class=status>新冻结协议尚未重跑；旧{legacy_n}/198结果移入Legacy参考区，不计入主表</span>'
+                       f'<a href="#legacy">查看Legacy参考 →</a></td>')
             else:
-                entry=groups.get(model+'/'+track,{});c=entry.get('counts',{});last=entry.get('latest_completion') or ['—','—']
-                body+=(f'<td><strong>{c.get("complete",0)}/198 有效视频</strong><span class=status>{c.get("running",0)}运行中 · {c.get("exhausted",0)}终止 · {c.get("pending",0)}待生成</span>'
+                bench_dir='physics_iq_gpt_native_v2' if model in ('gpt61-sol','gpt56-sol') else 'physics_iq'
+                body+=(f'<td><strong>{c.get("complete",0)}/198 有效视频</strong><span class=status>{c.get("running",0)}运行中 · {c.get("exhausted",0)}终止 · {c.get("pending",198-c.get("complete",0)-c.get("running",0)-c.get("exhausted",0))}待生成</span>'
                        f'<span class=status>最新完成 UTC：{html.escape(str(last[0]))}<br>{html.escape(str(last[1]))}</span>'
-                       f'<a href="bench_smoke_codex_20261109/physics_iq/{model}/{track}/index.html">视频与逐轮候选 →</a></td>')
+                       f'<a href="bench_smoke_codex_20261109/{bench_dir}/{model}/{track}/index.html">视频与逐轮候选 →</a></td>')
         body+='</tr>'
-    body+='</table></div><h2 id=evaluation>评测阶段</h2><p class=note>完整198个真实有效输出到齐后，运行原始Verified评测；缺失视频不补零、不删除。旧组评分在原有全量页保留。</p>'
+    body+='</table></div>'
+    body+='<h2 id=legacy>Legacy参考结果</h2><p class=note>以下为早期legacy-v1协议完成结果：任务提示、输出要求、记录字段与预算口径均不同，只作历史参考，不进入native_v2主实验均值或完成率。</p>'
+    body+='<div class=scroll><table><tr><th>模型</th><th>Track</th><th>完成</th><th>Legacy平均耗时</th><th>链接</th></tr>'
+    for slug,label in [('gpt-6-1','GPT-6.1-Sol'),('gpt-5-6','GPT-5.6-Sol')]:
+        for track in ['text','vision-agent']:
+            entry=old.get('configs',{}).get(slug+'-'+track,{})
+            n=entry.get('counts',{}).get('complete',0)
+            mean=entry.get('mean_duration_seconds')
+            body+=f'<tr><td>{label}</td><td>{track}</td><td>{n}/198</td><td>{fmt(mean/60 if mean else None)}m</td><td><a href="matrix_{slug}-{track}.html">打开legacy全量视频 →</a></td></tr>'
+    body+='</table></div>'
+    body+='<h2 id=performance>耗时与 token 统计</h2><p class=note>仅统计已完成且通过validation的有效视频；running和失败case不进入均值。Legacy组只显示旧状态里的平均耗时，token均值缺失时不补0。</p>'
+    body+='<div class=scroll><table><tr><th>模型</th><th>Text</th><th>Vision-Agent</th></tr>'
+    for model,label in MODELS.items():
+        body+=f'<tr><th>{label}</th>'
+        for track in ['text','vision-agent']:
+            if model in ('gpt61-sol','gpt56-sol') and not (run/'generations/physics_iq_gpt_native_v2'/model/track).exists():
+                slug='gpt-6-1' if model=='gpt61-sol' else 'gpt-5-6'
+                entry=old.get('configs',{}).get(slug+'-'+track,{})
+                mean=entry.get('mean_duration_seconds')
+                n=entry.get('counts',{}).get('complete')
+                body+=f'<td><strong>{n or "—"}</strong><span class=status>legacy平均耗时 {fmt(mean/60 if mean else None)}m<br>token均值：旧记录未统一回填</span></td>'
+            else:
+                root=run/('generations/physics_iq_gpt_native_v2' if model in ('gpt61-sol','gpt56-sol') else 'generations/physics_iq')
+                body+=stats_cell(completed_stats(root,model,track))
+        body+='</tr>'
+    body+='</table></div>'
+    body+='<h2 id=evaluation>评测阶段</h2><p class=note>完整198个真实有效输出到齐后，运行原始Verified评测；缺失视频不补零、不删除。旧组评分在原有全量页保留。</p>'
     scheduler=read(run/'evaluation/physics_full_scheduler/scheduler.json')
     body+='<div class=scroll><table><tr><th>组</th><th>阶段</th><th>完整Verified</th></tr>'
     for key,entry in scheduler.get('cohorts',{}).items():

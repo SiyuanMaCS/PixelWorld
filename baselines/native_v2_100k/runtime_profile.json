@@ -1,0 +1,279 @@
+{
+  "schema": "pixelworld-native-baseline-profile-v1",
+  "baseline_id": "native-codex-v2-100k",
+  "code_commit": "a5be7711aa3f0011562524d150c0f31df65f43e1",
+  "generation_files_sha256": {
+    "pixelworld/runner.py": "8ab0aa63cd03b9efd74ca37c0388aba959669a8847263df427e17c2032250a7f",
+    "pixelworld/media.py": "05259f4726d3c075b2007bef87d74629b950c5a861cbe09c9b78a009daa01e0b",
+    "pixelworld/config.py": "25964640f3622a89c85d29d35412a14443bae4ae5c40d990749b1a8eeeb763ab",
+    "pixelworld/audit.py": "82d9ad7ff2acef88d7bd332207ff0ee107ffff7e0180ece0b4f5cafac3a5a9fd",
+    "pixelworld/token_budget.py": "814f17f7523c66d5164ba911596ba1ce8806cb695a1787614933e448fc2cd49d",
+    "pixelworld/assets/TASK_TEXT.md": "a18e54cf563ebb6b7b650417543e1ce9be2d1943c1723bc9ca0f974e7c18a84d",
+    "pixelworld/assets/TASK_VISION_AGENT.md": "316abcd1ca0e70ca626e824a42b9cfa7bdf811d311d9cc7b7594846164fedf52",
+    "pixelworld/assets/GENERATION_RULES.md": "e2bd86b824eb563ac4f7b4ea34b7f6be3f09729d4858eddd99250c32891bab00",
+    "pixelworld/assets/artifact_io.py": "2b7c3b12f2f65e9aef0e6dd7eb0030e99300cad915b40e7e7b86aed28b698c42",
+    "pixelworld/assets/player_template.html": "7790edd32cfef7d80846fbba81ed85466283114859eb189f10655f4f0aeae81a"
+  },
+  "native_cli": {
+    "recorded_version": "codex-cli 0.167.0",
+    "currently_available_version": "codex-cli 0.167.0",
+    "entrypoint_sha256": "cdcb45aaa01d0f14e298985e09465aebccd47f64ecd298aea44814af7b62bbda",
+    "normalized_command": [
+      "codex",
+      "--ask-for-approval",
+      "never",
+      "exec",
+      "-",
+      "--model",
+      "traex/GPT-6.1-Sol",
+      "--ignore-user-config",
+      "--ignore-rules",
+      "--skip-git-repo-check",
+      "--sandbox",
+      "workspace-write",
+      "--strict-config",
+      "--json",
+      "-C",
+      "<CASE_WORKSPACE>",
+      "-c",
+      "model_reasoning_effort=\"high\"",
+      "-c",
+      "sandbox_workspace_write.network_access=false",
+      "-c",
+      "sandbox_workspace_write.writable_roots=[]",
+      "-c",
+      "sandbox_workspace_write.exclude_slash_tmp=true",
+      "-c",
+      "project_doc_max_bytes=0",
+      "-c",
+      "skills.bundled.enabled=false",
+      "-c",
+      "shell_environment_policy.inherit=none",
+      "-c",
+      "shell_environment_policy.set.PATH=\"/usr/bin:/usr/local/bin:/bin\"",
+      "-c",
+      "web_search=\"disabled\"",
+      "-c",
+      "model_provider=\"pixelworld_proxy\"",
+      "-c",
+      "model_providers.pixelworld_proxy.name=\"TRAE self-configured experiment proxy\"",
+      "-c",
+      "model_providers.pixelworld_proxy.base_url=\"<RESPONSES_BASE_URL>\"",
+      "-c",
+      "model_providers.pixelworld_proxy.wire_api=\"responses\"",
+      "-c",
+      "model_providers.pixelworld_proxy.env_key=\"PIXELWORLD_API_KEY\"",
+      "-c",
+      "model_catalog_json=\"<MODEL_CATALOG>\"",
+      "-c",
+      "model_providers.pixelworld_proxy.stream_idle_timeout_ms=3600000",
+      "-c",
+      "model_providers.pixelworld_proxy.request_max_retries=0",
+      "-c",
+      "model_providers.pixelworld_proxy.stream_max_retries=0",
+      "--disable",
+      "browser_use",
+      "--disable",
+      "computer_use",
+      "--disable",
+      "image_generation",
+      "--disable",
+      "multi_agent",
+      "--disable",
+      "multi_agent_v2",
+      "--disable",
+      "apps",
+      "--disable",
+      "plugins",
+      "--disable",
+      "memories",
+      "--disable",
+      "skill_search",
+      "--disable",
+      "hooks",
+      "--image",
+      "<FIRST_FRAME>"
+    ]
+  },
+  "generation_runtime": {
+    "python": "3.11.2",
+    "platform": "Linux",
+    "machine": "x86_64",
+    "packages": {
+      "numpy": "2.4.6",
+      "Pillow": "11.3.0",
+      "opencv-python-headless": "4.13.0.92",
+      "scipy": "1.17.1"
+    }
+  },
+  "sample": {
+    "case_id": "common50_0002",
+    "model_key": "gpt61-sol",
+    "track": "vision-agent",
+    "task_prompt_sha256": "e5d3f09e48791b45c6dc03fa7fa2ea6d9d717333dcc7fb02387b86845bbc8906",
+    "rules_sha256": "8f319197d8f6c5cb7ed6b29bc189d3c5e8bcc8b5fee817d3721a13331f0e60ef",
+    "initial_files": [
+      "GENERATION_RULES.md",
+      "artifact_io.py",
+      "first_frame.png",
+      "player_template.html",
+      "prompt.txt",
+      "task_spec.json"
+    ],
+    "support_files_sha256": {
+      "artifact_io.py": "2b7c3b12f2f65e9aef0e6dd7eb0030e99300cad915b40e7e7b86aed28b698c42",
+      "player_template.html": "7790edd32cfef7d80846fbba81ed85466283114859eb189f10655f4f0aeae81a"
+    },
+    "media_contract": {
+      "task_type": "i2v",
+      "width": 256,
+      "height": 192,
+      "frames": 20,
+      "fps": 4,
+      "audio": null,
+      "benchmark": "robojudge"
+    },
+    "native_api_fingerprints": {
+      "private_request_sha256": "c0fcab060b5685cf38b6aa14d8aa69deb0e0c9e0b06daff5cc2d03d0daf011b5",
+      "compiled_system_sha256": "da7470a543bd32c7373997648b1439fc1c94d93fa1790ffb4af87835297bf1ee",
+      "tool_schema_sha256": "77edbb6ea1e6f8e4179b6f46e9ba356e1cb5d879f4d270aaff9846c2c295d04d",
+      "top_level_tool_types": [
+        "function",
+        "function",
+        "function",
+        "custom",
+        "function",
+        "function",
+        "function",
+        "function"
+      ],
+      "top_level_tool_names": [
+        "exec_command",
+        "write_stdin",
+        "request_user_input",
+        "apply_patch",
+        "view_image",
+        "get_goal",
+        "create_goal",
+        "update_goal"
+      ],
+      "private_converted_request_sha256": "0bd1d934b3ba2540d5dc129a16f67cc4a6ea5ed1dd4f8a82663ddf91a7b414cf",
+      "converted_system_messages_sha256": "d9cf2d1abb38d8d0f4eb2fcda88319f04905460ed60121b782cfb4fc1107faa8",
+      "converted_tool_schema_sha256": "3d366f49171dd3cd74af87e8264839626eb495c742224511104f0d1dde74a209",
+      "scope": "Actual archived client request and converted native payload; provider-internal prompt additions are not observable."
+    }
+  },
+  "configuration_fingerprints": [
+    {
+      "benchmark": "physics_iq",
+      "private_config_sha256": "288b8f16d747e5086d9f04d989992664108281f1df17dad942e22f95e3535ba1",
+      "public_settings": {
+        "protocol": "pixelworld-codex-v2-20261109",
+        "max_concurrency": 4,
+        "max_per_config": 1,
+        "max_attempts": 2,
+        "output_token_budget": 100000,
+        "models": [
+          {
+            "key": "gpt6-astra",
+            "model": "traex/GPT-6-Astra",
+            "tracks": [
+              "text",
+              "vision-agent"
+            ],
+            "cli_backend": "codex",
+            "reasoning_effort": "high",
+            "provider_type": "responses"
+          },
+          {
+            "key": "deepseek-v41",
+            "model": "traex/DeepSeek-V4.1-Flash",
+            "tracks": [
+              "text",
+              "vision-agent"
+            ],
+            "cli_backend": "codex",
+            "reasoning_effort": "high",
+            "provider_type": "responses"
+          }
+        ],
+        "case_count": 198
+      },
+      "prepared_inventory_sha256": "9c960e944b6be7354354fe8a79db6f626f7febaf09fbafc6fa811b34f699729e"
+    },
+    {
+      "benchmark": "robojudge",
+      "private_config_sha256": "bed6253bf9395c254b7ccbaa9d7c5cf0c8667f51ff31d5a5736d8719d925b0f1",
+      "public_settings": {
+        "protocol": "pixelworld-codex-v2-20261109",
+        "max_concurrency": 8,
+        "max_per_config": 1,
+        "max_attempts": 4,
+        "output_token_budget": 100000,
+        "models": [
+          {
+            "key": "gpt61-sol",
+            "model": "traex/GPT-6.1-Sol",
+            "tracks": [
+              "text",
+              "vision-agent"
+            ],
+            "cli_backend": "codex",
+            "reasoning_effort": "high",
+            "provider_type": "responses"
+          },
+          {
+            "key": "gpt56-sol",
+            "model": "traex/GPT-5.6-Sol",
+            "tracks": [
+              "text",
+              "vision-agent"
+            ],
+            "cli_backend": "codex",
+            "reasoning_effort": "high",
+            "provider_type": "responses"
+          },
+          {
+            "key": "deepseek-v41",
+            "model": "traex/DeepSeek-V4.1-Flash",
+            "tracks": [
+              "text",
+              "vision-agent"
+            ],
+            "cli_backend": "codex",
+            "reasoning_effort": "high",
+            "provider_type": "responses"
+          },
+          {
+            "key": "gpt6-astra",
+            "model": "traex/GPT-6-Astra",
+            "tracks": [
+              "text",
+              "vision-agent"
+            ],
+            "cli_backend": "codex",
+            "reasoning_effort": "high",
+            "provider_type": "responses"
+          }
+        ],
+        "case_count": 50
+      },
+      "prepared_inventory_sha256": null
+    }
+  ],
+  "isolation": {
+    "fresh_codex_home": true,
+    "inherited_project_instructions": false,
+    "bundled_skills": false,
+    "plugins_and_memory": false,
+    "tool_network_access": false,
+    "filesystem_sandbox": "workspace-write; successful outside-task reads also audited",
+    "os_read_access_confined_to_workspace": false
+  },
+  "limitations": [
+    "OS paths and runtime date descriptions can vary between runs; raw traces preserve them.",
+    "The public normalized command is a recipe, not the hash of a private full command.",
+    "Version and entrypoint hash record this installation; user-owned installations/platforms must be recorded separately.",
+    "Package list covers common local image/math packages, not every importable system package."
+  ]
+}

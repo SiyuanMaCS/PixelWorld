@@ -11,6 +11,21 @@ and an externally monitored cumulative100,000 reported output-token allowance.
 Reasoning is not counted twice. Request-end reporting can overshoot the limit.
 No evaluator/reference feedback enters generation.
 
+The [runtime profile](runtime_profile.json) records the validated Codex entrypoint,
+normalized launch flags, common image/math package versions, prepared input
+inventories, and hashes of one actual native task, compiled system messages
+and tool schemas. The raw system/requests and credentials remain private.
+`tools/record_baseline_provenance.py` can record another installation without
+calling a model. It verifies the frozen source hashes and refuses an RSI task
+override as a native-baseline sample.
+
+`workspace-write` confines writes. It does not provide an OS boundary that
+confines all reads to the case directory. Network/image-tool restrictions,
+fresh context, disabled inherited instructions/skills/memory, and the successful
+outside-task read audit are recorded separately. Runtime path/date descriptions
+can differ; raw run traces preserve them. Do not infer stricter filesystem
+isolation or unobservable provider-internal prompts from this profile.
+
 Physics-IQ uses198 official I2V/BPP inputs,256×144,4FPS,20frames/5seconds.
 RoboJudge uses the complete50 released shared-task identities, width256 with
 original aspect ratio,4FPS,20frames/5seconds, and the disclosed paper-prefix1.
@@ -59,3 +74,11 @@ For Physics-IQ, use the original full evaluator watcher described in the setup
 guide. For RoboJudge, run `tools/evaluate_robojudge_shared50.py prepare`, then
 `run`, with generation/evaluation directories separated. Full means require
 all50 actual paired PA/IA predictions; partial smoke must be explicitly labelled.
+
+An interrupted stream has unknown final usage unless independent native records
+close that uncertainty. `tools/prove_transport_accounting.py` accepts only an
+explicit connection-stage rejection with no output and matching completed
+request reports. Timeouts/disconnections remain unknown. Operational recoveries
+must preserve the original failure, add this evidence outside the workspace,
+carry the cumulative counter, and disclose their lineage. A completed video is
+never regenerated to obtain a better score.

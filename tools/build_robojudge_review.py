@@ -4,6 +4,7 @@ import argparse
 import html
 import json
 import shutil
+import statistics
 from pathlib import Path
 import sys
 
@@ -18,6 +19,49 @@ STUDY='bench_smoke_codex_20261109'
 def read(path):
     try:return json.loads(path.read_text())
     except (OSError,ValueError):return {}
+
+def fmt(value, digits=1):
+    if value is None:return '—'
+    if isinstance(value, int):return f'{value:,}'
+    return f'{value:,.{digits}f}'
+
+def completed_stats(generation, model, track):
+    rows=[]
+    for path in sorted((generation/model/track).glob('case_*_attempt_*/run_manifest.json')):
+        manifest=read(path)
+        if manifest.get('status')!='complete' or manifest.get('validation',{}).get('pass') is not True:
+            continue
+        usage=manifest.get('token_usage') or {}
+        duration=manifest.get('duration_seconds')
+        output=usage.get('output_tokens')
+        input_tokens=usage.get('input_tokens')
+        if isinstance(duration,(int,float)) and isinstance(output,int):
+            rows.append({'duration':duration,'output':output,
+                         'input':input_tokens if isinstance(input_tokens,int) else None})
+    if not rows:return None
+    durations=[x['duration']/60 for x in rows]
+    outputs=[x['output'] for x in rows]
+    inputs=[x['input'] for x in rows if isinstance(x['input'],int)]
+    return {'n':len(rows),'avg_min':statistics.mean(durations),'p50_min':statistics.median(durations),
+            'avg_output':statistics.mean(outputs),'p50_output':statistics.median(outputs),
+            'avg_input':statistics.mean(inputs) if inputs else None,'p50_input':statistics.median(inputs) if inputs else None}
+
+def stats_cell(stats):
+    if not stats:return '<td>—</td>'
+    return (f'<td><strong>{stats["n"]}</strong><span class=status>'
+            f'耗时 avg {fmt(stats["avg_min"])}m / p50 {fmt(stats["p50_min"])}m<br>'
+            f'output avg {fmt(stats["avg_output"],0)} / p50 {fmt(stats["p50_output"],0)}<br>'
+            f'input avg {fmt(stats["avg_input"],0)} / p50 {fmt(stats["p50_input"],0)}</span></td>')
+
+def video_export(path, asset, spec):
+    receipt=asset/'export_receipt.json'
+    if receipt.exists() and (asset/'poster.png').is_file():
+        try:
+            data=read(receipt)['video']
+            if (asset/data['pixels_file']).is_file():return data
+        except (KeyError,TypeError):
+            pass
+    return export_pixels(path/'workspace',asset,spec)
 
 def build(run,web):
     inputs=run/'inputs/robojudge';generation=run/'generations/robojudge'
@@ -68,7 +112,15 @@ def build(run,web):
                    f'<span class=status>最近完成 UTC：{html.escape(str(latest[0]))}<br>{html.escape(str(latest[1]))}</span>'
                    f'<a href="{STUDY}/robojudge/{model}/{track}/index.html">打开此组视频与 Trace →</a></td>')
         body+='</tr>'
-    body+=('</table></div><p class=note>当前这些单例分数不是shared50均分。正式对榜需要完整任务和一致的prompt、采样及聚合口径。</p>'
+    body+='</table></div><p class=note>当前这些单例分数不是shared50均分。正式对榜需要完整任务和一致的prompt、采样及聚合口径。</p>'
+    body+='<h2 id=performance>耗时与 token 统计</h2><p class=note>仅统计已完成且通过validation的有效视频；running和失败case不进入均值。output tokens包含provider报告的reasoning输出，不另加一次。</p>'
+    body+='<div class=scroll><table><tr><th>模型</th><th>Text</th><th>Vision-Agent</th></tr>'
+    for model,label in MODELS.items():
+        body+=f'<tr><th>{label}</th>'
+        for track in TRACKS:
+            body+=stats_cell(completed_stats(generation,model,track))
+        body+='</tr>'
+    body+=('</table></div>'
            '<h2 id=videos>按任务查看视频</h2><label for=case_select class=status>选择共享任务</label> <select id=case_select>')
     selected='common50_0001'
     for case in cases:
@@ -85,9 +137,10 @@ def build(run,web):
             body+='<div class=robo-videos>'
             for model,track,(path,manifest) in entries:
                 folder=path.name;relative=f'{STUDY}/robojudge/{model}/{track}/{folder}'
-                build_case(path,web/relative)
+                if not (web/relative/'index.html').is_file():
+                    build_case(path,web/relative)
                 asset=web/relative/'final';spec=read(path/'media_contract.json')
-                video=export_pixels(path/'workspace',asset,spec)
+                video=video_export(path,asset,spec)
                 body+=f'<article class=card><h3>{MODELS[model]}</h3><p><span class=badge>{track}</span> <span class=pill>{manifest["status"]}</span></p>'
                 if video:body+=player({**video,'pixels':relative+'/final/'+video['pixels_file'],'poster':relative+'/final/poster.png'})
                 else:body+='<div class=placeholder>尚无合格的像素视频</div>'

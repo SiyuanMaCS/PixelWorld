@@ -1,0 +1,38 @@
+{
+  "schema": "pixelworld-phygenbench-v1",
+  "source": "/mnt/bn/embodied-lf3/masiyuan/PhysFix-workspace/phygenbench/phygen_prompts.json",
+  "prompt_count": 160,
+  "raw_category_counts": {
+    "Force": 40,
+    "Light": 50,
+    "Heat": 30,
+    "Physical Properties": 25,
+    "Chemical Properties": 15
+  },
+  "reporting_dimension_mapping": {
+    "Force": "Mechanics",
+    "Light": "Optics",
+    "Heat": "Thermal",
+    "Physical Properties": "Material",
+    "Chemical Properties": "Material"
+  },
+  "reported_dimension_counts": {
+    "Mechanics": 40,
+    "Optics": 50,
+    "Thermal": 30,
+    "Material": 40
+  },
+  "generation_contract": {
+    "task_type": "t2v",
+    "frames": 20,
+    "fps": 4,
+    "duration_seconds": 5,
+    "resolution_policy": "PixelWorld baseline default"
+  },
+  "reference_scores_from_video_coder_paper": [
+    {"model": "MiniMax-H3", "Mechanics": 0.61, "Optics": 0.73, "Thermal": 0.52, "Material": 0.55, "Average": 0.61},
+    {"model": "Wan2.2-TI2V-5B", "Mechanics": 0.55, "Optics": 0.58, "Thermal": 0.53, "Material": 0.50, "Average": 0.54},
+    {"model": "Video-Coder + MiniMax-H3", "Mechanics": 0.68, "Optics": 0.79, "Thermal": 0.60, "Material": 0.61, "Average": 0.67}
+  ],
+  "evaluation_note": "Use as a small, physically interpretable supplementary benchmark. Do not conflate its final video plausibility score with an agentic world-model score."
+}
