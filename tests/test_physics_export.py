@@ -11,6 +11,7 @@ import pytest
 from pixelworld import physics_iq as physics
 from pixelworld.supervisor import case_ids
 from pixelworld.util import sha256
+from pixelworld.constants import PHYSICS_IQ_COMMIT,PHYSICS_IQ_DATASET_REVISION,PHYSICS_IQ_DESCRIPTIONS_SHA256
 from tools import watch_physics_evaluation as watcher
 
 
@@ -102,3 +103,30 @@ def test_terminal_progress_hint_requires_actual_run_inventory(tmp_path,monkeypat
     assert len(calls)==198
     assert result['test-model/text']['phase']=='waiting_for_generation'
     assert not result['test-model/text']['official_full_score']
+
+
+def test_repo_setup_ready_marker_routes_original_eval_without_legacy_host_layout(tmp_path,monkeypatch):
+    source=tmp_path/'upstream'
+    source.mkdir()
+    python=source/'.venv/bin/python';python.parent.mkdir(parents=True);python.write_text('unexecuted fixture')
+    parent=tmp_path/'official-data';dataset=parent/'physics-IQ-benchmark-verified';dataset.mkdir(parents=True)
+    marker=parent/'PIXELWORLD_EVALUATOR_READY.json'
+    record={'upstream':str(source),'python':str(python),'upstream_commit':PHYSICS_IQ_COMMIT,
+            'dataset_revision':PHYSICS_IQ_DATASET_REVISION,'benchmark_parent':str(parent),'dataset':str(dataset)}
+    marker.write_text(json.dumps(record))
+    monkeypatch.setattr(watcher,'sha256',lambda _:PHYSICS_IQ_DESCRIPTIONS_SHA256)
+    monkeypatch.setattr(watcher.subprocess,'check_output',lambda argv,**kw: PHYSICS_IQ_COMMIT if 'rev-parse' in argv else '')
+    paths=watcher.validate_runtime(evaluator_ready=marker)
+    assert paths['source']==source
+    assert paths['python']==python
+    assert paths['benchmark_parent']==parent
+    record['dataset_revision']='unrelated-release';marker.write_text(json.dumps(record))
+    with pytest.raises(ValueError,match='different official'):watcher.validate_runtime(evaluator_ready=marker)
+
+
+def test_ready_marker_cannot_substitute_another_reference_directory(tmp_path):
+    marker=tmp_path/'ready.json'
+    marker.write_text(json.dumps({'upstream_commit':PHYSICS_IQ_COMMIT,'dataset_revision':PHYSICS_IQ_DATASET_REVISION,
+        'upstream':str(tmp_path/'source'),'benchmark_parent':str(tmp_path/'official'),
+        'dataset':str(tmp_path/'unrelated')}))
+    with pytest.raises(ValueError,match='dataset does not belong'):watcher.validate_runtime(evaluator_ready=marker)

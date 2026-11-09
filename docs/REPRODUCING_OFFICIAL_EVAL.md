@@ -40,6 +40,25 @@ python tools/watch_physics_evaluation.py \
   --output evaluation_outputs/physics_full
 ```
 
+For a new host, use the repository's normal setup and its returned ready marker:
+
+```bash
+pixelworld physics-iq setup-evaluator \
+  --upstream vendor/physics-IQ-benchmark \
+  --benchmark-parent data/physics-iq-eval
+python tools/watch_physics_evaluation.py \
+  --config configs/physics_full.json \
+  --evaluator-ready data/physics-iq-eval/PIXELWORLD_EVALUATOR_READY.json \
+  --output evaluation_outputs/physics_full
+```
+
+The setup records the actual evaluator interpreter. An existing uv environment
+can be selected with `UV_PROJECT_ENVIRONMENT`; `--no-install --no-download`
+reuses prepared source/runtime/data without installing packages or downloading
+reference data again. The ready-marker route verifies the same pins and exact
+reference directory; it is not a reduced evaluation mode. The legacy
+`--resource-root` route remains available for prior prepared experiments.
+
 The resource directory contains `upstream/physics-IQ-benchmark`, `.venv`,
 `protocol/descriptions_base.csv`, `protocol/dataset.json`, `tools/bin/ffmpeg`,
 and `data/physics-IQ-benchmark-verified`. Source, descriptions and dataset revision

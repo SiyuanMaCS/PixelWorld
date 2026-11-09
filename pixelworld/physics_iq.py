@@ -120,6 +120,15 @@ def setup_evaluator(upstream: Path, benchmark_parent: Path, install: bool = True
         if not uv:
             raise RuntimeError("uv is required for the pinned official evaluator environment")
         subprocess.run([uv, "sync"], cwd=upstream, check=True)
+        evaluator_python = subprocess.check_output(
+            [uv, "run", "--no-sync", "python", "-c", "import sys; print(sys.executable)"],
+            cwd=upstream, text=True,
+        ).strip()
+    else:
+        environment = Path(os.environ.get("UV_PROJECT_ENVIRONMENT", str(upstream / ".venv")))
+        if not environment.is_absolute():
+            environment = upstream / environment
+        evaluator_python = str(environment.resolve() / "bin/python")
     dataset = benchmark_parent / "physics-IQ-benchmark-verified"
     if download_data:
         dataset.parent.mkdir(parents=True, exist_ok=True)
@@ -137,6 +146,7 @@ def setup_evaluator(upstream: Path, benchmark_parent: Path, install: bool = True
         "dataset_revision": PHYSICS_IQ_DATASET_REVISION,
         "installed": install,
         "downloaded": download_data,
+        "python": evaluator_python,
     }
     atomic_json(benchmark_parent / "PIXELWORLD_EVALUATOR_READY.json", record)
     return record

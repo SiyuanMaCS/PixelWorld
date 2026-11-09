@@ -24,24 +24,46 @@ from pixelworld.supervisor import inspect
 from pixelworld.util import atomic_json, sha256, utc_now
 
 
-def validate_runtime(resource: Path) -> dict:
-    source = resource/'upstream/physics-IQ-benchmark'
-    python = resource/'.venv/bin/python'
-    descriptions = resource/'protocol/descriptions_base.csv'
-    dataset = json.loads((resource/'protocol/dataset.json').read_text())
-    if (not python.is_file() or dataset.get('revision') != PHYSICS_IQ_DATASET_REVISION
+def validate_runtime(resource: Path | None = None, evaluator_ready: Path | None = None) -> dict:
+    if (resource is None) == (evaluator_ready is None):
+        raise ValueError('Select either legacy resource-root or the repository setup ready marker')
+    if evaluator_ready is not None:
+        ready = json.loads(evaluator_ready.read_text())
+        if (ready.get('upstream_commit') != PHYSICS_IQ_COMMIT
+                or ready.get('dataset_revision') != PHYSICS_IQ_DATASET_REVISION):
+            raise ValueError('Setup ready marker has a different official source/dataset revision')
+        source = Path(ready['upstream']).resolve()
+        python = Path(ready.get('python',source/'.venv/bin/python')).resolve()
+        descriptions = source/'descriptions/best_practice/descriptions_base.csv'
+        benchmark_parent = Path(ready['benchmark_parent']).resolve()
+        dataset_path = Path(ready['dataset']).resolve()
+        if dataset_path != (benchmark_parent/'physics-IQ-benchmark-verified').resolve():
+            raise ValueError('Setup ready marker dataset does not belong to its benchmark parent')
+        revision = ready['dataset_revision']
+        bin_dir = python.parent
+    else:
+        source = resource/'upstream/physics-IQ-benchmark'
+        python = resource/'.venv/bin/python'
+        descriptions = resource/'protocol/descriptions_base.csv'
+        revision = json.loads((resource/'protocol/dataset.json').read_text()).get('revision')
+        benchmark_parent = resource/'data'
+        dataset_path = benchmark_parent/'physics-IQ-benchmark-verified'
+        bin_dir = resource/'tools/bin'
+    if (not python.is_file() or revision != PHYSICS_IQ_DATASET_REVISION
             or sha256(descriptions) != PHYSICS_IQ_DESCRIPTIONS_SHA256):
         raise ValueError('Original evaluator runtime/data/description identity mismatch')
     commit = subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
     dirty = subprocess.check_output(['git','-C',str(source),'diff','HEAD','--name-only'],text=True).strip()
     if commit != PHYSICS_IQ_COMMIT or dirty:
         raise ValueError('Original evaluator source is not the pinned pristine commit')
-    if not (resource/'data/physics-IQ-benchmark-verified').is_dir():
+    if not dataset_path.is_dir():
         raise FileNotFoundError('Verified evaluation reference data missing')
-    return {'source':source,'python':python,'descriptions':descriptions}
+    return {'source':source,'python':python,'descriptions':descriptions,
+            'benchmark_parent':benchmark_parent,'bin_dir':bin_dir}
 
 
-def step(config, resource: Path, output: Path, states: dict, n_process: int = 4) -> dict:
+def step(config, resource: Path | None, output: Path, states: dict, n_process: int = 4,
+         evaluator_ready: Path | None = None) -> dict:
     cases = official_cases()
     progress_path = config.runs_root/'status.json'
     progress = json.loads(progress_path.read_text()) if progress_path.exists() else {}
@@ -79,7 +101,9 @@ def step(config, resource: Path, output: Path, states: dict, n_process: int = 4)
                             or score.get('dataset_revision') != PHYSICS_IQ_DATASET_REVISION):
                         raise ValueError('Existing score does not attest complete pinned scope')
                 else:
-                    runtime = validate_runtime(resource)
+                    runtime = validate_runtime(resource,evaluator_ready)
+                    if any(runtime[k].is_relative_to(config.runs_root.resolve()) for k in ('source','benchmark_parent')):
+                        raise ValueError('Evaluator resources must remain outside generation workspaces')
                     entry['phase']='official_full_evaluation'
                     states[key]=entry
                     atomic_json(output/'scheduler.json',{'updated_utc':utc_now(),'pid':os.getpid(),'cohorts':states})
@@ -88,9 +112,9 @@ def step(config, resource: Path, output: Path, states: dict, n_process: int = 4)
                     command=[str(runtime['python']),'-u','-m','physiq.run_physics_iq',
                              '--input_folders',str(videos),'--output_folder',str(result),
                              '--descriptions_file',str(runtime['descriptions']),
-                             '--benchmark_base_folder',str(resource/'data'),'--n_process',str(n_process)]
+                             '--benchmark_base_folder',str(runtime['benchmark_parent']),'--n_process',str(n_process)]
                     env=os.environ.copy()
-                    env.update(PYTHONPATH=str(runtime['source']),PATH=str(resource/'tools/bin')+os.pathsep+env.get('PATH',''),
+                    env.update(PYTHONPATH=str(runtime['source']),PATH=str(runtime['bin_dir'])+os.pathsep+env.get('PATH',''),
                                MPLBACKEND='Agg',OPENBLAS_NUM_THREADS='1',OMP_NUM_THREADS='2')
                     with (cohort/'official_evaluation.log').open('wb') as log:
                         code=subprocess.call(command,cwd=runtime['source'],env=env,stdout=log,stderr=subprocess.STDOUT)
@@ -118,7 +142,9 @@ def step(config, resource: Path, output: Path, states: dict, n_process: int = 4)
 def main() -> None:
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config',type=Path,required=True)
-    parser.add_argument('--resource-root',type=Path,required=True)
+    paths=parser.add_mutually_exclusive_group(required=True)
+    paths.add_argument('--resource-root',type=Path,help='Existing original legacy runtime/resource directory')
+    paths.add_argument('--evaluator-ready',type=Path,help='PIXELWORLD_EVALUATOR_READY.json created by repository setup')
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--interval',type=float,default=60)
     parser.add_argument('--max-hours',type=float,default=24*14)
@@ -128,13 +154,17 @@ def main() -> None:
     if output.is_relative_to(config.runs_root.resolve()) or args.interval<1 or args.max_hours<=0 or args.n_process<1:
         raise ValueError('External evaluator directory and positive bounded settings required')
     output.mkdir(parents=True,exist_ok=True)
-    validate_runtime(args.resource_root.resolve())
+    resource=args.resource_root.resolve() if args.resource_root else None
+    ready=args.evaluator_ready.resolve() if args.evaluator_ready else None
+    runtime=validate_runtime(resource,ready)
+    if any(runtime[k].is_relative_to(config.runs_root.resolve()) for k in ('source','benchmark_parent')):
+        raise ValueError('Evaluator resources must remain outside generation workspaces')
     lock=(output/'scheduler.lock').open('a+')
     fcntl.flock(lock,fcntl.LOCK_EX|fcntl.LOCK_NB)
     path=output/'scheduler.json';states=json.loads(path.read_text())['cohorts'] if path.exists() else {}
     deadline=time.monotonic()+args.max_hours*3600
     while time.monotonic()<deadline and not (output/'STOP').exists():
-        states=step(config,args.resource_root.resolve(),output,states,args.n_process)
+        states=step(config,resource,output,states,args.n_process,ready)
         if args.once or all(item['phase'] in ('complete','failed','incomplete_official_scope') for item in states.values()):break
         time.sleep(args.interval)
 
