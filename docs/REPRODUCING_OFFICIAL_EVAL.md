@@ -155,6 +155,14 @@ code. It is an explicit runtime pin for an otherwise unversioned dependency;
 it does not establish which library revision the published baseline used.
 The current-main installation rejection and selection evidence are retained.
 
+The original decord0.6 distribution has a legacy cp36 tag in its WHEEL metadata,
+so the package checker reports a platform incompatibility on Python3.10. Actual
+import, reading all121 frames and exact first-RGB comparison have passed in the
+prepared environment. The warning is retained; no wheel metadata or decoder
+implementation was rewritten. The source image is320×240 and the declared
+generation input is its640×480 LANCZOS resize. Decoder comparisons use that
+provided input, rather than comparing arrays at different resolutions.
+
 ## WBench
 
 Full is289 cases/1,058 turns. Later turns use previous generated last RGB; export retains all segment frames and stages pre-cut turn clips. `tools/evaluate_wbench.py run` invokes unmodified upstream phases, original Doubao judge and separate PAVRM environment, then checks every applicable case metric.
