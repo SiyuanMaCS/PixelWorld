@@ -54,6 +54,11 @@ def stats_cell(stats):
             f'output avg {fmt(stats["avg_output"],0)} / p50 {fmt(stats["p50_output"],0)}<br>'
             f'input avg {fmt(stats["avg_input"],0)} / p50 {fmt(stats["p50_input"],0)}</span></td>')
 
+def activity_badge(counts):
+    if counts.get('running',0)>0:return '<span class=badge>ACTIVE</span>'
+    if counts.get('complete',0)>=50:return '<span class=pill>DONE</span>'
+    return '<span class=pill>IDLE</span>'
+
 def video_export(path, asset, spec):
     receipt=asset/'export_receipt.json'
     if receipt.exists() and (asset/'poster.png').is_file():
@@ -115,8 +120,10 @@ def build(run,web):
             group=groups.get(model+'/'+track,{});counts=group.get('counts',{})
             latest=group.get('latest_completion') or ['—','—']
             run_count=counts.get('running',0);fail_count=counts.get('exhausted',0)
-            body+=(f'<td><strong>{valid} /50 有效视频</strong><span class=status>{run_count} 运行中 · {fail_count} 终止 · {score}</span>'
-                   f'<span class=status>最近完成 UTC：{html.escape(str(latest[0]))}<br>{html.escape(str(latest[1]))}</span>'
+            running_cases=', '.join(group.get('running_cases') or [])
+            body+=(f'<td>{activity_badge(counts)} <strong>{valid} /50 有效视频</strong><span class=status>{run_count} 运行中 · {fail_count} 终止 · {score}</span>'
+                   + (f'<span class=status>正在跑：{html.escape(running_cases)}</span>' if running_cases else '')
+                   + f'<span class=status>最近完成 UTC：{html.escape(str(latest[0]))}<br>{html.escape(str(latest[1]))}</span>'
                    f'<a href="{STUDY}/robojudge/{model}/{track}/index.html">打开此组视频与 Trace →</a></td>')
         body+='</tr>'
     body+='</table></div><p class=note>当前这些单例分数不是shared50均分。正式对榜需要完整任务和一致的prompt、采样及聚合口径。</p>'

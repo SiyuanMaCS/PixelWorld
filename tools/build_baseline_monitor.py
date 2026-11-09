@@ -44,6 +44,11 @@ def stats_cell(stats):
             f'output avg {fmt(stats["avg_output"],0)} / p50 {fmt(stats["p50_output"],0)}<br>'
             f'input avg {fmt(stats["avg_input"],0)} / p50 {fmt(stats["p50_input"],0)}</span></td>')
 
+def activity_badge(counts):
+    if counts.get('running',0)>0:return '<span class=badge>ACTIVE</span>'
+    if counts.get('complete',0)>=198:return '<span class=pill>DONE</span>'
+    return '<span class="pill">IDLE</span>'
+
 def build(run,web,legacy):
     status=read(run/'generations/physics_iq/status.json')
     gpt_status=read(run/'generations/physics_iq_gpt_native_v2/status.json')
@@ -70,8 +75,10 @@ def build(run,web,legacy):
                        f'<a href="#legacy">查看Legacy参考 →</a></td>')
             else:
                 bench_dir='physics_iq_gpt_native_v2' if model in ('gpt61-sol','gpt56-sol') else ('physics_iq_seed21_native_v2' if model=='seed21-pro' else 'physics_iq')
-                body+=(f'<td><strong>{c.get("complete",0)}/198 有效视频</strong><span class=status>{c.get("running",0)}运行中 · {c.get("exhausted",0)}终止 · {c.get("pending",198-c.get("complete",0)-c.get("running",0)-c.get("exhausted",0))}待生成</span>'
-                       f'<span class=status>最新完成 UTC：{html.escape(str(last[0]))}<br>{html.escape(str(last[1]))}</span>'
+                running_cases=', '.join(entry.get('running_cases') or [])
+                body+=(f'<td>{activity_badge(c)} <strong>{c.get("complete",0)}/198 有效视频</strong><span class=status>{c.get("running",0)}运行中 · {c.get("exhausted",0)}终止 · {c.get("pending",198-c.get("complete",0)-c.get("running",0)-c.get("exhausted",0))}待生成</span>'
+                       + (f'<span class=status>正在跑：{html.escape(running_cases)}</span>' if running_cases else '')
+                       + f'<span class=status>最新完成 UTC：{html.escape(str(last[0]))}<br>{html.escape(str(last[1]))}</span>'
                        f'<a href="bench_smoke_codex_20261109/{bench_dir}/{model}/{track}/index.html">视频与逐轮候选 →</a></td>')
         body+='</tr>'
     body+='</table></div>'

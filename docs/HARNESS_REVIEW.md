@@ -35,10 +35,12 @@ run/
 Text：
 
 > Generate the RGB video requested in `prompt.txt`, following `GENERATION_RULES.md`. `first_frame.png` is available through local code and numeric RGB operations; it is not attached visually. Visual image tools are disabled. Choose your own approach.
+> You must produce the required output artifacts before finishing.
 
 Vision-Agent：
 
 > Generate the RGB video requested in `prompt.txt`, following `GENERATION_RULES.md`. `first_frame.png` is attached visually. Visual image tools are available. Choose your own approach.
+> You must produce the required output artifacts before finishing.
 
 启用新token预算的默认任务另加：
 
@@ -46,11 +48,11 @@ Vision-Agent：
 
 显式`task_file`实验覆盖保留其原文，不静默添加该句。两个默认track差异是图片附件/视觉工具；Text仍可用Python读取PNG数值并将统计打印为文字。
 
-当前基础I2V规则：只使用first_frame/prompt，工作限本workspace；生成20张256×144 RGB、4FPS、5秒，frame00逐像素等于输入；写generate.py并将uint8 `(20,144,256,3)`交给artifact_io.save；可用本地绘图、复制/变形、解析几何、法线/光照与数学运动；不使用外部AI生成器、学习权重、外部模拟/渲染引擎、参考未来、mask/score、memory、网络和其他agent；自主保存/检查/修改，无必需OBSERVATION/METHOD报告。
+当前基础I2V规则：只使用first_frame/prompt，工作限本workspace；生成20张256×144 RGB、4FPS、5秒，frame00逐像素等于输入；必须写generate.py、运行它，并至少调用一次artifact_io.save，结束前必须存在必需输出产物；可用本地绘图、复制/变形、解析几何、法线/光照与数学运动；不使用外部AI生成器、学习权重、外部模拟/渲染引擎、参考未来、mask/score、memory、网络和其他agent；自主保存/检查/修改，无必需OBSERVATION/METHOD报告。
 
 helper只保存模型算出的数组，生成uint32 0xRRGGBB张量、PNG、检查表和HTML；player只播放像素。两者不含场景运动算法或未来颜色预测。模型须自己完成场景分析与后续像素计算。
 
-生成规则同时明确要求：`Keep generate.py runnable so it regenerates the submitted RGB video.` 即保留可重新运行、生成所提交RGB视频的程序；这是一项交付要求。
+生成规则同时明确要求：`Keep generate.py runnable so it regenerates the submitted RGB video.` 即保留可重新运行、生成所提交RGB视频的程序；这是一项交付要求。若模型修订视频，每个修订候选也要先保存；同时避免没有明确改进目标的反复修订，保持效率。
 
 ## 不同任务怎样适配
 

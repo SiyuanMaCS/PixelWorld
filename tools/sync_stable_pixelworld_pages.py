@@ -33,7 +33,18 @@ TARGETS = (
     "pixelworld/robojudge_assets",
 )
 
-CSS = """:root{color-scheme:dark;--bg:#0b0f14;--panel:#141b24;--line:#2b3745;--text:#edf2f7;--muted:#a0adbc;--green:#b8ed94;--blue:#94ccff;--amber:#f4cb91}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,sans-serif}a{color:inherit;text-decoration:none}main{max-width:1160px;margin:auto;padding:32px 24px 64px}.top{position:sticky;top:0;background:#0b0f14f2;border-bottom:1px solid var(--line);z-index:5}.top-inner{max-width:1160px;margin:auto;padding:15px 24px;display:flex;justify-content:space-between;gap:18px;align-items:center}.brand{font-weight:850}.nav{display:flex;gap:18px;color:var(--muted);font-size:13px}.nav a:hover,.link{color:var(--blue)}.hero{margin:18px 0 30px}.eyebrow{font-size:11px;letter-spacing:.1em;color:var(--green);margin:0 0 8px}.hero h1{font-size:clamp(30px,4vw,48px);line-height:1.15;margin:0 0 12px;letter-spacing:-.04em}.muted,.desc{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}.card.feature{border-color:#52714a;background:linear-gradient(130deg,#1a2b20,var(--panel) 70%)}.badge{display:inline-block;font-size:11px;border:1px solid #465749;border-radius:6px;padding:3px 8px;color:var(--green)}h2{margin:36px 0 14px;font-size:24px}h3{font-size:21px;margin:12px 0 8px}.button{display:inline-flex;margin-top:10px;border:1px solid #425064;border-radius:8px;padding:9px 14px;background:#202b37;font-weight:700;font-size:13px}.primary{background:var(--green);color:#17220f;border-color:var(--green)}.facts{display:flex;gap:18px;margin:14px 0;color:var(--muted);font-size:12px;flex-wrap:wrap}.facts strong{display:block;color:var(--text);font-size:22px}.scroll{overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel);margin:12px 0 22px}table{border-collapse:collapse;width:100%;min-width:680px}th,td{border-bottom:1px solid var(--line);padding:12px 14px;text-align:left;vertical-align:top}th{color:var(--muted);font-size:12px}.note,.status{font-size:12px;color:var(--muted)}.status strong{color:var(--text)}.legacy{border-color:#5b4c31;background:#1c1a15}.warn{color:var(--amber)}@media(max-width:800px){.grid{grid-template-columns:1fr}.top-inner{display:block}.nav{overflow:auto;margin-top:8px}}"""
+CSS = """:root{color-scheme:dark;--bg:#0b0f14;--panel:#141b24;--line:#2b3745;--text:#edf2f7;--muted:#a0adbc;--green:#b8ed94;--blue:#94ccff;--amber:#f4cb91;--red:#ffaaa0}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 system-ui,-apple-system,sans-serif}a{color:inherit;text-decoration:none}main{max-width:1160px;margin:auto;padding:32px 24px 64px}.top{position:sticky;top:0;background:#0b0f14f2;border-bottom:1px solid var(--line);z-index:5}.top-inner{max-width:1160px;margin:auto;padding:15px 24px;display:flex;justify-content:space-between;gap:18px;align-items:center}.brand{font-weight:850}.nav{display:flex;gap:18px;color:var(--muted);font-size:13px}.nav a:hover,.link{color:var(--blue)}.hero{margin:18px 0 30px}.eyebrow{font-size:11px;letter-spacing:.1em;color:var(--green);margin:0 0 8px}.hero h1{font-size:clamp(30px,4vw,48px);line-height:1.15;margin:0 0 12px;letter-spacing:-.04em}.muted,.desc{color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:22px}.card.feature{border-color:#52714a;background:linear-gradient(130deg,#1a2b20,var(--panel) 70%)}.badge{display:inline-block;font-size:11px;border:1px solid #465749;border-radius:6px;padding:3px 8px;color:var(--green)}h2{margin:36px 0 14px;font-size:24px}h3{font-size:21px;margin:12px 0 8px}.button{display:inline-flex;margin-top:10px;border:1px solid #425064;border-radius:8px;padding:9px 14px;background:#202b37;font-weight:700;font-size:13px}.primary{background:var(--green);color:#17220f;border-color:var(--green)}.facts{display:flex;gap:18px;margin:14px 0;color:var(--muted);font-size:12px;flex-wrap:wrap}.facts strong{display:block;color:var(--text);font-size:22px}.scroll{overflow:auto;border:1px solid var(--line);border-radius:12px;background:var(--panel);margin:12px 0 22px}table{border-collapse:collapse;width:100%;min-width:680px}th,td{border-bottom:1px solid var(--line);padding:12px 14px;text-align:left;vertical-align:top}th{color:var(--muted);font-size:12px}.matrix th{text-align:center}.matrix th:first-child,.matrix td:first-child{text-align:left}.run-cell{min-width:270px}.run-top{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.run-name{font-weight:780}.run-num{font-weight:820}.run-meta{color:var(--muted);font-size:12px;margin-top:6px}.run-links{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}.ok{color:var(--green)}.bad{color:var(--red)}.live{color:var(--blue)}.note,.status{font-size:12px;color:var(--muted)}.status strong{color:var(--text)}.legacy{border-color:#5b4c31;background:#1c1a15}.warn{color:var(--amber)}@media(max-width:800px){.grid{grid-template-columns:1fr}.top-inner{display:block}.nav{overflow:auto;margin-top:8px}}"""
+
+MODEL_LABELS = {
+    "gpt61-sol": "GPT-6.1-Sol",
+    "gpt56-sol": "GPT-5.6-Sol",
+    "gpt6-astra": "GPT-6-Astra",
+    "deepseek-v41": "DeepSeek-V4.1-Flash",
+    "seed21-pro": "Seed-2.1-Pro-0915",
+}
+
+MODEL_ORDER = ["gpt61-sol", "gpt56-sol", "gpt6-astra", "deepseek-v41", "seed21-pro"]
+TRACK_ORDER = ["text", "vision-agent"]
 
 
 def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -66,6 +77,84 @@ def read_json(path: Path) -> dict:
         return json.loads(path.read_text())
     except (OSError, ValueError):
         return {}
+
+
+def fmt_number(value, digits: int = 0) -> str:
+    if value is None:
+        return "—"
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if digits == 0:
+        return f"{number:,.0f}"
+    return f"{number:,.{digits}f}"
+
+
+def fmt_seconds(value) -> str:
+    if value is None:
+        return "—"
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return "—"
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    return f"{seconds / 60:.1f}m"
+
+
+def group_manifest_stats(run_root: Path, benchmark: str) -> dict[tuple[str, str], dict]:
+    source = run_root / "generations" / benchmark
+    stats: dict[tuple[str, str], dict] = {}
+    if not source.exists():
+        return stats
+    for manifest_path in source.glob("*/*/case_*_attempt_*/run_manifest.json"):
+        try:
+            manifest = json.loads(manifest_path.read_text())
+        except (OSError, ValueError):
+            continue
+        parts = manifest_path.relative_to(source).parts
+        if len(parts) < 3:
+            continue
+        key = (parts[0], parts[1])
+        bucket = stats.setdefault(
+            key,
+            {
+                "runs": 0,
+                "complete": 0,
+                "duration_sum": 0.0,
+                "duration_count": 0,
+                "output_sum": 0.0,
+                "output_count": 0,
+                "reasoning_sum": 0.0,
+                "reasoning_count": 0,
+                "latest_completed": None,
+            },
+        )
+        bucket["runs"] += 1
+        if manifest.get("status") == "complete":
+            bucket["complete"] += 1
+        duration = manifest.get("duration_seconds")
+        if isinstance(duration, (int, float)):
+            bucket["duration_sum"] += duration
+            bucket["duration_count"] += 1
+        usage = manifest.get("token_usage") or {}
+        output = usage.get("output_tokens")
+        if isinstance(output, (int, float)):
+            bucket["output_sum"] += output
+            bucket["output_count"] += 1
+        reasoning = usage.get("reasoning_output_tokens")
+        if isinstance(reasoning, (int, float)):
+            bucket["reasoning_sum"] += reasoning
+            bucket["reasoning_count"] += 1
+        completed = manifest.get("completed_utc") or manifest.get("completed_at")
+        if completed and (bucket["latest_completed"] is None or completed > bucket["latest_completed"]):
+            bucket["latest_completed"] = completed
+    for bucket in stats.values():
+        bucket["avg_duration"] = bucket["duration_sum"] / bucket["duration_count"] if bucket["duration_count"] else None
+        bucket["avg_output_tokens"] = bucket["output_sum"] / bucket["output_count"] if bucket["output_count"] else None
+        bucket["avg_reasoning_tokens"] = bucket["reasoning_sum"] / bucket["reasoning_count"] if bucket["reasoning_count"] else None
+    return stats
 
 
 def page(title: str, body: str) -> str:
@@ -105,6 +194,63 @@ def group_rows(status: dict, heavy_slug: str) -> str:
     return "".join(rows)
 
 
+def model_track_matrix(run_root: Path, benchmark: str, status: dict, slug: str) -> str:
+    manifest_stats = group_manifest_stats(run_root, benchmark)
+    groups = status.get("groups", {})
+    seen_models = {key.split("/")[0] for key in groups}
+    model_order = [m for m in MODEL_ORDER if m in seen_models] + sorted(seen_models - set(MODEL_ORDER))
+    if not model_order:
+        return '<p class="note">尚未创建 model/track 状态；等待 supervisor 首次刷新。</p>'
+    rows = []
+    for model_key in model_order:
+        cells = [f"<td><strong>{html.escape(MODEL_LABELS.get(model_key, model_key))}</strong><br><span class=status>{html.escape(model_key)}</span></td>"]
+        for track in TRACK_ORDER:
+            key = f"{model_key}/{track}"
+            group = groups.get(key, {})
+            counts = group.get("counts", {})
+            total = sum(counts.values()) or status.get("cases") or 0
+            complete = counts.get("complete", 0)
+            running = counts.get("running", 0)
+            exhausted = counts.get("exhausted", 0) + counts.get("failed", 0)
+            pending = counts.get("pending", max(total - complete - running - exhausted, 0))
+            latest = group.get("latest_completion")
+            if isinstance(latest, list) and len(latest) >= 2:
+                latest_case, latest_time = latest[0], latest[1]
+            else:
+                latest_case = "—"
+                latest_time = (manifest_stats.get((model_key, track), {}) or {}).get("latest_completed") or "—"
+            stats = manifest_stats.get((model_key, track), {})
+            gallery = f"{slug}/{model_key}/{track}/index.html"
+            running_cases = ", ".join(group.get("running_cases") or [])
+            exhausted_cases = ", ".join((group.get("exhausted_cases") or [])[:3])
+            activity = "ACTIVE" if running else ("DONE" if complete >= total and total else "IDLE")
+            activity_class = "badge" if activity == "ACTIVE" else "pill"
+            cells.append(
+                '<td class="run-cell">'
+                '<div class="run-top">'
+                f'<span><span class="{activity_class}">{activity}</span> <span class="run-name">{html.escape(track)}</span></span>'
+                f'<span class="run-num">{complete}/{total}</span>'
+                '</div>'
+                f'<div class="run-meta"><span class="live">{running} running</span> · {pending} pending · '
+                f'<span class="bad">{exhausted} exhausted/failed</span></div>'
+                f'<div class="run-meta">latest: {html.escape(str(latest_case))}<br>{html.escape(str(latest_time))}</div>'
+                f'<div class="run-meta">avg time {fmt_seconds(stats.get("avg_duration"))} · '
+                f'avg output {fmt_number(stats.get("avg_output_tokens"))} tok · '
+                f'avg reasoning {fmt_number(stats.get("avg_reasoning_tokens"))} tok</div>'
+                + (f'<div class="run-meta">running case: {html.escape(running_cases)}</div>' if running_cases else "")
+                + (f'<div class="run-meta warn">recent exhausted: {html.escape(exhausted_cases)}</div>' if exhausted_cases else "")
+                + f'<div class="run-links"><a class="link" href="{gallery}">视频与逐轮候选 →</a></div>'
+                '</td>'
+            )
+        rows.append("<tr>" + "".join(cells) + "</tr>")
+    return (
+        '<div class=scroll><table class=matrix><tr><th>Model</th>'
+        '<th>Text</th><th>Vision-Agent</th></tr>'
+        + "".join(rows)
+        + "</table></div>"
+    )
+
+
 def write_full_galleries(run_root: Path, pixelworld: Path, benchmark: str, title: str) -> None:
     repo_root = Path(__file__).resolve().parents[1]
     sys.path.insert(0, str(repo_root))
@@ -113,7 +259,7 @@ def write_full_galleries(run_root: Path, pixelworld: Path, benchmark: str, title
     source = run_root / "generations" / benchmark
     target = pixelworld / benchmark
     target.mkdir(parents=True, exist_ok=True)
-    model_labels = {"gpt56-sol": "GPT-5.6-Sol"}
+    model_labels = MODEL_LABELS
     track_dirs = []
     for model_dir in sorted([p for p in source.iterdir() if p.is_dir() and not p.name.startswith("_")]) if source.exists() else []:
         for track_dir in sorted([p for p in model_dir.iterdir() if p.is_dir()]):
@@ -124,7 +270,8 @@ def write_full_galleries(run_root: Path, pixelworld: Path, benchmark: str, title
                     continue
                 run = manifest_path.parent
                 case_dir = target / model_dir.name / track_dir.name / run.name
-                if manifest.get("status") == "complete" and manifest.get("validation", {}).get("pass") is True:
+                playable = manifest.get("status") == "complete" and manifest.get("validation", {}).get("pass") is True
+                if playable:
                     build_case(run, case_dir)
                 entries.append((manifest, run.name))
             gallery = target / model_dir.name / track_dir.name / "index.html"
@@ -136,12 +283,14 @@ def write_full_galleries(run_root: Path, pixelworld: Path, benchmark: str, title
                 usage = manifest.get("token_usage") or {}
                 tokens = usage.get("output_tokens")
                 poster = Path(run_name) / "final/poster.png"
+                playable_link = (gallery.parent / run_name / "index.html").exists()
                 if (gallery.parent / poster).exists():
                     preview = f'<img loading=lazy src="{poster.as_posix()}" alt="{html.escape(case_id)}">'
                 else:
                     preview = '<div class=placeholder>尚无可播放结果</div>'
+                href = f'{run_name}/index.html' if playable_link else "#"
                 cards.append(
-                    f'<article class=sample><a href="{run_name}/index.html">{preview}'
+                    f'<article class=sample><a href="{href}">{preview}'
                     f'<div class=sample-body><span class=pill>{html.escape(status)}</span>'
                     f'<h3>{html.escape(case_id)} ↗</h3>'
                     f'<p>{tokens if tokens is not None else "—"} output tokens</p></div></a></article>'
@@ -200,10 +349,11 @@ def write_vbench_page(run_root: Path, destination: Path) -> None:
         f"{status_facts(status)}"
         f'<p class="desc">Full queue：{status.get("cases", 291)} cases × {status.get("configurations", 2)} model-track configurations。'
         f'更新时间 UTC：{html.escape(status.get("updated_utc", "—"))}。</p>'
-        '<p><a class="button primary" href="smoke.html">查看已完成 smoke 视频 →</a></p></div>'
-        "<h2>Full Queue Progress</h2><div class=scroll><table><tr><th>Model / Track</th><th>Complete</th><th>Running</th><th>Exhausted</th><th>Pending</th><th>Latest</th><th>Gallery</th></tr>"
-        + group_rows(status, "vbench2_subset_full")
-        + "</table></div>"
+        '<p><a class="button primary" href="vbench2_subset_full/index.html">打开 full 生成画廊 →</a>'
+        '<a class="button" href="smoke.html">查看 smoke 视频 →</a></p></div>'
+        "<h2>Model × Track Progress</h2>"
+        + model_track_matrix(run_root, "vbench2_subset_full", status, "vbench2_subset_full")
+        +
         "<h2>Smoke Gate</h2>"
         f'<p class="note">Smoke status：{html.escape(json.dumps(smoke.get("totals", {}), ensure_ascii=False))}。'
         'Smoke 页面只用于链路验证，不是正式 VBench-2.0 分数。</p>'
@@ -233,10 +383,11 @@ def write_phygen_page(run_root: Path, destination: Path) -> None:
         f"{status_facts(status)}"
         f'<p class="desc">Full queue：{status.get("cases", 160)} prompts × {status.get("configurations", 2)} model-track configurations。'
         f'更新时间 UTC：{html.escape(status.get("updated_utc", "—"))}。</p>'
-        '<p><a class="button primary" href="smoke.html">查看已完成 smoke 视频 →</a></p></div>'
-        "<h2>Full Queue Progress</h2><div class=scroll><table><tr><th>Model / Track</th><th>Complete</th><th>Running</th><th>Exhausted</th><th>Pending</th><th>Latest</th><th>Gallery</th></tr>"
-        + group_rows(status, "phygenbench_full")
-        + "</table></div>"
+        '<p><a class="button primary" href="phygenbench_full/index.html">打开 full 生成画廊 →</a>'
+        '<a class="button" href="smoke.html">查看 smoke 视频 →</a></p></div>'
+        "<h2>Model × Track Progress</h2>"
+        + model_track_matrix(run_root, "phygenbench_full", status, "phygenbench_full")
+        +
         "<h2>Smoke Gate</h2>"
         f'<p class="note">Smoke status：{html.escape(json.dumps(smoke.get("totals", {}), ensure_ascii=False))}。'
         "其中 PhyGenBench smoke 的一条 vision-agent case 耗尽，保留为失败，不混入有效视频。</p>"

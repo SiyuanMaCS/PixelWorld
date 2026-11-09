@@ -55,14 +55,16 @@ Public Codex v2 task text, Vision-Agent:
 
 > Generate the RGB video requested in `prompt.txt`, following
 > `GENERATION_RULES.md`. `first_frame.png` is attached visually. Visual image
-> tools are available. Choose your own approach.
+> tools are available. Choose your own approach. You must produce the required
+> output artifacts before finishing.
 
 Text:
 
 > Generate the RGB video requested in `prompt.txt`, following
 > `GENERATION_RULES.md`. `first_frame.png` is available through local code and
 > numeric RGB operations; it is not attached visually. Visual image tools are
-> disabled. Choose your own approach.
+> disabled. Choose your own approach. You must produce the required output
+> artifacts before finishing.
 
 The Text Track's image is copied into the workspace as a PNG file, not attached
 to the model conversation. The agent can load it into a Python array, for
@@ -83,9 +85,12 @@ intact; they are not silently converted to the new minimal v2 contract.
   frame00 must exactly match the input image.
 - Local Python drawing, copying/cropping, transforms, warping, inpainting,
   procedural shading, analytic normals and mathematical motion are allowed.
-- No mandatory observation, event plan or method report in v2. Save intermediate
-  generated results when producing candidates for inspection; choose your own
-  approach. No fixed visual-review prompt or round limit.
+- No mandatory observation, event plan or method report in v2. The agent must
+  create and run `generate.py`, call `artifact_io.save(...)` at least once, and
+  finish only after the required output artifacts exist. If it revises the
+  video, it must save each revised candidate before continuing. No fixed
+  visual-review prompt or round limit is imposed, but repeated revision should
+  have a clear expected improvement and respect efficiency.
 - Use no external AI generation models, references, masks, evaluator scores,
   memory, network or other agents. Keep temporary files under `.tmp/`.
 - Submit RGB artifacts and code; only claim visual inspection when an image

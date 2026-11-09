@@ -48,6 +48,7 @@ def task_rules(spec: dict) -> str:
 
 - Use only {inputs}. Work inside this workspace. No network, other cases, reference continuations, masks, scores, memory, external AI models, learned weights, external simulation/rendering engines, or subagents.
 - Generate {n} RGB frames at {w}×{h}, {fps:g} fps, for {n/fps:g} seconds.{first}
-- Implement `generate.py` and call `artifact_io.save(frames, case_dir)` with uint8 RGB arrays of shape `({n},{h},{w},3)`. Keep `generate.py` runnable so it regenerates the submitted RGB video. Local Python/numpy/PIL, mathematical geometry, motion, lighting, copying and warping pixels are allowed.{audio}
-- Save intermediate generated results in the workspace when producing candidates for inspection. Choose whether and how to check or revise your output.
+- You must create `generate.py`, run it, and call `artifact_io.save(frames, case_dir)` at least once before finishing. Finish only after the required output artifacts exist. Keep `generate.py` runnable so it regenerates the submitted RGB video.{audio}
+- Local Python/numpy/PIL, mathematical geometry, motion, lighting, copying and warping pixels are allowed.
+- If you revise the video, save each revised candidate before continuing. Avoid repeated revision without a clear expected improvement; aim for high-quality output while considering efficiency.
 """

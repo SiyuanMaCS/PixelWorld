@@ -1,1 +1,1 @@
-Generate the RGB video requested in `prompt.txt`, following `GENERATION_RULES.md`. `first_frame.png` is attached visually. Visual image tools are available. Choose your own approach.
+Generate the RGB video requested in `prompt.txt`, following `GENERATION_RULES.md`. `first_frame.png` is attached visually. Visual image tools are available. Choose your own approach. You must produce the required output artifacts before finishing.
