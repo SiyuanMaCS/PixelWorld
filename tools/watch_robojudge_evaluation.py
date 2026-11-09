@@ -1,6 +1,6 @@
 """Wait for each complete shared50 cohort, then run the original9B evaluator."""
 from pathlib import Path
-import argparse,json,os,subprocess,sys,time
+import argparse,json,os,subprocess,sys,time,fcntl
 
 def read(path):
     try:return json.loads(path.read_text())
@@ -33,7 +33,9 @@ def main():
                     if code==0:
                         command=[sys.executable,str(evaluator),'run','--output',str(target)]
                         if a.allow_unsupported_bf16:command+=['--allow-unsupported-bf16']
-                        code=subprocess.call(command,stdout=log,stderr=subprocess.STDOUT)
+                        with (a.output.parent/'gpu_metric.lock').open('a+') as lock:
+                            fcntl.flock(lock,fcntl.LOCK_EX)
+                            code=subprocess.call(command,stdout=log,stderr=subprocess.STDOUT)
                 summary=read(target/'summary.json')
                 done[key]={'phase':'full_shared50_scored' if code==0 and summary.get('complete_shared50') else 'original_evaluation_failed','exit_status':code,'means':summary.get('shared50_means')}
         write(a.output/'scheduler.json',{'pid':os.getpid(),'phase':'waiting_or_scoring_full_cohorts','groups':groups,'done':done,'partial_scores_are_not_full':True})
