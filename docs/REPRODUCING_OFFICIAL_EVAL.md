@@ -132,6 +132,29 @@ is a separate issue: a visible queue quota is not proof of current-master/queue
 compatibility. Keep preparation, device probes and actual metric inference as
 three different statuses.
 
+### Original WorldArena VLM component smoke
+
+`tools/evaluate_worldarena_vlm_smoke.py` evaluates the preserved episode1 with
+unchanged `video_quality/VLM_judge.py`, its original16-frame sampling,
+Qwen3-VL-8B-Instruct checkpoint and greedy400-token generation parameters.
+Only a configurable checkpoint path is supplied externally. All original
+config/tokenizer/shard files, including generation_config.json, are checked
+against their canonical hashes before inference. Exactly one video and all
+three original metrics must be returned; missing fields/default zeros and parse
+errors remain failed outcomes. This is a three-metric component smoke, not a
+complete16-indicator WorldArena smoke or a1000/3000-video leaderboard score.
+
+The current unversioned Transformers Git `main` resolves to5.23.dev0 and requires
+Python3.11, contradicting the official README's Python3.10 environment. The
+recorded reproduction choice is Git commit
+`65d834fb48624221339830499602fa9428df0583`, the latest cached main commit before
+the pinned WorldArena source's2026-07-22 publication timestamp. That snapshot
+reports5.15.dev0, supportsPython3.10 and contains the Qwen3-VL implementation.
+This preserves the nominal original model, Torch2.9.1/cu128, prompt and scoring
+code. It is an explicit runtime pin for an otherwise unversioned dependency;
+it does not establish which library revision the published baseline used.
+The current-main installation rejection and selection evidence are retained.
+
 ## WBench
 
 Full is289 cases/1,058 turns. Later turns use previous generated last RGB; export retains all segment frames and stages pre-cut turn clips. `tools/evaluate_wbench.py run` invokes unmodified upstream phases, original Doubao judge and separate PAVRM environment, then checks every applicable case metric.
