@@ -177,6 +177,52 @@ def test_prior_usage_blocks_partial_unknown_terminal_usage(tmp_path):
     assert ignored == []
 
 
+def test_prior_usage_counts_lower_bound_for_provider_failure(tmp_path):
+    from dataclasses import replace
+    from pixelworld import runner
+    config = make_config(tmp_path)
+    model = replace(config.models[0], tracks=('text',))
+    config = replace(config, models=(model,), case_ids=('queued'))
+    prior = runner.run_path(config, model, 'text', 'queued', 1)
+    prior.mkdir(parents=True)
+    (prior / 'run_manifest.json').write_text(json.dumps({
+        'status': 'failed',
+        'token_usage': {
+            'status': 'partial',
+            'terminal_events': 1,
+            'usage_events': 0,
+            'reported_completed_request_output_tokens': 49,
+        },
+    }))
+    output, unknown, ignored = runner._prior_attempt_usage(config, model, 'text', 'queued', 2)
+    assert output == 49
+    assert unknown is False
+    assert ignored[0]['counted_lower_bound_output_tokens'] == 49
+
+
+def test_prior_usage_blocks_unknown_budget_terminal_attempt(tmp_path):
+    from dataclasses import replace
+    from pixelworld import runner
+    config = make_config(tmp_path)
+    model = replace(config.models[0], tracks=('text',))
+    config = replace(config, models=(model,), case_ids=('budgeted'))
+    prior = runner.run_path(config, model, 'text', 'budgeted', 1)
+    prior.mkdir(parents=True)
+    (prior / 'run_manifest.json').write_text(json.dumps({
+        'status': 'failed',
+        'stop_reason': 'token_usage_unavailable',
+        'token_usage': {
+            'status': 'missing',
+            'terminal_events': 0,
+            'usage_events': 0,
+        },
+    }))
+    output, unknown, ignored = runner._prior_attempt_usage(config, model, 'text', 'budgeted', 2)
+    assert output == 0
+    assert unknown is True
+    assert ignored == []
+
+
 def test_pid_alive_treats_zombie_as_dead(tmp_path):
     import pytest
     from pixelworld import supervisor

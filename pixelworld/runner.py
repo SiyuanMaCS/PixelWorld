@@ -207,11 +207,22 @@ def _prior_attempt_usage(config: Benchmark, model: Model, track: str, case_id: s
         if isinstance(amount, int) and not isinstance(amount, bool):
             prior_output += amount
             continue
-        # A worker killed before any terminal response has no accountable
-        # completed request. Treat it as zero so the retry can run, but record
-        # the decision in the next manifest.
-        if (usage.get('terminal_events') == 0 and usage.get('usage_events') == 0
-                and usage.get('reported_completed_request_output_tokens') is None):
+        lower_bound = usage.get('reported_completed_request_output_tokens')
+        budget_terminal = previous.get('stop_reason') in (
+            'output_token_budget_exhausted', 'token_usage_unavailable')
+        if isinstance(lower_bound, int) and not isinstance(lower_bound, bool) and not budget_terminal:
+            prior_output += lower_bound
+            ignored.append({
+                'attempt': index,
+                'previous_status': previous.get('status'),
+                'usage_status': usage.get('status'),
+                'counted_lower_bound_output_tokens': lower_bound,
+                'reason': 'terminal usage missing but completed request lower bound is available',
+            })
+            continue
+        # A provider failure or externally killed worker without accountable
+        # completed request output should not consume a full retry budget.
+        if not budget_terminal and usage.get('usage_events') == 0:
             ignored.append({
                 'attempt': index,
                 'previous_status': previous.get('status'),
