@@ -5,7 +5,7 @@ import statistics
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from tools.build_bench_review import document
 
-MODELS={'gpt61-sol':'GPT-6.1-Sol','gpt56-sol':'GPT-5.6-Sol','gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash'}
+MODELS={'gpt61-sol':'GPT-6.1-Sol','gpt56-sol':'GPT-5.6-Sol','gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash','seed21-pro':'Seed-2.1-Pro-0915'}
 
 def read(p):
     try:return json.loads(p.read_text())
@@ -47,7 +47,8 @@ def stats_cell(stats):
 def build(run,web,legacy):
     status=read(run/'generations/physics_iq/status.json')
     gpt_status=read(run/'generations/physics_iq_gpt_native_v2/status.json')
-    old=read(legacy);groups={**status.get('groups',{}),**gpt_status.get('groups',{})};frozen=read(run/'BASELINE_FROZEN.json')
+    seed_status=read(run/'generations/physics_iq_seed21_native_v2/status.json')
+    old=read(legacy);groups={**status.get('groups',{}),**gpt_status.get('groups',{}),**seed_status.get('groups',{})};frozen=read(run/'BASELINE_FROZEN.json')
     body=('<a class=back href="index.html">← 实验导航</a><h1>Physics-IQ · Baseline 全量</h1>'
           '<p class=muted>完整198个I2V/BPP输入，每模型Text与Vision-Agent。已完成的旧协议结果复用，不重复生成。</p>'
           '<div class="card feature"><span class=badge>冻结原生 harness · 100k</span>'
@@ -68,7 +69,7 @@ def build(run,web,legacy):
                 body+=(f'<td><strong>0/198 native_v2</strong><span class=status>新冻结协议尚未重跑；旧{legacy_n}/198结果移入Legacy参考区，不计入主表</span>'
                        f'<a href="#legacy">查看Legacy参考 →</a></td>')
             else:
-                bench_dir='physics_iq_gpt_native_v2' if model in ('gpt61-sol','gpt56-sol') else 'physics_iq'
+                bench_dir='physics_iq_gpt_native_v2' if model in ('gpt61-sol','gpt56-sol') else ('physics_iq_seed21_native_v2' if model=='seed21-pro' else 'physics_iq')
                 body+=(f'<td><strong>{c.get("complete",0)}/198 有效视频</strong><span class=status>{c.get("running",0)}运行中 · {c.get("exhausted",0)}终止 · {c.get("pending",198-c.get("complete",0)-c.get("running",0)-c.get("exhausted",0))}待生成</span>'
                        f'<span class=status>最新完成 UTC：{html.escape(str(last[0]))}<br>{html.escape(str(last[1]))}</span>'
                        f'<a href="bench_smoke_codex_20261109/{bench_dir}/{model}/{track}/index.html">视频与逐轮候选 →</a></td>')
@@ -95,7 +96,7 @@ def build(run,web,legacy):
                 n=entry.get('counts',{}).get('complete')
                 body+=f'<td><strong>{n or "—"}</strong><span class=status>legacy平均耗时 {fmt(mean/60 if mean else None)}m<br>token均值：旧记录未统一回填</span></td>'
             else:
-                root=run/('generations/physics_iq_gpt_native_v2' if model in ('gpt61-sol','gpt56-sol') else 'generations/physics_iq')
+                root=run/('generations/physics_iq_gpt_native_v2' if model in ('gpt61-sol','gpt56-sol') else ('generations/physics_iq_seed21_native_v2' if model=='seed21-pro' else 'generations/physics_iq'))
                 body+=stats_cell(completed_stats(root,model,track))
         body+='</tr>'
     body+='</table></div>'

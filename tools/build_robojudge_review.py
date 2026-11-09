@@ -12,7 +12,8 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from tools.build_bench_review import document, player, export_pixels, build_case
 
 MODELS={'gpt61-sol':'GPT-6.1-Sol','gpt56-sol':'GPT-5.6-Sol',
-        'gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash'}
+        'gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash',
+        'seed21-pro':'Seed-2.1-Pro-0915'}
 TRACKS=('text','vision-agent')
 STUDY='bench_smoke_codex_20261109'
 
@@ -63,18 +64,24 @@ def video_export(path, asset, spec):
             pass
     return export_pixels(path/'workspace',asset,spec)
 
+def generation_root(run, model):
+    return run/'generations/robojudge_seed21_native_v2' if model=='seed21-pro' else run/'generations/robojudge'
+
 def build(run,web):
     inputs=run/'inputs/robojudge';generation=run/'generations/robojudge'
     cases=sorted(p.name for p in inputs.iterdir() if (p/'first_frame.png').is_file())
     if len(cases)!=50:raise ValueError('RoboJudge page requires the actual complete50 input inventory')
     output=web/'robojudge_assets';output.mkdir(exist_ok=True)
-    progress=read(generation/'status.json');groups=progress.get('groups',{})
+    progress=read(generation/'status.json')
+    seed_progress=read(run/'generations/robojudge_seed21_native_v2/status.json')
+    groups={**progress.get('groups',{}),**seed_progress.get('groups',{})}
     records={};scores={}
     for model in MODELS:
         for track in TRACKS:
             for case in cases:
                 attempts=[]
-                for path in sorted((generation/model/track).glob(f'case_{case}_attempt_*/run_manifest.json')):
+                gen=generation_root(run,model)
+                for path in sorted((gen/model/track).glob(f'case_{case}_attempt_*/run_manifest.json')):
                     manifest=read(path)
                     if manifest:attempts.append((path.parent,manifest))
                 if attempts:
@@ -118,7 +125,7 @@ def build(run,web):
     for model,label in MODELS.items():
         body+=f'<tr><th>{label}</th>'
         for track in TRACKS:
-            body+=stats_cell(completed_stats(generation,model,track))
+            body+=stats_cell(completed_stats(generation_root(run,model),model,track))
         body+='</tr>'
     body+=('</table></div>'
            '<h2 id=videos>按任务查看视频</h2><label for=case_select class=status>选择共享任务</label> <select id=case_select>')
