@@ -1,0 +1,28 @@
+{
+  "baseline_id": "native-codex-v2-100k",
+  "code_commit": "a5be7711aa3f0011562524d150c0f31df65f43e1",
+  "output_token_budget": 100000,
+  "tracks": [
+    "text",
+    "vision-agent"
+  ],
+  "generation_files_sha256": {
+    "pixelworld/runner.py": "8ab0aa63cd03b9efd74ca37c0388aba959669a8847263df427e17c2032250a7f",
+    "pixelworld/media.py": "05259f4726d3c075b2007bef87d74629b950c5a861cbe09c9b78a009daa01e0b",
+    "pixelworld/config.py": "25964640f3622a89c85d29d35412a14443bae4ae5c40d990749b1a8eeeb763ab",
+    "pixelworld/audit.py": "82d9ad7ff2acef88d7bd332207ff0ee107ffff7e0180ece0b4f5cafac3a5a9fd",
+    "pixelworld/token_budget.py": "814f17f7523c66d5164ba911596ba1ce8806cb695a1787614933e448fc2cd49d",
+    "pixelworld/assets/TASK_TEXT.md": "a18e54cf563ebb6b7b650417543e1ce9be2d1943c1723bc9ca0f974e7c18a84d",
+    "pixelworld/assets/TASK_VISION_AGENT.md": "316abcd1ca0e70ca626e824a42b9cfa7bdf811d311d9cc7b7594846164fedf52",
+    "pixelworld/assets/GENERATION_RULES.md": "e2bd86b824eb563ac4f7b4ea34b7f6be3f09729d4858eddd99250c32891bab00",
+    "pixelworld/assets/artifact_io.py": "2b7c3b12f2f65e9aef0e6dd7eb0030e99300cad915b40e7e7b86aed28b698c42",
+    "pixelworld/assets/player_template.html": "7790edd32cfef7d80846fbba81ed85466283114859eb189f10655f4f0aeae81a"
+  },
+  "legacy_physics_reuse": [
+    "gpt-6-1-text",
+    "gpt-6-1-vision-agent",
+    "gpt-5-6-text",
+    "gpt-5-6-vision-agent"
+  ],
+  "autonomous_review": true
+}
