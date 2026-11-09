@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import json
 import math
 import os
@@ -70,8 +71,10 @@ def execute(source: Path, stage: Path, run: Path, receipt: Path, checkpoint: Pat
     summary.update(status='original_inference_started',command=command,started_utc=utc_now())
     atomic_json(output/'component_smoke.json',summary)
     try:
-        with (output/'original_inference.log').open('wb') as log:
-            code=subprocess.call(command,cwd=source,env=env,stdout=log,stderr=subprocess.STDOUT)
+        with (output.parent/'gpu_metric.lock').open('a+') as gpu_lock:
+            fcntl.flock(gpu_lock,fcntl.LOCK_EX)
+            with (output/'original_inference.log').open('wb') as log:
+                code=subprocess.call(command,cwd=source,env=env,stdout=log,stderr=subprocess.STDOUT)
         if code:raise RuntimeError(f'Original VLM process exited {code}')
         results=output/'original_results'/model/f'{model}_summary_val_all_intern.json'
         metrics=check_results(results,name)
