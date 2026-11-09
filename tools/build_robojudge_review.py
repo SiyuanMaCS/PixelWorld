@@ -156,6 +156,31 @@ def build(run,web):
                 body+=f'<p><a href="{relative}/index.html">逐轮候选、检查图与代码变化 →</a></p></article>'
             body+='</div>'
         body+='</section>'
+    full_eval = run / 'evaluation/robojudge_full_baseline100k'
+    eval_rows = []
+    for model, label in MODELS.items():
+        for track in TRACKS:
+            summary = read(full_eval / model / track / 'summary.json')
+            execution = read(full_eval / model / track / 'execution.json')
+            if not summary and not execution:
+                continue
+            scope = summary.get('scope', {})
+            blockers = '; '.join(execution.get('blockers', [])) if execution.get('blockers') else '—'
+            means = summary.get('shared50_means') or summary.get('partial_paired_means') or {}
+            score = '—'
+            if summary.get('complete_shared50') and means.get('mean') is not None:
+                score = f'PA {means["PA"]:.2f} · IA {means["IA"]:.2f} · Overall {means["mean"]:.2f}'
+            eval_rows.append(
+                f'<tr><td>{html.escape(label)}</td><td>{html.escape(track)}</td>'
+                f'<td>{scope.get("prepared_count", 0)}/50 prepared</td>'
+                f'<td>{html.escape(execution.get("status", "prepared"))}</td>'
+                f'<td>{html.escape(blockers)}</td><td>{score}</td></tr>')
+    if eval_rows:
+        body += ('<h2 id=official-eval>官方 shared50 评测执行状态</h2>'
+                 '<p class=desc>这里记录完整50任务输入是否已经导出，以及原始 RoboJudge-9B 推理是否完成。'
+                 'GPU不可用等执行阻塞不会被填成0分。</p>'
+                 '<div class=scroll><table><tr><th>模型</th><th>Track</th><th>准备范围</th><th>执行状态</th><th>阻塞/说明</th><th>完整均分</th></tr>'
+                 + ''.join(eval_rows) + '</table></div>')
     body+=('<h2 id=evaluation>正式评分与公开参考</h2><p class=desc>shared50完整均分：尚未完成。以下仅引用论文中的公开参考成绩，不能直接与上面的单例评分排名。</p>'
            '<div class=scroll><table><tr><th>公开模型</th><th>PA</th><th>IA</th><th>Overall</th></tr>'
            '<tr><td>Wan2.6 Flash</td><td>3.827</td><td>4.027</td><td>3.927</td></tr>'
