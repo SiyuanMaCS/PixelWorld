@@ -99,7 +99,7 @@ def build(run,web):
     body=('<a class=back href="index.html">← PixelWorld 实验导航</a><h1>RoboJudge · 具身 I2V</h1>'
           '<p class=muted>共享50个操作任务，比较不同模型的像素视频生成、物理合理性和指令遵循。</p>'
           '<div class=experiment-grid><article class="card feature"><span class=badge>主实验 · Shared50</span><h3>模型与输入条件对照</h3>'
-          '<div class=facts><div><strong>50</strong>共享任务</div><div><strong>4</strong>模型</div><div><strong>2</strong>Tracks</div></div>'
+          f'<div class=facts><div><strong>50</strong>共享任务</div><div><strong>{len(MODELS)}</strong>模型</div><div><strong>2</strong>Tracks</div></div>'
           '<p class=desc>完整50任务的后台队列已启动。这里显示已生成视频和既有单例评分，完整均分仍等待到齐。</p></article>'
           '<article class=card><span class=pill>原始 RoboJudge-9B</span><h3 style="margin-top:14px">两项评分</h3>'
           '<p class=desc>PA：物理合理性。IA：指令遵循。评分范围1–5。只有实际有效视频才显示已有评分。</p>'

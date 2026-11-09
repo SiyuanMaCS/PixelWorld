@@ -52,7 +52,7 @@ def build(run,web,legacy):
     body=('<a class=back href="index.html">← 实验导航</a><h1>Physics-IQ · Baseline 全量</h1>'
           '<p class=muted>完整198个I2V/BPP输入，每模型Text与Vision-Agent。已完成的旧协议结果复用，不重复生成。</p>'
           '<div class="card feature"><span class=badge>冻结原生 harness · 100k</span>'
-          '<div class=facts><div><strong>198</strong>每组任务</div><div><strong>4</strong>模型</div><div><strong>2</strong>Tracks</div></div>'
+          f'<div class=facts><div><strong>198</strong>每组任务</div><div><strong>{len(MODELS)}</strong>模型</div><div><strong>2</strong>Tracks</div></div>'
           '<p class=desc>256×144 · 4FPS · 20帧／5秒。模型自主检查和修订。旧50k及legacy运行明确单列来源。</p>'
           '<a href="https://github.com/SiyuanMaCS/PixelWorld/tree/main/baselines/native_v2_100k">baseline代码与复现文档 →</a></div>'
           '<h2 id=models>模型 × Track</h2><div class=scroll><table class=matrix><tr><th>模型</th><th>Text</th><th>Vision-Agent</th></tr>')
