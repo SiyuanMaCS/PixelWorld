@@ -13,11 +13,13 @@ import fcntl
 import hashlib
 import html
 import json
+import os
 import re
 import shutil
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 
 
@@ -70,6 +72,45 @@ def check(cmd: list[str], cwd: Path) -> None:
         raise RuntimeError(
             f"Command failed: {' '.join(cmd)}\nSTDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
         )
+
+
+def pending_pages_deployment(stable_repo: Path) -> dict | None:
+    credential = subprocess.run(
+        ["git", "credential", "fill"], cwd=stable_repo,
+        input="protocol=https\nhost=github.com\n\n", text=True, capture_output=True,
+        env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "Never"},
+        timeout=5,
+    )
+    values = dict(line.split("=", 1) for line in credential.stdout.splitlines() if "=" in line)
+    headers = {"Accept": "application/vnd.github+json"}
+    if values.get("password"):
+        headers["Authorization"] = "Bearer " + values["password"]
+    request = urllib.request.Request(
+        "https://api.github.com/repos/SiyuanMaCS/SiyuanMaCS.github.io/actions/runs?per_page=8",
+        headers=headers,
+    )
+    with urllib.request.urlopen(request, timeout=12) as response:
+        workflows = json.load(response)["workflow_runs"]
+    for workflow in workflows:
+        if ("pages" in (workflow.get("name", "") + workflow.get("path", "")).lower()
+                and workflow.get("head_branch") == "main"
+                and workflow.get("status") != "completed"):
+            return {"run_id": workflow["id"], "status": workflow["status"],
+                    "sha": workflow["head_sha"], "url": workflow.get("html_url")}
+    return None
+
+
+def publication_wait(stable_repo: Path, core_only: bool) -> dict | None:
+    try:
+        pending = pending_pages_deployment(stable_repo)
+    except Exception as exc:
+        # An unknown deployment state must not cancel a running publication.
+        pending = {"state_check_error": type(exc).__name__}
+    if pending is None:
+        return None
+    return {"changed": False, "commit": run(["git", "rev-parse", "HEAD"], stable_repo).stdout.strip(),
+            "core_only": core_only, "gallery": {"changed": False, "commit": None},
+            "waiting_for_pages_deployment": pending}
 
 
 def rewrite_monitor_html(source: Path, destination: Path) -> None:
@@ -615,6 +656,9 @@ def write_index_page(destination: Path, run_root: Path) -> None:
 
 
 def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: bool = False) -> dict:
+    waiting = publication_wait(stable_repo, core_only)
+    if waiting:
+        return waiting
     repo_root = Path(__file__).resolve().parents[1]
     legacy_status = heavy_web.parent / "cleanroom_full_matrix_v1/status.json"
 
@@ -667,6 +711,10 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
         write_full_galleries(run_root, pixelworld, "phygenbench_full", "PhyGenBench · full")
         targets = TARGETS
 
+    # A deployment can start during rendering, including one from another project.
+    waiting = publication_wait(stable_repo, core_only)
+    if waiting:
+        return waiting
     targets = tuple(target for target in targets if (stable_repo / target).exists())
     check(["git", "add", *targets], stable_repo)
     staged = run(["git", "diff", "--cached", "--quiet", "--", *targets], stable_repo)

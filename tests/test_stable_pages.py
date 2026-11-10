@@ -1,7 +1,31 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 from tools import inspect_live_workers, sync_stable_pixelworld_pages as pages
+
+
+def test_active_deployment_defers_all_rendering_and_git_mutations(tmp_path, monkeypatch):
+    busy = {"run_id": 123, "status": "in_progress", "sha": "old"}
+    monkeypatch.setattr(pages, "pending_pages_deployment", lambda _: busy)
+    monkeypatch.setattr(pages, "run", lambda *_: SimpleNamespace(stdout="current\n"))
+    def forbidden(*_):
+        raise AssertionError("No render or git mutation while a deployment is active")
+    monkeypatch.setattr(pages, "check", forbidden)
+    result = pages.sync_once(tmp_path / "runs", tmp_path / "heavy", tmp_path / "site", True)
+    assert result["waiting_for_pages_deployment"] == busy
+    assert result["changed"] is False
+    assert not (tmp_path / "site").exists()
+
+
+def test_unknown_deployment_state_defers_publication(tmp_path, monkeypatch):
+    def unavailable(_):
+        raise TimeoutError("API unavailable")
+    monkeypatch.setattr(pages, "pending_pages_deployment", unavailable)
+    monkeypatch.setattr(pages, "run", lambda *_: SimpleNamespace(stdout="current\n"))
+    result = pages.sync_once(tmp_path / "runs", tmp_path / "heavy", tmp_path / "site", True)
+    assert result["waiting_for_pages_deployment"]["state_check_error"] == "TimeoutError"
+    assert result["changed"] is False
 
 
 def test_core_refresh_keeps_published_preview_routes_and_heavy_fallback(tmp_path):
