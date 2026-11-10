@@ -1,6 +1,6 @@
 # OpenVE-Bench video editing
 
-OpenVE is the only new editing benchmark in this experiment. PVIR / the physics-aware editing benchmark is excluded. Existing Physics-IQ, RoboJudge, VBench-2.0 five-dimension and PhyGenBench experiments retain their inputs, prompts, budgets and evaluator pins.
+OpenVE remains an optional completed editing smoke; its full benchmark is not launched. PCVE-RigidBench is the required physical counterfactual editing benchmark. PVIR is excluded. Existing Physics-IQ, RoboJudge, VBench-2.0 five-dimension and PhyGenBench experiments retain their inputs, prompts, budgets and evaluator pins.
 
 ## Official sources and pins
 

@@ -13,7 +13,7 @@ SUITES = {"physics_iq": "bench_smoke_codex_20261109/physics_iq",
           "robojudge": "bench_smoke_codex_20261109/robojudge",
           "robojudge_seed21_native_v2": "bench_smoke_codex_20261109/robojudge",
           "vbench2_subset_full": "vbench2_subset_full", "phygenbench_full": "phygenbench_full",
-          "openve_smoke": "openve_smoke"}
+          "openve_smoke": "openve_smoke", "pcve_smoke": "pcve_smoke"}
 
 
 def sync_previews(run_root, heavy_web, pixelworld, limit=16):

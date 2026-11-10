@@ -36,7 +36,13 @@ The current main benchmark portfolio is fixed in
 The added video-editing benchmark is [OpenVE-Bench](docs/OPENVE_BENCH.md):
 431 original-video/instruction tasks. A separate smoke adapter preserves the
 complete source duration, outputs edited RGB pixels, and exports the official
-submission CSV. The physics-aware editing benchmark is excluded.
+submission CSV. The previously requested PVIR removal benchmark is excluded.
+
+[PCVE-RigidBench](docs/PCVE_RIGIDBENCH.md) is required for physical counterfactual
+editing: 129 official tasks, quantitative English prompts, a native 96-frame /
+24-FPS / four-second timeline, and strict separation of target/physics ground
+truth from generation. Five models across both native Tracks are in smoke.
+OpenVE remains optional and is not launched at full scale.
 
 WorldArena, WorldScore, WBench and older multi-benchmark smokes remain
 historical/exploratory pages rather than the main portfolio.

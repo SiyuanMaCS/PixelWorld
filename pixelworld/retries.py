@@ -55,10 +55,10 @@ def budget_window(config: Benchmark, model: Model, track: str, case: str, attemp
     return None
 
 
-def authorize_failed(config: Benchmark, extra_attempts: int = 2, max_rounds: int = 1,
-                     apply: bool = False) -> dict:
+def authorize_failed(config: Benchmark, extra_attempts: int = 2, max_rounds: int | None = 1,
+                     apply: bool = False, cooldown_seconds: float = 0) -> dict:
     from .supervisor import case_ids, configurations, inspect
-    if extra_attempts < 1 or max_rounds < 1:
+    if extra_attempts < 1 or (max_rounds is not None and max_rounds < 1) or cooldown_seconds < 0:
         raise ValueError("Retry bounds must be positive")
     config.runs_root.mkdir(parents=True, exist_ok=True)
     path = ledger_path(config)
@@ -78,8 +78,14 @@ def authorize_failed(config: Benchmark, extra_attempts: int = 2, max_rounds: int
             for case in case_ids(config):
                 key = f"{model.key}/{track}/{case}"
                 history = data["cases"].get(key, [])
-                if len(history) >= max_rounds or inspect(config, model, track, case)["state"] != "exhausted":
+                if ((max_rounds is not None and len(history) >= max_rounds)
+                        or inspect(config, model, track, case)["state"] != "exhausted"):
                     continue
+                if history and cooldown_seconds:
+                    import datetime as dt
+                    last = dt.datetime.fromisoformat(history[-1]['authorized_utc'].replace('Z','+00:00'))
+                    if (dt.datetime.now(dt.timezone.utc)-last).total_seconds() < cooldown_seconds:
+                        continue
                 start = max(config.max_attempts, existing.get(case, 0)) + 1
                 item = {"round": len(history) + 1, "start_attempt": start,
                         "end_attempt": start + extra_attempts - 1,
@@ -94,4 +100,5 @@ def authorize_failed(config: Benchmark, extra_attempts: int = 2, max_rounds: int
             _CACHE.pop(path, None)
         return {"apply": apply, "authorized_cases": len(granted), "items": granted,
                 "extra_attempts": extra_attempts, "max_retry_rounds": max_rounds,
+                "cooldown_seconds": cooldown_seconds,
                 "history_preserved": True}

@@ -38,6 +38,8 @@ CORE_TARGETS = (
     "pixelworld/phygenbench.html",
     "pixelworld/openve.html",
     "pixelworld/openve_smoke",
+    "pixelworld/pcve_rigid.html",
+    "pixelworld/pcve_smoke",
     "pixelworld/robojudge_assets",
     "pixelworld/bench_smoke_codex_20261109",
 )
@@ -595,12 +597,13 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         "vbench2_subset.html": ("vbench2_subset_full",),
         "phygenbench.html": ("phygenbench_full",),
         "openve.html": ("openve_smoke",),
+        "pcve_rigid.html": ("pcve_smoke",),
     }
     body = (
         '<section class="hero"><p class="eyebrow">PIXELWORLD MAIN BENCHMARKS</p><h1>PixelWorld Index</h1>'
-        '<p class="muted">主实验收敛为四个 benchmark：RoboJudge、Physics-IQ、VBench-2.0 subset 和 PhyGenBench。'
+        '<p class="muted">现有四个全量实验继续运行：RoboJudge、Physics-IQ、VBench-2.0 subset 和 PhyGenBench。PCVE-RigidBench 纳入必跑，目前进行五模型 smoke；OpenVE 暂不启动全量。'
         "WorldArena、WBench、WorldScore 等保留为历史/探索入口，不再作为主线。</p></section>"
-        '<section id="benchmarks"><h2>四个主 Benchmark</h2><div class="grid">'
+        '<section id="benchmarks"><h2>主 Benchmark 与进度</h2><div class="grid">'
         '<article class="card feature"><span class="badge">running</span><h3>RoboJudge shared-50</h3>'
         '<p class="desc">50 shared embodied generation prompts x Text/Vision-Agent</p>'
         '<p class="note">Original RoboJudge-9B scoring; Table8 comparability remains explicitly gated.</p>'
@@ -617,9 +620,13 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         '<p class="desc">160 prompts covering mechanics/optics/thermal/material physical concepts.</p>'
         '<p class="note">Small physically interpretable supplement; model scores from Video-Coder paper are shown only as reference.</p>'
         '<a class="button primary" href="phygenbench.html">打开页面 →</a></article>'
+        '<article class="card feature"><span class="badge">running</span><h3>PCVE-RigidBench · 必跑</h3>'
+        '<p class="desc">129 条物理反事实视频编辑。五模型 × Text/Vision-Agent 的官方单案例 smoke 已启动。</p>'
+        '<p class="note">定量英语指令 · 96 帧 / 24 FPS / 4 秒 · 目标视频和物理真值仅用于评测。</p>'
+        '<a class="button primary" href="pcve_rigid.html">打开 PCVE 进度 →</a></article>'
         '</div><p><a class="button primary" href="smoke.html">打开 VBench2 / PhyGenBench smoke 输出 →</a></p></section>'
         '<section><h2>视频编辑</h2><div class="grid"><article class="card feature"><span class="badge">running</span><h3>OpenVE-Bench</h3>'
-        '<p class="desc">431 条原视频＋编辑指令，8 类编辑任务。当前先跑单条 smoke，全量尚未启动。</p>'
+        '<p class="desc">431 条原视频＋编辑指令，8 类编辑任务。保留已完成的单条 smoke，暂不启动全量。</p>'
         '<a class="button primary" href="openve.html">查看 smoke 与编辑协议 →</a></article></div></section>'
         '<section><h2>Legacy 与探索入口</h2><div class="grid"><article class="card legacy"><h3>Legacy Physics-IQ full matrix</h3>'
         '<p class="desc">早期 legacy-v1 / 旧 Track 结果，只作历史参考，不计入 native_v2 主实验。</p>'
@@ -643,7 +650,7 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         explicitly_stopped = all((run_root / "generations" / name / "STOP").exists() for name in suites[route])
         stopped_label = "已停止 · T2V 历史实验" if route in {"vbench2_subset.html", "phygenbench.html"} else "已停止"
         label = stopped_label if explicitly_stopped else ("running" if active else ("待调度" if pending else ("生成结束 · 有未交付任务" if exhausted else "生成完成")))
-        if route == 'openve.html':
+        if route in {'openve.html','pcve_rigid.html'}:
             label = 'smoke · ' + label
         card = card.replace('<span class="badge">running</span>', f'<span class="badge">{label} · {active} active</span>')
         updates = [s.get("updated_utc", "") for s in statuses if s.get("updated_utc")]
@@ -670,7 +677,7 @@ def write_openve_page(run_root: Path, destination: Path) -> None:
                  ('Lucy-Edit',1.95),('ICVE',2.25),('DITTO',2.06),('OpenVE-Edit',2.41)]
     baseline_rows = ''.join(f'<tr><td>{name}</td><td>{score:.2f}</td></tr>' for name,score in baselines)
     body = ('<section class="hero"><p class="eyebrow">OPENVE-BENCH · VIDEO EDITING</p><h1>OpenVE-Bench</h1>'
-            '<p class="muted">完整原视频＋编辑指令 → 用代码生成编辑后的 RGB 视频。仅加入 OpenVE，不包含 physics-aware editing / PVIR。</p></section>'
+            '<p class="muted">完整原视频＋编辑指令 → 用代码生成编辑后的 RGB 视频。OpenVE 可选，暂不启动全量；PCVE-RigidBench 必跑，PVIR 不测。</p></section>'
             '<div class="card feature"><span class="badge">单条 smoke · 全量尚未启动</span>'
             + status_facts(status)
             + '<p>当前测试官方第 58 行：把银色轿车换成带蓝色发光细节的未来电动车，保持位置和运动。</p>'
@@ -688,6 +695,29 @@ def write_openve_page(run_root: Path, destination: Path) -> None:
             '<a class="button" href="https://huggingface.co/datasets/Lewandofski/OpenVE-Bench">官方 431 条数据 ↗</a> '
             '<a class="button" href="https://github.com/SiyuanMaCS/PixelWorld/blob/main/docs/OPENVE_BENCH.md">复现实验说明 ↗</a></p>')
     destination.write_text(page('OpenVE-Bench · PixelWorld',body))
+
+
+def write_pcve_page(run_root: Path, destination: Path) -> None:
+    status=read_json(run_root/'generations/pcve_smoke/status.json')
+    baselines=[('VACE',-0.042,146.26,0.273),('Ditto',-0.120,149.94,0.264),
+               ('MiniMax H3',-0.096,152.00,0.250),('Seedance 2.5',-0.087,144.99,0.231),
+               ('No edit',0,143.13,0.289),('VideoPhysEdit',0.376,66.70,0.421)]
+    rows=''.join(f'<tr><td>{name}</td><td>{pes:.3f}</td><td>{te:.2f}</td><td>{iou:.3f}</td></tr>' for name,pes,te,iou in baselines)
+    body=('<section class=hero><p class=eyebrow>PCVE-RIGIDBENCH · PHYSICAL VIDEO EDITING</p><h1>PCVE-RigidBench</h1>'
+          '<p class=muted>给定完整源视频和物理干预指令，生成对应的反事实运动与交互。</p></section>'
+          '<div class="card feature"><span class=badge>必跑 · 五模型 smoke</span>'+status_facts(status)+
+          '<p>已发出 5 个模型 × Text/Vision-Agent，共 10 个单案例测试。当前限制 smoke 同时 2 个，优先保证已有全量实验运行。</p>'
+          '<p class=note>统一输入：三个空气曲棍球槌碰撞；从第 1 帧开始，将红色球槌质量变为原来的 4 倍。</p>'
+          '<p class=note>官方原视频已核验：1280×720、24 FPS、96 帧、4 秒。生成规格：256×144、24 FPS、96 帧、4 秒；保留原生时间轴，无帧率填充。</p></div>'
+          '<h2>Model × Track · Smoke</h2>'+model_track_matrix(run_root,'pcve_smoke',status,'pcve_smoke')+
+          '<h2>输入、协议与评测</h2><div class=card><p>正式数据共 129 条、20 个刚体场景：质量 32、摩擦 21、恢复系数 13、初始速度 26、添加 7、删除 30。117 条从首帧干预，12 条在中途干预。</p>'
+          '<p>采用官方 quantitative.en。指令帧号从 1 开始，第 1 帧对应 0 秒。编辑前保留事实历史；编辑后生成物理变化引起的运动及其他受影响物体的交互。</p>'
+          '<p>Agent 只读原视频、RGB 数组、输入检查图与指令；不提供 edited_video、ground_truth、physics_diff 或 edit_summary。仍用代码直接写 RGB，不调用图像/视频生成模型或外部物理仿真/渲染引擎；允许 Python 数学、几何与像素操作。</p>'
+          '<p>官方评测：PES、轨迹误差 TE、Mask IoU，以及 PSNR/SSIM/LPIPS/CLIP/FVD。GroundingDINO＋SAM2 和真值仅留在评测侧。当前为生成 smoke，尚未报告 PCVE 分数。</p></div>'
+          '<h2>官方论文全 129 条参考</h2><div class=scroll><table><tr><th>Model</th><th>PES ↑</th><th>TE ↓</th><th>Mask IoU ↑</th></tr>'+rows+'</table></div>'
+          '<p class=note>PES=1 表示匹配反事实变化；0 表示没有优于原视频不编辑；负值表示更差。参考表来自官方论文 Table 1；本轮 smoke 不作为全量分数。</p>'
+          '<p><a class=button href="https://videophysedit.github.io/">官方项目 ↗</a> <a class=button href="https://github.com/Hammour-steak/PCVE-RigidBench">官方代码 ↗</a> <a class=button href="https://huggingface.co/datasets/ccmoony/PCVE-RigidBench">官方数据 ↗</a></p>')
+    destination.write_text(page('PCVE-RigidBench · PixelWorld',body))
 
 
 def publish_delivery(stable_repo: Path, delivery_repo: Path, branch: str = 'pixelworld-pages') -> dict:
@@ -790,6 +820,7 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
     write_vbench_page(run_root, pixelworld / "vbench2_subset.html")
     write_phygen_page(run_root, pixelworld / "phygenbench.html")
     write_openve_page(run_root, pixelworld / "openve.html")
+    write_pcve_page(run_root, pixelworld / "pcve_rigid.html")
 
     assets_src = heavy_web / "robojudge_assets"
     assets_dst = pixelworld / "robojudge_assets"

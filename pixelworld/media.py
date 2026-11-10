@@ -42,6 +42,8 @@ def task_rules(spec: dict) -> str:
     if spec['task_type']=='video_edit':
         inputs='`source_video.mp4`, `source_pixels.npz`, `source_info.json`, `source_inspection.png`, `first_frame.png`, `prompt.txt` and `task_spec.json`'
         first=' Edit the supplied video over its full duration according to the instruction; preserve content and motion that the instruction does not ask to change. Output frame 00 is an edited frame, not a required copy of the original. `source_pixels.npz` contains sampled uint8 RGB frames in time-height-width-channel order.'
+        if spec.get('benchmark')=='pcve-rigidbench-v1':
+            first=' Produce the complete counterfactual video. Preserve the factual history before the physical intervention, then depict its consequences for motion and interactions, including other affected objects. Keep unaffected appearance consistent. The instruction counts original source frames from 1: frame 1 is time 0. `source_info.json` gives the execution time on that timeline. `source_pixels.npz` contains uint8 RGB frames in time-height-width-channel order. This is an edit of the source timeline, not an appended future continuation.'
     audio = ""
     if spec["audio"]:
         rate, channels = spec["audio"]["sample_rate"], spec["audio"]["channels"]

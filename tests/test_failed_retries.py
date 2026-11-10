@@ -87,6 +87,21 @@ def test_budget_exhaustion_and_max_retry_rounds_still_bound_work(tmp_path):
     assert authorize_failed(config, apply=True)["authorized_cases"] == 0
 
 
+def test_continuous_retry_reopens_exhausted_rounds_with_cooldown_and_fresh_budget(tmp_path):
+    config,model=fixture(tmp_path)
+    for attempt in (1,2):manifest(config,model,'bad',attempt,{'status':'failed','token_usage':{'output_tokens':50000}})
+    manifest(config,model,'good',1,{'status':'complete','validation':{'pass':True}})
+    first=authorize_failed(config,max_rounds=None,apply=True)
+    assert first['items'][0]['start_attempt']==3
+    for attempt in (3,4):manifest(config,model,'bad',attempt,{'status':'failed','token_usage':{'output_tokens':50000}})
+    assert authorize_failed(config,max_rounds=None,apply=True,cooldown_seconds=300)['authorized_cases']==0
+    second=authorize_failed(config,max_rounds=None,apply=True)
+    assert second['items'][0]['start_attempt']==5
+    assert _prior_attempt_usage(config,model,'text','bad',5)[:2]==(0,False)
+    assert inspect(config,model,'text','good')['state']=='complete'
+    assert (run_path(config,model,'text','bad',1)/'run_manifest.json').is_file()
+
+
 def test_incomplete_physics_cohort_returns_to_waiting_when_retries_are_pending(tmp_path, monkeypatch):
     from tools import watch_physics_evaluation as watcher
     config, model = fixture(tmp_path)
