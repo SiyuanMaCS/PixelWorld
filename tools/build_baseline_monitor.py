@@ -147,11 +147,18 @@ def build(run,web,legacy):
         body+='</tr>'
     body+='</table></div>'
     body+='<h2 id=evaluation>评测阶段</h2><p class=note>完整198个真实有效输出到齐后，运行原始Verified评测；缺失视频不补零、不删除。旧组评分在原有全量页保留。</p>'
-    scheduler=read(run/'evaluation/physics_full_scheduler/scheduler.json')
-    body+='<div class=scroll><table><tr><th>组</th><th>阶段</th><th>完整Verified</th></tr>'
-    for key,entry in scheduler.get('cohorts',{}).items():
+    cohorts={}
+    for scheduler_name in ['physics_full_scheduler','physics_gpt_native_v2_full_scheduler','physics_seed21_native_v2_full_scheduler']:
+        cohorts.update(read(run/'evaluation'/scheduler_name/'scheduler.json').get('cohorts',{}))
+    body+='<div class=scroll><table><tr><th>组</th><th>阶段</th><th>有效输出</th><th>阻塞/说明</th><th>完整Verified</th></tr>'
+    for key,entry in cohorts.items():
         score=entry.get('score',{}).get('verified_score') if entry.get('official_full_score') else None
-        body+=f'<tr><td>{html.escape(key)}</td><td>{html.escape(entry.get("phase","待运行"))}</td><td>{score if score is not None else "—"}</td></tr>'
+        phase=entry.get('phase','待运行')
+        note=entry.get('blocker') or entry.get('error') or '—'
+        if phase=='incomplete_official_scope':
+            note=f'{entry.get("exhausted_cases",0)} 条未交付；有效输出未达到198，不能计算完整官方分数'
+        accepted=entry.get('accepted_cases',198 if entry.get('official_full_score') else '—')
+        body+=f'<tr><td>{html.escape(key)}</td><td>{html.escape(phase)}</td><td>{accepted}/198</td><td>{html.escape(str(note))}</td><td>{score if score is not None else "—"}</td></tr>'
     body+='</table></div><p><a href="robojudge.html">RoboJudge全量实验 →</a></p>'
     page=document('Physics-IQ baseline · PixelWorld',body).replace('href="../index.html"','href="index.html"').replace('href="index.html#models"','href="#models"').replace('href="index.html#evaluation"','href="#evaluation"').replace('href="protocol.html"','href="bench_smoke_codex_20261109/protocol.html"')
     (web/'physics_iq_baseline.html').write_text(page)
