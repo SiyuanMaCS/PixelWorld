@@ -110,7 +110,7 @@ def scheduler_rows(run):
         ('seed21-native-v2',run/'evaluation/robojudge_seed21_native_v2_full/scheduler.json'),
     ]:
         scheduler=read(path)
-        done=scheduler.get('done',{})
+        done={**scheduler.get('blocked',{}),**scheduler.get('done',{})}
         for key,group in sorted(scheduler.get('groups',{}).items()):
             counts=group.get('counts',{})
             phase=done.get(key,{}).get('phase')
@@ -122,7 +122,9 @@ def scheduler_rows(run):
             running=', '.join(group.get('running_cases') or [])
             exhausted=', '.join((group.get('exhausted_cases') or [])[:6])
             note='—'
-            if phase=='existing_incomplete_evaluation_needs_review':
+            if phase=='waiting_for_cuda':
+                note='CUDA GPU unavailable；等待可用 GPU 后自动继续官方评测，已有阻塞记录保留'
+            elif phase=='existing_incomplete_evaluation_needs_review':
                 execution=read(path.parent / key / 'execution.json')
                 blockers=execution.get('blockers') or []
                 note=('已有评测目录；执行阻塞：'+'; '.join(str(x) for x in blockers)
