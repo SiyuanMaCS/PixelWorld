@@ -7,6 +7,7 @@ OpenVE is the only new editing benchmark in this experiment. PVIR / the physics-
 - Paper: <https://arxiv.org/html/2512.07826v1>
 - Evaluator: <https://github.com/OpenVE-Team/OpenVE-3M>, commit `f36055a7f43186f7e7d77f9f4b243cb51731da97`.
 - Data: <https://huggingface.co/datasets/Lewandofski/OpenVE-Bench>, revision `255b2ff91a8c7d45696f37f5aed14bd427b35e34`.
+- Official CSV SHA256: `0ed856d1facc8de3a392d2678022fae11d02ebdb003b8a51a8af20e669e5ce55`. Modified cached manifests are rejected.
 - 431 tasks: global style 58; local change 65; background change 59; local remove 59; local add 67; creative edit 30; camera edit 43; subtitle edit 50.
 - Original CSV fields: `edited_type,prompt,original_video`. The submission appends `edited_result_path`.
 

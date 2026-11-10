@@ -38,6 +38,7 @@ CORE_TARGETS = (
     "pixelworld/vbench2_subset.html",
     "pixelworld/phygenbench.html",
     "pixelworld/openve.html",
+    "pixelworld/openve_smoke",
     "pixelworld/robojudge_assets",
     "pixelworld/bench_smoke_codex_20261109",
 )

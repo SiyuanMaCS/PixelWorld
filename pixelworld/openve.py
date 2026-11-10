@@ -17,12 +17,15 @@ from .util import atomic_json, sha256
 
 DATASET_ID = 'Lewandofski/OpenVE-Bench'
 DATASET_REVISION = '255b2ff91a8c7d45696f37f5aed14bd427b35e34'
+CSV_SHA256 = '0ed856d1facc8de3a392d2678022fae11d02ebdb003b8a51a8af20e669e5ce55'
 SOURCE_URL = 'https://github.com/OpenVE-Team/OpenVE-3M'
 SOURCE_REVISION = 'f36055a7f43186f7e7d77f9f4b243cb51731da97'
 OFFICIAL_COUNT = 431
 
 
 def rows(path: Path) -> list[dict]:
+    if sha256(path) != CSV_SHA256:
+        raise ValueError('OpenVE CSV differs from the pinned official manifest; use a fresh data root')
     with path.open(encoding='utf-8-sig', newline='') as f:
         result = list(csv.DictReader(f))
     if len(result) != OFFICIAL_COUNT or not all(
