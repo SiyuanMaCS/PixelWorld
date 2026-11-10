@@ -2,8 +2,8 @@
 
 Read-only by default. With --kill-stale, only terminates workers that have a
 parsed case path and match the explicit stale predicates. This also reports
-orphaned codex child processes under the PixelWorld run root, because killed
-run-case parents can leave detached model calls alive.
+orphaned codex and snapshot child processes under the PixelWorld run root,
+because killed run-case parents can leave detached helpers alive.
 """
 from __future__ import annotations
 
@@ -161,6 +161,51 @@ def _codex_orphan_workers(run_root: Path, now: float) -> list[dict]:
     return workers
 
 
+def _snapshot_orphan_workers(run_root: Path) -> list[dict]:
+    workers = []
+    generation_root = (run_root / "generations").resolve()
+    for pid, ppid, stat, elapsed, command in _ps_rows():
+        if ppid != 1 or "-m pixelworld.snapshot" not in command:
+            continue
+        if str(generation_root) not in command:
+            continue
+        try:
+            tokens = shlex.split(command)
+        except ValueError:
+            continue
+        workspace = _arg(tokens, "--workspace")
+        stop_file = _arg(tokens, "--stop-file")
+        if not workspace:
+            continue
+        try:
+            relative = Path(workspace).resolve().relative_to(generation_root)
+        except (OSError, ValueError):
+            continue
+        if len(relative.parts) < 4:
+            continue
+        bench, model, track, run_name = relative.parts[:4]
+        match = re.match(r"^case_(?P<case>.+)_attempt_(?P<attempt>\d+)$", run_name)
+        workers.append({
+            "kind": "orphan-snapshot",
+            "pid": pid,
+            "ppid": ppid,
+            "stat": stat,
+            "elapsed": elapsed,
+            "bench": bench,
+            "model": model,
+            "track": track,
+            "case": match.group("case") if match else None,
+            "attempt": str(int(match.group("attempt"))) if match else None,
+            "event_age_s": None,
+            "last_type": None,
+            "reason": "orphan snapshot detached",
+            "event_path": None,
+            "stop_file": str(Path(stop_file).resolve().relative_to(run_root)) if stop_file else None,
+            "stop_file_exists": Path(stop_file).exists() if stop_file else None,
+        })
+    return workers
+
+
 def inspect_workers(run_root: Path) -> list[dict]:
     now = time.time()
     workers = []
@@ -211,6 +256,7 @@ def inspect_workers(run_root: Path) -> list[dict]:
             "event_path": str(event_path.relative_to(run_root)) if event_path else None,
         })
     workers.extend(_codex_orphan_workers(run_root, now))
+    workers.extend(_snapshot_orphan_workers(run_root))
     return workers
 
 
@@ -220,6 +266,7 @@ def _is_killable(worker: dict) -> bool:
         reason == "network retry >900s"
         or reason.endswith("network retry >900s")
         or reason.endswith(" >2400s")
+        or reason == "orphan snapshot detached"
     )
 
 
@@ -244,6 +291,7 @@ def main() -> None:
     payload = {
         "run_cases": sum(1 for worker in workers if worker["kind"] == "run-case"),
         "orphan_codex": sum(1 for worker in workers if worker["kind"] == "orphan-codex"),
+        "orphan_snapshot": sum(1 for worker in workers if worker["kind"] == "orphan-snapshot"),
         "killable_stale": len(killable),
         "unparsed_or_missing": sum(
             1 for worker in workers
@@ -267,6 +315,14 @@ def main() -> None:
                 (worker["bench"], worker["model"], worker["track"])
                 for worker in workers
                 if worker["kind"] == "orphan-codex"
+            ).items(), key=lambda item: tuple(str(part) for part in item[0]))
+        },
+        "orphan_snapshot_counts": {
+            "/".join(str(part) for part in key): value
+            for key, value in sorted(Counter(
+                (worker["bench"], worker["model"], worker["track"])
+                for worker in workers
+                if worker["kind"] == "orphan-snapshot"
             ).items(), key=lambda item: tuple(str(part) for part in item[0]))
         },
         "unparsed_or_missing_workers": [
