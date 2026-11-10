@@ -35,6 +35,9 @@ inputs only when their file hashes match the original run manifest and their RGB
 and prompt identities match the pinned official case. Export records label this
 as `early_workspace_inputs_hash_verified`; no historical snapshot is fabricated.
 A missing snapshot that was declared by the run remains an error.
+Preserved builtin TRAE runs with an older local model key require an exact model
+ID match to the current `traex/<model>` route and the same track. Export provenance
+retains the original model key, model ID and CLI backend instead of rewriting them.
 
 `tools/watch_physics_evaluation.py` runs in the evaluation environment and waits
 for full delivery. Example:

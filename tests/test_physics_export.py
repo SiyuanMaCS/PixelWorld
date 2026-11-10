@@ -83,6 +83,24 @@ def test_missing_declared_snapshot_cannot_fall_back_to_workspace(tmp_path, decla
         physics.validated_rgb(run, case)
 
 
+def test_preserved_builtin_model_accepts_only_exact_model_id():
+    model = SimpleNamespace(key='deepseek-v41', model='traex/DeepSeek-V4.1-Flash')
+    manifest = {'model_key':'deepseek-v4-1-flash', 'model':'DeepSeek-V4.1-Flash',
+                'cli_backend':'trae', 'provider':{'type':'builtin'}, 'track':'vision-agent'}
+    assert physics.verify_run_model_identity(manifest, model, 'vision-agent') == 'preserved_builtin_model_id_exact'
+
+
+@pytest.mark.parametrize('field,value', [('track','text'), ('model','DeepSeek-V4-Pro'),
+                                       ('cli_backend','codex'), ('provider',{'type':'responses'})])
+def test_model_key_alias_cannot_hide_other_model_track_or_provider(field, value):
+    model = SimpleNamespace(key='deepseek-v41', model='traex/DeepSeek-V4.1-Flash')
+    manifest = {'model_key':'deepseek-v4-1-flash', 'model':'DeepSeek-V4.1-Flash',
+                'cli_backend':'trae', 'provider':{'type':'builtin'}, 'track':'vision-agent'}
+    manifest[field] = value
+    with pytest.raises(ValueError, match='another model or track'):
+        physics.verify_run_model_identity(manifest, model, 'vision-agent')
+
+
 @pytest.mark.parametrize('change',['prompt','conditioning','tensor','png'])
 def test_changed_inputs_or_submission_block_physics_export(tmp_path,change):
     run,case=fixture_run(tmp_path)

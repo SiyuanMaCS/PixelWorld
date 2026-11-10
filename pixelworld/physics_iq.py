@@ -182,6 +182,21 @@ def conditioning_evidence_directory(run: Path, manifest: dict) -> Path:
     return run / "workspace"
 
 
+def verify_run_model_identity(manifest: dict, model, track: str) -> str:
+    if manifest.get("track") != track:
+        raise ValueError("Physics-IQ run belongs to another model or track")
+    if manifest.get("model_key") == model.key:
+        return "model_key_exact"
+    # A preserved builtin TRAE run may have a different local key from its
+    # later Codex routing config. Accept only the exact same builtin model ID.
+    if (manifest.get("cli_backend") == "trae"
+            and (manifest.get("provider") or {}).get("type") == "builtin"
+            and manifest.get("model")
+            and model.model == "traex/" + manifest["model"]):
+        return "preserved_builtin_model_id_exact"
+    raise ValueError("Physics-IQ run belongs to another model or track")
+
+
 def validated_rgb(run: Path, case: dict) -> tuple[np.ndarray, dict]:
     """Recheck immutable BPP/initial RGB and current submitted pixels before export."""
     manifest = json.loads((run / "run_manifest.json").read_text())
@@ -244,8 +259,7 @@ def export_videos(config: Benchmark, model_key: str, track: str, output: Path) -
     def encode(case: dict) -> dict:
         info = accepted[case["id"]]
         rgb, run_manifest = validated_rgb(Path(info["run"]), case)
-        if (run_manifest.get("model_key"), run_manifest.get("track")) != (model.key, track):
-            raise ValueError("Physics-IQ run belongs to another model or track")
+        model_identity = verify_run_model_identity(run_manifest, model, track)
         workspace = Path(info["run"]) / "workspace"
         frames = workspace / "frames"
         target = video_dir / case["generated_video_name"]
@@ -266,6 +280,10 @@ def export_videos(config: Benchmark, model_key: str, track: str, output: Path) -
                 "video_sha256": sha256(target), "decoded_rgb_exact": True,
                 "source_run": info["run"], "source_run_manifest_sha256": sha256(Path(info["run"]) / "run_manifest.json"),
                 "source_pixels_sha256": run_manifest.get("pixels_sha256"),
+                "source_model_key": run_manifest.get("model_key"),
+                "source_model": run_manifest.get("model"),
+                "source_cli_backend": run_manifest.get("cli_backend"),
+                "model_identity_check": model_identity,
                 "input_evidence_directory": str(conditioning_evidence_directory(Path(info["run"]), run_manifest)),
                 "input_evidence_kind": "immutable_snapshot" if (Path(info["run"]) / "input_snapshot").is_dir()
                                        else "early_workspace_inputs_hash_verified",
