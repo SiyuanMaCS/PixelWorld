@@ -31,6 +31,7 @@ CORE_TARGETS = (
     "pixelworld/vbench2_subset.html",
     "pixelworld/phygenbench.html",
     "pixelworld/robojudge_assets",
+    "pixelworld/bench_smoke_codex_20261109",
 )
 
 GALLERY_TARGETS = (
@@ -69,6 +70,16 @@ def check(cmd: list[str], cwd: Path) -> None:
 def rewrite_monitor_html(source: Path, destination: Path) -> None:
     text = source.read_text()
     text = text.replace("bench_smoke_codex_20261109/", HEAVY_BASE + "bench_smoke_codex_20261109/")
+    # Small, explicitly published case previews take precedence over missing
+    # heavy-site artifacts. Keep this routing on every subsequent core refresh.
+    pattern = re.escape(HEAVY_BASE) + r'(bench_smoke_codex_20261109/[^\s\"\'<>]+)'
+    def scoped_preview(match):
+        relative = match.group(1)
+        path = (destination.parent / relative).resolve()
+        if path.is_relative_to(destination.parent.resolve()) and path.is_file():
+            return relative
+        return match.group(0)
+    text = re.sub(pattern, scoped_preview, text)
     text = re.sub(r'href="(matrix_[^"]+\.html)"', lambda m: f'href="{HEAVY_BASE}{m.group(1)}"', text)
     destination.write_text(text)
 
@@ -650,6 +661,7 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
         write_full_galleries(run_root, pixelworld, "phygenbench_full", "PhyGenBench · full")
         targets = TARGETS
 
+    targets = tuple(target for target in targets if (stable_repo / target).exists())
     check(["git", "add", *targets], stable_repo)
     staged = run(["git", "diff", "--cached", "--quiet", "--", *targets], stable_repo)
     if staged.returncode == 0:

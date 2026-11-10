@@ -4,6 +4,20 @@ from pathlib import Path
 from tools import inspect_live_workers, sync_stable_pixelworld_pages as pages
 
 
+def test_core_refresh_keeps_published_preview_routes_and_heavy_fallback(tmp_path):
+    relative = "bench_smoke_codex_20261109/robojudge/model/text/case_1/index.html"
+    local = tmp_path / "stable" / relative
+    local.parent.mkdir(parents=True)
+    local.write_text("playable preview")
+    source = tmp_path / "source.html"
+    missing = relative.replace("case_1", "case_2")
+    source.write_text(f'<a href="{relative}">local</a><a href="{missing}">heavy</a>')
+    output = tmp_path / "stable/robojudge.html"
+    pages.rewrite_monitor_html(source, output)
+    assert f'href="{relative}"' in output.read_text()
+    assert f'href="{pages.HEAVY_BASE}{missing}"' in output.read_text()
+
+
 def test_home_uses_live_workers_instead_of_stale_running_counts(tmp_path, monkeypatch):
     status = tmp_path / "generations/vbench2_subset_full/status.json"
     status.parent.mkdir(parents=True)
