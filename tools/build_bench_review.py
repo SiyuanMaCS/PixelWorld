@@ -35,6 +35,11 @@ document.querySelectorAll('[data-panel]').forEach(b=>b.onclick=()=>{document.que
 """
 
 
+def physics_verified_display(score):
+    """Official Physics-IQ stores a fraction; public tables display /100."""
+    return '—' if score is None else f'{float(score) * 100:.2f}'
+
+
 def document(title, body, depth=0, case_page=False):
     overview = '../'*depth+'index.html'
     home = '../'*(depth+1)+'index.html'
@@ -371,7 +376,7 @@ def main():
         report = json.loads(physics_scheduler.read_text())
         for key, entry in report.get('cohorts', {}).items():
             score = entry.get('score', {})
-            result = (f'完整198-case Verified {score["verified_score"]:.2f} /100；单轮，非组织者发布'
+            result = (f'完整198-case Verified {physics_verified_display(score["verified_score"])} /100；单轮，非组织者发布'
                       if entry.get('official_full_score') and 'verified_score' in score else
                       f'{entry.get("accepted_cases", 0)} /198 有效；{entry.get("exhausted_cases", 0)} 预算/尝试耗尽；未计算完整分数')
             body += (f'<tr><td>Physics-IQ · {html.escape(key)}</td><td>{html.escape(entry.get("phase", "未知"))}</td>'

@@ -4,7 +4,7 @@ import argparse,json,html,sys
 import statistics
 import time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from tools.build_bench_review import document
+from tools.build_bench_review import document, physics_verified_display
 
 MODELS={'gpt61-sol':'GPT-6.1-Sol','gpt56-sol':'GPT-5.6-Sol','gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash','seed21-pro':'Seed-2.1-Pro-0915'}
 
@@ -150,7 +150,7 @@ def build(run,web,legacy):
     cohorts={}
     for scheduler_name in ['physics_full_scheduler','physics_gpt_native_v2_full_scheduler','physics_seed21_native_v2_full_scheduler']:
         cohorts.update(read(run/'evaluation'/scheduler_name/'scheduler.json').get('cohorts',{}))
-    body+='<div class=scroll><table><tr><th>组</th><th>阶段</th><th>有效输出</th><th>阻塞/说明</th><th>完整Verified</th></tr>'
+    body+='<div class=scroll><table><tr><th>组</th><th>阶段</th><th>有效输出</th><th>阻塞/说明</th><th>完整Verified /100</th></tr>'
     for key,entry in cohorts.items():
         score=entry.get('score',{}).get('verified_score') if entry.get('official_full_score') else None
         phase=entry.get('phase','待运行')
@@ -158,7 +158,7 @@ def build(run,web,legacy):
         if phase=='incomplete_official_scope':
             note=f'{entry.get("exhausted_cases",0)} 条未交付；有效输出未达到198，不能计算完整官方分数'
         accepted=entry.get('accepted_cases',198 if entry.get('official_full_score') else '—')
-        body+=f'<tr><td>{html.escape(key)}</td><td>{html.escape(phase)}</td><td>{accepted}/198</td><td>{html.escape(str(note))}</td><td>{score if score is not None else "—"}</td></tr>'
+        body+=f'<tr><td>{html.escape(key)}</td><td>{html.escape(phase)}</td><td>{accepted}/198</td><td>{html.escape(str(note))}</td><td>{physics_verified_display(score)}</td></tr>'
     body+='</table></div><p><a href="robojudge.html">RoboJudge全量实验 →</a></p>'
     page=document('Physics-IQ baseline · PixelWorld',body).replace('href="../index.html"','href="index.html"').replace('href="index.html#models"','href="#models"').replace('href="index.html#evaluation"','href="#evaluation"').replace('href="protocol.html"','href="bench_smoke_codex_20261109/protocol.html"')
     (web/'physics_iq_baseline.html').write_text(page)
