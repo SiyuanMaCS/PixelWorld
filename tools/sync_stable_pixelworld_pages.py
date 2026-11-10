@@ -8,6 +8,7 @@ absolute public URLs.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
 import fcntl
 import hashlib
 import html
@@ -206,12 +207,16 @@ def page(title: str, body: str) -> str:
         '<header class="top"><div class="top-inner"><a class="brand" href="index.html">PixelWorld</a>'
         '<nav class="nav"><a href="index.html#benchmarks">Benchmarks</a>'
         '<a href="physics_iq_baseline.html">Physics-IQ</a><a href="robojudge.html">RoboJudge</a>'
+        '<a href="vbench2_subset.html">VBench2</a><a href="phygenbench.html">PhyGenBench</a>'
         '<a href="matrix_full.html">Legacy</a></nav></div></header>'
     )
     return (
         '<!doctype html><html lang="zh-CN"><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
-        f'<title>{html.escape(title)}</title><style>{CSS}</style><body>{nav}<main>{body}</main></body></html>'
+        f'<meta name="pixelworld-built-utc" content="{datetime.now(timezone.utc).isoformat()}">'
+        f'<title>{html.escape(title)}</title><style>{CSS}</style><body>{nav}<main>{body}</main>'
+        '<script>setTimeout(()=>{if(!document.querySelector("[data-state=playing]"))location.reload()},60000)</script>'
+        '</body></html>'
     )
 
 
@@ -512,7 +517,16 @@ def write_phygen_page(run_root: Path, destination: Path) -> None:
     destination.write_text(page("PhyGenBench · PixelWorld", body))
 
 
-def write_index_page(destination: Path) -> None:
+def write_index_page(destination: Path, run_root: Path) -> None:
+    # Labels come from a read-only process snapshot, not hand-written badges.
+    from tools.inspect_live_workers import inspect_workers
+    workers = inspect_workers(run_root.resolve())
+    suites = {
+        "robojudge.html": ("robojudge", "robojudge_seed21_native_v2"),
+        "physics_iq_baseline.html": ("physics_iq", "physics_iq_gpt_native_v2", "physics_iq_seed21_native_v2"),
+        "vbench2_subset.html": ("vbench2_subset_full",),
+        "phygenbench.html": ("phygenbench_full",),
+    }
     body = (
         '<section class="hero"><p class="eyebrow">PIXELWORLD MAIN BENCHMARKS</p><h1>PixelWorld Index</h1>'
         '<p class="muted">主实验收敛为四个 benchmark：RoboJudge、Physics-IQ、VBench-2.0 subset 和 PhyGenBench。'
@@ -541,6 +555,33 @@ def write_index_page(destination: Path) -> None:
         '<article class="card legacy"><h3>Older smoke gallery</h3><p class="desc">WorldArena、WBench、WorldScore、AVGen 等 smoke 保留在旧页中。</p>'
         f'<a class="button" href="{HEAVY_BASE}bench_smoke_20261106/index.html">打开旧导航 →</a></article></div></section>'
     )
+    cards = re.compile(r'<article class="card feature">.*?</article>', re.DOTALL)
+    def with_progress(match):
+        card = match.group(0)
+        route = next((name for name in suites if f'href="{name}"' in card), None)
+        if not route:
+            return card
+        statuses = [read_json(run_root / "generations" / name / "status.json") for name in suites[route]]
+        complete = sum(s.get("totals", {}).get("complete", 0) for s in statuses)
+        total = sum(s.get("total_runs", 0) for s in statuses)
+        pending = sum(s.get("totals", {}).get("pending", 0) for s in statuses)
+        exhausted = sum(s.get("totals", {}).get("exhausted", 0) for s in statuses)
+        active = sum(w.get("kind") == "run-case" and w.get("bench") in suites[route]
+                     and not w.get("stat", "").startswith("Z") for w in workers)
+        label = "running" if active else ("待调度" if pending else ("生成结束 · 有未交付任务" if exhausted else "生成完成"))
+        card = card.replace('<span class="badge">running</span>', f'<span class="badge">{label} · {active} active</span>')
+        updates = [s.get("updated_utc", "") for s in statuses if s.get("updated_utc")]
+        latest = [g["latest_completion"] for s in statuses for g in s.get("groups", {}).values()
+                  if g.get("latest_completion")]
+        stamp = max(updates) if updates else "—"
+        last = max(latest) if latest else ("—", "—")
+        facts = (f'<div class="facts"><div><strong>{complete:,} / {total:,}</strong>有效视频</div>'
+                 f'<div><strong>{active}</strong>正在运行</div><div><strong>{pending:,}</strong>待生成</div>'
+                 f'<div><strong>{exhausted:,}</strong>未交付</div></div>'
+                 f'<p class="note">状态 UTC：<time>{html.escape(stamp)}</time><br>'
+                 f'最近有效交付：{html.escape(str(last[1]))} · {html.escape(str(last[0]))}</p>')
+        return card.replace('<a class="button primary"', facts + '<a class="button primary"', 1)
+    body = cards.sub(with_progress, body)
     destination.write_text(page("PixelWorld Index", body))
 
 
@@ -575,8 +616,8 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
 
     pixelworld = stable_repo / "pixelworld"
     pixelworld.mkdir(parents=True, exist_ok=True)
-    write_index_page(pixelworld / "index.html")
-    write_index_page(pixelworld / "pixelworld-index.html")
+    write_index_page(pixelworld / "index.html", run_root)
+    write_index_page(pixelworld / "pixelworld-index.html", run_root)
     rewrite_monitor_html(heavy_web / "physics_iq_baseline.html", pixelworld / "physics_iq_baseline.html")
     rewrite_monitor_html(heavy_web / "robojudge.html", pixelworld / "robojudge.html")
     write_legacy_page(pixelworld / "matrix_full.html")
