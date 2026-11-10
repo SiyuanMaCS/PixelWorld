@@ -519,6 +519,7 @@ def write_phygen_page(run_root: Path, destination: Path) -> None:
 
 def write_index_page(destination: Path, run_root: Path) -> None:
     # Labels come from a read-only process snapshot, not hand-written badges.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
     from tools.inspect_live_workers import inspect_workers
     workers = inspect_workers(run_root.resolve())
     suites = {
