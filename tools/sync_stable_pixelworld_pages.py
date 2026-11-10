@@ -22,6 +22,11 @@ from pathlib import Path
 
 
 HEAVY_BASE = "https://siyuanmacs.github.io/physics-iq-pixel-preview/"
+AUTO_REFRESH = (
+    '<script>setTimeout(()=>{if(!document.querySelector("[data-state=playing]")){'
+    'const next=new URL(location.href);next.searchParams.set("refresh",String(Date.now()));'
+    'location.replace(next.href)}},60000)</script>'
+)
 CORE_TARGETS = (
     "pixelworld/index.html",
     "pixelworld/pixelworld-index.html",
@@ -81,6 +86,7 @@ def rewrite_monitor_html(source: Path, destination: Path) -> None:
         return match.group(0)
     text = re.sub(pattern, scoped_preview, text)
     text = re.sub(r'href="(matrix_[^"]+\.html)"', lambda m: f'href="{HEAVY_BASE}{m.group(1)}"', text)
+    text = text.replace('</body>', AUTO_REFRESH + '</body>')
     destination.write_text(text)
 
 
@@ -226,7 +232,7 @@ def page(title: str, body: str) -> str:
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f'<meta name="pixelworld-built-utc" content="{datetime.now(timezone.utc).isoformat()}">'
         f'<title>{html.escape(title)}</title><style>{CSS}</style><body>{nav}<main>{body}</main>'
-        '<script>setTimeout(()=>{if(!document.querySelector("[data-state=playing]"))location.reload()},60000)</script>'
+        + AUTO_REFRESH +
         '</body></html>'
     )
 
