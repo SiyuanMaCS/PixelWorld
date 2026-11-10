@@ -123,7 +123,11 @@ def scheduler_rows(run):
             exhausted=', '.join((group.get('exhausted_cases') or [])[:6])
             note='—'
             if phase=='existing_incomplete_evaluation_needs_review':
-                note='已有不完整评测目录，需要人工确认后才可重跑；不计作 full score'
+                execution=read(path.parent / key / 'execution.json')
+                blockers=execution.get('blockers') or []
+                note=('已有评测目录；执行阻塞：'+'; '.join(str(x) for x in blockers)
+                      if blockers else '已有不完整评测目录，尚未完成评分')
+                note+='；不计作 full score'
             elif counts.get('exhausted',0):
                 note=f'{counts.get("exhausted",0)} exhausted; full shared50 前不评分'
             rows.append(
