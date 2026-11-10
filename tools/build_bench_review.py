@@ -105,7 +105,30 @@ def export_pixels(source, target, spec):
     return video
 
 
+def case_render_fingerprint(run):
+    paths = [run / "run_manifest.json", run / "media_contract.json", run / "workspace/pixels.npz",
+             run / "workspace/generate.py", run / "workspace/inspection.png",
+             run / "workspace/transition_check.png", run / "logs/events.jsonl"]
+    paths += sorted((run / "trace").glob("round_*/snapshot.json"))
+    stamp = []
+    for path in paths:
+        if path.is_file():
+            stat = path.stat()
+            stamp.append((str(path.relative_to(run)), stat.st_mtime_ns, stat.st_size))
+    return hashlib.sha256(json.dumps([2, stamp]).encode()).hexdigest()
+
+
+def case_page_is_current(run, output):
+    try:
+        saved = json.loads((output / "render_receipt.json").read_text())
+        return ((output / "index.html").is_file()
+                and saved.get("fingerprint") == case_render_fingerprint(run))
+    except (OSError, ValueError):
+        return False
+
+
 def build_case(run, output):
+    fingerprint = case_render_fingerprint(run)
     manifest = json.loads((run / "run_manifest.json").read_text())
     spec = json.loads((run / "media_contract.json").read_text())
     ws = run / "workspace"
@@ -123,7 +146,7 @@ def build_case(run, output):
     video = export_pixels(ws, output / "final", spec)
     if video:
         body += '<div class=case-layout id=video><div>'+player({**video, "pixels": "final/" + video["pixels_file"], "poster": "final/poster.png"})+'</div>'
-        body += ('<aside class=card><span class=badge>首帧续写</span><h3 style="margin-top:14px">原始任务</h3>'
+        body += (f'<aside class=card><span class=badge>{"文本生成" if spec.get("task_type")=="t2v" else "首帧续写"}</span><h3 style="margin-top:14px">原始任务</h3>'
                  f'<p>{html.escape(prompt)}</p><div class=facts><div><strong>{spec["frames"]/spec["fps"]:.2f}s</strong>视频时长</div>'
                  f'<div><strong>{count if count is not None else "—"}</strong>输出 tokens</div></div>'
                  '<p class=tiny>下方可播放每次保存的候选，查看检查图与代码变化。</p></aside></div>')
@@ -194,11 +217,15 @@ def build_case(run, output):
                     body += (f'<details class=tool-image><summary>视觉工具实际返回图片 {images}</summary>'
                              f'<img loading=lazy src="{target.name}"></details>')
     body += f'<p class=muted>保存候选 {valid_rounds} 份；完成命令 {commands} 次；可验证图片返回 {images} 张。原始 API 响应与完整日志保留在本地。</p>'
-    (output / "index.html").write_text(document(title, body, depth=4, case_page=True))
-    return {"model": manifest["model"], "model_key": manifest["model_key"], "track": manifest["track"],
+    page = document(title, body, depth=4, case_page=True)
+    (output / "index.html").write_text(page)
+    row = {"model": manifest["model"], "model_key": manifest["model_key"], "track": manifest["track"],
             "case_id": manifest["case_id"], "status": manifest["status"], "output_tokens": count,
             "candidates": valid_rounds, "visual_returns": images, "playable": bool(video),
             "latest": manifest.get("completed_utc") or manifest["started_utc"], "spec": spec}
+    (output / "render_receipt.json").write_text(json.dumps(
+        {"fingerprint": fingerprint, "row": row}))
+    return row
 
 
 BASELINES = [

@@ -5,7 +5,7 @@ import sys
 import numpy as np
 from PIL import Image
 
-from tools.build_bench_review import export_pixels, build_case
+from tools.build_bench_review import export_pixels, build_case, case_page_is_current
 from tools.build_bench_review import main
 
 
@@ -85,3 +85,45 @@ def test_actual_full_trace_images_are_displayed_once_and_missing_blobs_are_skipp
     page = (output/'index.html').read_text()
     assert '视觉工具实际返回图片 1' in page and 'tool_view_01.png' in page
     assert not (output/'tool_view_02.png').exists()
+
+
+def test_running_placeholder_is_replaced_when_video_finishes(tmp_path):
+    run, output = tmp_path/'run', tmp_path/'public'
+    (run/'workspace').mkdir(parents=True)
+    (run/'input_snapshot').mkdir()
+    (run/'input_snapshot/prompt.txt').write_text('Move the object.')
+    (run/'media_contract.json').write_text(json.dumps({'width':2,'height':2,'frames':2,'fps':4}))
+    manifest = {'model':'m','model_key':'m','case_id':'case1','track':'text','attempt':1,
+                'status':'running','started_utc':'2026-11-09T00:00:00Z','token_usage':{}}
+    (run/'run_manifest.json').write_text(json.dumps(manifest))
+    build_case(run,output)
+    assert case_page_is_current(run,output)
+    assert '尚未保存可播放视频' in (output/'index.html').read_text()
+    np.savez_compressed(run/'workspace/pixels.npz',pixels=np.full((2,2,2),0x102030,dtype=np.uint32))
+    manifest.update(status='complete',validation={'pass':True},token_usage={'output_tokens':123})
+    (run/'run_manifest.json').write_text(json.dumps(manifest))
+    assert not case_page_is_current(run,output)
+    result=build_case(run,output)
+    assert result['playable'] and case_page_is_current(run,output)
+    assert 'class=player' in (output/'index.html').read_text()
+    assert '尚未保存可播放视频' not in (output/'index.html').read_text()
+
+
+def test_incremental_indexes_do_not_link_to_an_unprepared_detail(tmp_path):
+    from tools.sync_incremental_previews import sync_previews
+    root, web, public = tmp_path/'root',tmp_path/'staging',tmp_path/'public'
+    for index in (1,2):
+        run=root/'generations/robojudge/m/text'/f'case_{index}_attempt_01'
+        (run/'workspace').mkdir(parents=True)
+        (run/'input_snapshot').mkdir()
+        (run/'input_snapshot/prompt.txt').write_text('Fixture only.')
+        (run/'media_contract.json').write_text(json.dumps({'width':2,'height':2,'frames':2,'fps':4}))
+        (run/'run_manifest.json').write_text(json.dumps({'model':'m','model_key':'m','case_id':str(index),
+            'track':'text','attempt':1,'status':'complete','validation':{'pass':True},
+            'started_utc':f'2026-11-09T00:00:0{index}Z','token_usage':{}}))
+        np.savez_compressed(run/'workspace/pixels.npz',pixels=np.full((2,2,2),0x102030,dtype=np.uint32))
+    result=sync_previews(root,web,public,limit=1)
+    assert len(result['updated'])==1 and result['remaining']==1
+    page=(public/'bench_smoke_codex_20261109/robojudge/m/text/index.html').read_text()
+    assert '详情与视频资源正在同步' in page
+    assert page.count('视频、逐轮候选与生成过程')==1

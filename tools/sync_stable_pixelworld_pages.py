@@ -398,6 +398,9 @@ def evaluation_scheduler_table(path: Path) -> str:
 
 
 def case_page_is_current(run: Path, case_dir: Path) -> bool:
+    from tools.build_bench_review import case_page_is_current as current
+    if not current(run, case_dir):
+        return False
     workspace = run / "workspace"
     pixels = workspace / "pixels.npz"
     receipt = case_dir / "final" / "export_receipt.json"
@@ -659,6 +662,10 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
     waiting = publication_wait(stable_repo, core_only)
     if waiting:
         return waiting
+    from tools.sync_incremental_previews import sync_previews
+    pixelworld = stable_repo / "pixelworld"
+    pixelworld.mkdir(parents=True, exist_ok=True)
+    previews = sync_previews(run_root, heavy_web, pixelworld)
     repo_root = Path(__file__).resolve().parents[1]
     legacy_status = heavy_web.parent / "cleanroom_full_matrix_v1/status.json"
 
@@ -683,6 +690,7 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
             str(run_root),
             "--web-root",
             str(heavy_web),
+            "--case-budget", "0",
         ],
         repo_root,
     )
@@ -704,7 +712,7 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
             shutil.rmtree(assets_dst)
         shutil.copytree(assets_src, assets_dst)
 
-    targets = CORE_TARGETS
+    targets = CORE_TARGETS + tuple(previews["targets"])
     gallery = {"changed": False, "commit": None}
     if not core_only:
         write_full_galleries(run_root, pixelworld, "vbench2_subset_full", "VBench-2.0 subset · full")

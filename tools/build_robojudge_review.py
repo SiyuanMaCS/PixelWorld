@@ -10,7 +10,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from tools.build_bench_review import document, player, export_pixels, build_case
+from tools.build_bench_review import document, player, export_pixels, build_case, case_page_is_current
 
 MODELS={'gpt61-sol':'GPT-6.1-Sol','gpt56-sol':'GPT-5.6-Sol',
         'gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash',
@@ -149,7 +149,7 @@ def scheduler_rows(run):
             '<th>Complete</th><th>Running</th><th>Pending</th><th>Running case</th><th>Blocker / Note</th></tr>'
             + ''.join(rows) + '</table></div>')
 
-def build(run,web):
+def build(run,web,case_budget=8):
     inputs=run/'inputs/robojudge';generation=run/'generations/robojudge'
     cases=sorted(p.name for p in inputs.iterdir() if (p/'first_frame.png').is_file())
     if len(cases)!=50:raise ValueError('RoboJudge page requires the actual complete50 input inventory')
@@ -239,8 +239,9 @@ def build(run,web):
             body+='<div class=robo-videos>'
             for model,track,(path,manifest) in entries:
                 folder=path.name;relative=f'{STUDY}/robojudge/{model}/{track}/{folder}'
-                if not (web/relative/'index.html').is_file():
+                if case_budget > 0 and not case_page_is_current(path, web/relative):
                     build_case(path,web/relative)
+                    case_budget -= 1
                 asset=web/relative/'final';spec=read(path/'media_contract.json')
                 video=video_export(path,asset,spec)
                 body+=f'<article class=card><h3>{MODELS[model]}</h3><p><span class=badge>{track}</span> <span class=pill>{manifest["status"]}</span></p>'
@@ -248,7 +249,11 @@ def build(run,web):
                 else:body+='<div class=placeholder>尚无合格的像素视频</div>'
                 score=scores.get((model,track,case))
                 if score:body+=f'<p>PA <strong>{score["PA"]}</strong> · IA <strong>{score["IA"]}</strong> · 单例评分</p>'
-                body+=f'<p><a href="{relative}/index.html">逐轮候选、检查图与代码变化 →</a></p></article>'
+                if case_page_is_current(path,web/relative):
+                    body+=f'<p><a href="{relative}/index.html">逐轮候选、检查图与代码变化 →</a></p>'
+                else:
+                    body+='<p class=note>生成记录已更新，详情正在同步。</p>'
+                body+='</article>'
             body+='</div>'
         body+='</section>'
     full_eval = run / 'evaluation/robojudge_full_baseline100k'
@@ -290,4 +295,4 @@ def build(run,web):
     return {'cases':len(cases),'recorded_cells':len(records),'scored_videos':len(scores),'path':str(web/'robojudge.html')}
 
 if __name__=='__main__':
-    p=argparse.ArgumentParser();p.add_argument('--run-root',type=Path,required=True);p.add_argument('--web-root',type=Path,required=True);a=p.parse_args();print(json.dumps(build(a.run_root.resolve(),a.web_root.resolve())))
+    p=argparse.ArgumentParser();p.add_argument('--run-root',type=Path,required=True);p.add_argument('--web-root',type=Path,required=True);p.add_argument('--case-budget',type=int,default=8);a=p.parse_args();print(json.dumps(build(a.run_root.resolve(),a.web_root.resolve(),a.case_budget)))

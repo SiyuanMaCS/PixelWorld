@@ -207,9 +207,12 @@ def run_path(config: Benchmark, model: Model, track: str, case_id: str, attempt:
 
 def _prior_attempt_usage(config: Benchmark, model: Model, track: str, case_id: str,
                          attempt: int) -> tuple[int, bool, list[dict]]:
+    from .retries import budget_window
+    window = budget_window(config, model, track, case_id, attempt)
+    floor = window["start_attempt"] if window else 1
     prior_output, prior_unknown = 0, False
     ignored = []
-    for index in range(1, attempt):
+    for index in range(floor, attempt):
         try:
             previous = json.loads((run_path(config, model, track, case_id, index)/'run_manifest.json').read_text())
             usage = previous.get('token_usage') or {}
@@ -252,6 +255,8 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
              task_file: Path | None = None, rules_file: Path | None = None,
              extra_inputs: tuple[str,...] = ()) -> dict:
     model = config.model(model_key)
+    from .retries import budget_window
+    retry_window = budget_window(config, model, track, case_id, attempt)
     token_limit = config.output_token_budget
     if token_limit is not None:
         prior_output, prior_unknown, ignored_prior_usage = _prior_attempt_usage(
@@ -389,6 +394,8 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         "output_token_budget": token_limit,
         "prior_attempt_output_tokens": prior_output,
         "prior_attempt_usage_ignored": ignored_prior_usage,
+        "retry_authorization": retry_window,
+        "budget_scope_start_attempt": retry_window["start_attempt"] if retry_window else 1,
         "token_usage": collect_usage(logs / "events.jsonl", finished=False),
     }
     atomic_json(run / "run_manifest.json", manifest)
@@ -467,6 +474,13 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         from .token_budget import restore_candidate
         submission_selection = restore_candidate(workspace, trace, logs, watchdog['cutoff_utc'],
                                                  exit_status, track, legacy_contract, spec)
+    # A fast CLI exit can beat the asynchronous snapshot watcher. Preserve its
+    # final stable saved output without altering any generated pixels or code.
+    if not any(trace.glob("round_*/snapshot.json")):
+        from .snapshot import candidate_key, freeze
+        final_key = candidate_key(workspace, spec)
+        if final_key is not None:
+            freeze(workspace, trace, 0, final_key, spec)
     canonicalization = canonicalize_tensor(workspace, logs, spec)
     validation = validate(workspace, logs / "events.jsonl", exit_status, track,
                           require_reports=legacy_contract, media=spec,

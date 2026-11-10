@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from pathlib import Path
 import json
+import fcntl
 import os
 import signal
 import subprocess
@@ -12,6 +13,8 @@ import time
 from .config import Benchmark, Model
 from .runner import run_path
 from .util import atomic_json, utc_now
+from .retries import latest_window
+from .scheduling import launch_guard
 
 
 def case_ids(config: Benchmark) -> list[str]:
@@ -55,11 +58,18 @@ def _pid_alive(path: Path) -> bool:
 def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
     stale = 0
     failed = 0
-    for attempt in range(1, config.max_attempts + 1):
+    grant = latest_window(config, model, track, case_id)
+    limit = max(config.max_attempts, grant["end_attempt"] if grant else 0)
+    floor = grant["start_attempt"] if grant else 1
+    pending = None
+    budget_terminal = None
+    for attempt in range(1, limit + 1):
         run = run_path(config, model, track, case_id, attempt)
         manifest_path = run / "run_manifest.json"
         if not run.exists():
-            return {"state": "pending", "attempt": attempt, "run": str(run)}
+            if attempt >= floor and pending is None:
+                pending = {"state": "pending", "attempt": attempt, "run": str(run)}
+            continue
         try:
             manifest = json.loads(manifest_path.read_text())
         except (FileNotFoundError, json.JSONDecodeError):
@@ -75,13 +85,18 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
             return {"state": "running", "attempt": attempt, "run": str(run)}
         if not manifest.get('retryable', True) and manifest.get('stop_reason') in (
                 'output_token_budget_exhausted', 'token_usage_unavailable', 'prior_token_usage_unavailable'):
-            return {'state': 'exhausted', 'attempt': attempt, 'run': str(run),
-                    'budget_terminal': True, 'reason': manifest['stop_reason']}
+            if attempt >= floor:
+                budget_terminal = {'state': 'exhausted', 'attempt': attempt, 'run': str(run),
+                                   'budget_terminal': True, 'reason': manifest['stop_reason']}
         if manifest.get("status") == "failed":
             failed += 1
         else:
             stale += 1
-    return {"state": "exhausted", "attempt": config.max_attempts, "run": str(run),
+    if budget_terminal:
+        return budget_terminal
+    if pending:
+        return pending
+    return {"state": "exhausted", "attempt": limit, "run": str(run),
             "failed_attempts": failed, "stale_attempts": stale}
 
 
@@ -146,6 +161,8 @@ def _launch(config: Benchmark, model: Model, track: str, case_id: str, attempt: 
 
 def run(config: Benchmark, interval: float = 5.0) -> None:
     config.runs_root.mkdir(parents=True, exist_ok=True)
+    owner_lock = (config.runs_root / "matrix.lock").open("a")
+    fcntl.flock(owner_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     stop = config.runs_root / "STOP"
     stop.unlink(missing_ok=True)
     group_order = {key: index for index, key in enumerate(
@@ -175,8 +192,19 @@ def run(config: Benchmark, interval: float = 5.0) -> None:
                     fairness = status["groups"][key]["counts"].get("complete", 0)
                     candidates.append((fairness, group_order[key], case_id, model, track, case_id, item))
             candidates.sort(key=lambda item: item[:3])
-            for _, _, _, model, track, case_id, item in candidates[:capacity]:
-                _launch(config, model, track, case_id, item["attempt"])
+            with launch_guard(config) as (model_limit, model_counts):
+                launched = 0
+                for _, _, _, model, track, case_id, item in candidates:
+                    if launched >= capacity:
+                        break
+                    if model_limit is not None and model_counts.get(model.key, 0) >= model_limit:
+                        continue
+                    current = inspect(config, model, track, case_id)
+                    if current["state"] != "pending":
+                        continue
+                    _launch(config, model, track, case_id, current["attempt"])
+                    model_counts[model.key] = model_counts.get(model.key, 0) + 1
+                    launched += 1
         time.sleep(interval)
     final, final_info = snapshot(config, os.getpid())
     atomic_json(config.runs_root / "status.json", final)

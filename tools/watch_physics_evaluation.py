@@ -70,8 +70,13 @@ def step(config, resource: Path | None, output: Path, states: dict, n_process: i
     for model in config.models:
         for track in model.tracks:
             key = f'{model.key}/{track}'
-            if states.get(key, {}).get('phase') in ('complete','failed','incomplete_official_scope'):
+            if states.get(key, {}).get('phase') in ('complete','failed'):
                 continue
+            if states.get(key, {}).get('phase') == 'incomplete_official_scope':
+                current = progress.get('groups', {}).get(key, {}).get('counts', {})
+                if (current and current.get('complete', 0) < 198
+                        and not current.get('pending', 0) and not current.get('running', 0)):
+                    continue
             entry = {'model':model.key,'track':track,'expected_cases':198,'official_full_score':False,
                      'phase':'waiting_for_generation'}
             try:
