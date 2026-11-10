@@ -170,6 +170,18 @@ def official_cases() -> list[dict]:
     return cases
 
 
+def conditioning_evidence_directory(run: Path, manifest: dict) -> Path:
+    """Use preserved inputs without inventing snapshots for early run records."""
+    snapshot = run / "input_snapshot"
+    if snapshot.is_dir():
+        return snapshot
+    if "initial_input_snapshot" in manifest or "initial_input_hashes" in manifest:
+        raise ValueError("Recorded Physics-IQ input snapshot is missing")
+    # Early native runs kept inputs in workspace and recorded their file hashes.
+    # validated_rgb still checks those hashes and both official input identities.
+    return run / "workspace"
+
+
 def validated_rgb(run: Path, case: dict) -> tuple[np.ndarray, dict]:
     """Recheck immutable BPP/initial RGB and current submitted pixels before export."""
     manifest = json.loads((run / "run_manifest.json").read_text())
@@ -181,7 +193,7 @@ def validated_rgb(run: Path, case: dict) -> tuple[np.ndarray, dict]:
     expected = {"task_type": "i2v", "width": 256, "height": 144, "frames": 20, "fps": 4, "audio": None}
     if spec != manifest.get("media_contract") or any(spec.get(k) != v for k, v in expected.items()):
         raise ValueError("Current primary Physics-IQ export requires native256x144/4FPS/20frames")
-    snapshot = run / "input_snapshot"
+    snapshot = conditioning_evidence_directory(run, manifest)
     for name, key in [("first_frame.png", "input_image_sha256"), ("prompt.txt", "input_prompt_sha256")]:
         if sha256(snapshot / name) != manifest.get(key):
             raise ValueError("Immutable Physics-IQ input changed")
@@ -254,6 +266,9 @@ def export_videos(config: Benchmark, model_key: str, track: str, output: Path) -
                 "video_sha256": sha256(target), "decoded_rgb_exact": True,
                 "source_run": info["run"], "source_run_manifest_sha256": sha256(Path(info["run"]) / "run_manifest.json"),
                 "source_pixels_sha256": run_manifest.get("pixels_sha256"),
+                "input_evidence_directory": str(conditioning_evidence_directory(Path(info["run"]), run_manifest)),
+                "input_evidence_kind": "immutable_snapshot" if (Path(info["run"]) / "input_snapshot").is_dir()
+                                       else "early_workspace_inputs_hash_verified",
                 "input_rgb_sha256": case["resized_rgb_sha256"], "base_bpp_sha256": case["prompt_sha256"]}
 
     with ThreadPoolExecutor(max_workers=8) as executor:

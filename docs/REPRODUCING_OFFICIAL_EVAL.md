@@ -30,6 +30,12 @@ contract, submitted tensor and matching PNG sequence. A full export requires all
 198 accepted cases and verifies an exact lossless RGB decode. Existing exports
 are preserved rather than overwritten.
 
+Early native runs that predate `input_snapshot/` can use their preserved workspace
+inputs only when their file hashes match the original run manifest and their RGB
+and prompt identities match the pinned official case. Export records label this
+as `early_workspace_inputs_hash_verified`; no historical snapshot is fabricated.
+A missing snapshot that was declared by the run remains an error.
+
 `tools/watch_physics_evaluation.py` runs in the evaluation environment and waits
 for full delivery. Example:
 

@@ -46,6 +46,43 @@ def test_native_physics_legacy_five_file_input_does_not_need_task_spec(tmp_path)
     assert not (run/'input_snapshot/task_spec.json').exists()
 
 
+def early_workspace_run(tmp_path):
+    run, case = fixture_run(tmp_path)
+    for name in ['first_frame.png', 'prompt.txt']:
+        (run/'input_snapshot'/name).rename(run/'workspace'/name)
+    (run/'input_snapshot').rmdir()
+    return run, case
+
+
+def test_early_workspace_inputs_require_recorded_and_official_identity(tmp_path):
+    run, case = early_workspace_run(tmp_path)
+    rgb, manifest = physics.validated_rgb(run, case)
+    assert rgb.shape == (20,144,256,3)
+    assert physics.conditioning_evidence_directory(run, manifest) == run/'workspace'
+    assert not (run/'input_snapshot').exists()
+
+
+@pytest.mark.parametrize('change', ['prompt', 'conditioning', 'official_prompt', 'official_rgb'])
+def test_early_workspace_input_tampering_is_rejected(tmp_path, change):
+    run, case = early_workspace_run(tmp_path)
+    if change == 'prompt': (run/'workspace/prompt.txt').write_text('other prompt')
+    if change == 'conditioning': Image.new('RGB',(256,144)).save(run/'workspace/first_frame.png')
+    if change == 'official_prompt': case['prompt_sha256'] = 'different'
+    if change == 'official_rgb': case['resized_rgb_sha256'] = 'different'
+    with pytest.raises(ValueError): physics.validated_rgb(run, case)
+
+
+@pytest.mark.parametrize('declaration', ['initial_input_snapshot', 'initial_input_hashes'])
+def test_missing_declared_snapshot_cannot_fall_back_to_workspace(tmp_path, declaration):
+    run, case = early_workspace_run(tmp_path)
+    path = run/'run_manifest.json'
+    manifest = json.loads(path.read_text())
+    manifest[declaration] = str(run/'input_snapshot')
+    path.write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match='snapshot is missing'):
+        physics.validated_rgb(run, case)
+
+
 @pytest.mark.parametrize('change',['prompt','conditioning','tensor','png'])
 def test_changed_inputs_or_submission_block_physics_export(tmp_path,change):
     run,case=fixture_run(tmp_path)
