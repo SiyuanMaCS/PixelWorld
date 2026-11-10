@@ -107,4 +107,6 @@ Runway Aleph reports **3.50** on **30 examples per category, 240 total**, owing 
 
 ## Current evidence
 
-The editing contract, full-duration sampling, input snapshots and Text/Vision-Agent tool boundaries passed the complete **260-test** suite after this addition. The new GPT-6.1-Sol Vision-Agent smoke is a separate background job; its generation status and saved candidates appear on the OpenVE page. Final video success and evaluator success are separate checks.
+The editing contract, full-duration sampling, input snapshots and Text/Vision-Agent tool boundaries passed the complete **260-test** suite after this addition.
+
+The separate GPT-6.1-Sol Vision-Agent smoke completed official row 58 in **746.77 seconds**, with **16,615 API-reported output tokens** (8,970 reasoning output tokens reported separately, not added again). It saved **three candidate generations**, delivered nine RGB frames, and passed local format, pixel/tensor consistency and isolation checks. The official submission CSV/video export and paired evaluator input/scope checks passed. This is **1/431 smoke coverage**, with no official judge score. The detail page plays the original, final edited pixels and all saved candidates; input/output video playback was checked in a browser.

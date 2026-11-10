@@ -596,6 +596,7 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         "physics_iq_baseline.html": ("physics_iq", "physics_iq_gpt_native_v2", "physics_iq_seed21_native_v2"),
         "vbench2_subset.html": ("vbench2_subset_full",),
         "phygenbench.html": ("phygenbench_full",),
+        "openve.html": ("openve_smoke",),
     }
     body = (
         '<section class="hero"><p class="eyebrow">PIXELWORLD MAIN BENCHMARKS</p><h1>PixelWorld Index</h1>'
@@ -619,8 +620,8 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         '<p class="note">Small physically interpretable supplement; model scores from Video-Coder paper are shown only as reference.</p>'
         '<a class="button primary" href="phygenbench.html">打开页面 →</a></article>'
         '</div><p><a class="button primary" href="smoke.html">打开 VBench2 / PhyGenBench smoke 输出 →</a></p></section>'
-        '<section><h2>视频编辑</h2><div class="grid"><article class="card"><span class="badge">smoke 配置</span><h3>OpenVE-Bench</h3>'
-        '<p class="desc">431 条原视频＋编辑指令，8 类编辑任务。代码直接生成编辑后的 RGB 视频。</p>'
+        '<section><h2>视频编辑</h2><div class="grid"><article class="card feature"><span class="badge">running</span><h3>OpenVE-Bench</h3>'
+        '<p class="desc">431 条原视频＋编辑指令，8 类编辑任务。当前先跑单条 smoke，全量尚未启动。</p>'
         '<a class="button primary" href="openve.html">查看 smoke 与编辑协议 →</a></article></div></section>'
         '<section><h2>Legacy 与探索入口</h2><div class="grid"><article class="card legacy"><h3>Legacy Physics-IQ full matrix</h3>'
         '<p class="desc">早期 legacy-v1 / 旧 Track 结果，只作历史参考，不计入 native_v2 主实验。</p>'
@@ -644,6 +645,8 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         explicitly_stopped = all((run_root / "generations" / name / "STOP").exists() for name in suites[route])
         stopped_label = "已停止 · T2V 历史实验" if route in {"vbench2_subset.html", "phygenbench.html"} else "已停止"
         label = stopped_label if explicitly_stopped else ("running" if active else ("待调度" if pending else ("生成结束 · 有未交付任务" if exhausted else "生成完成")))
+        if route == 'openve.html':
+            label = 'smoke · ' + label
         card = card.replace('<span class="badge">running</span>', f'<span class="badge">{label} · {active} active</span>')
         updates = [s.get("updated_utc", "") for s in statuses if s.get("updated_utc")]
         latest = [g["latest_completion"] for s in statuses for g in s.get("groups", {}).values()
