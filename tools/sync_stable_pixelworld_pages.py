@@ -476,6 +476,9 @@ def write_vbench_page(run_root: Path, destination: Path) -> None:
         + "</table></div>"
         '<p class="note">总计 291 dimension rows。不要报告 full 18-dimension VBench-2.0 score；这是 PixelWorld 五维 subset。</p>'
     )
+    if (run_root / "generations/vbench2_subset_full/STOP").exists():
+        body = body.replace('running · native_v2', '已停止 · T2V 历史实验')
+        body = body.replace('<h2>Model × Track Progress</h2>', '<p class="note">本批输入只有文本，无首帧。已按用户要求停止；不属于 I2V 主实验，已有产物保留。</p><h2>Model × Track Progress</h2>')
     destination.write_text(page("VBench-2.0 subset · PixelWorld", body))
 
 
@@ -514,6 +517,9 @@ def write_phygen_page(run_root: Path, destination: Path) -> None:
         + raw_rows
         + "</table></div>"
     )
+    if (run_root / "generations/phygenbench_full/STOP").exists():
+        body = body.replace('running · native_v2', '已停止 · T2V 历史实验')
+        body = body.replace('<h2>Model × Track Progress</h2>', '<p class="note">本批输入只有文本，无首帧。已按用户要求停止；不属于 I2V 主实验，已有产物保留。</p><h2>Model × Track Progress</h2>')
     destination.write_text(page("PhyGenBench · PixelWorld", body))
 
 
@@ -569,7 +575,9 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         exhausted = sum(s.get("totals", {}).get("exhausted", 0) for s in statuses)
         active = sum(w.get("kind") == "run-case" and w.get("bench") in suites[route]
                      and not w.get("stat", "").startswith("Z") for w in workers)
-        label = "running" if active else ("待调度" if pending else ("生成结束 · 有未交付任务" if exhausted else "生成完成"))
+        explicitly_stopped = all((run_root / "generations" / name / "STOP").exists() for name in suites[route])
+        stopped_label = "已停止 · T2V 历史实验" if route in {"vbench2_subset.html", "phygenbench.html"} else "已停止"
+        label = stopped_label if explicitly_stopped else ("running" if active else ("待调度" if pending else ("生成结束 · 有未交付任务" if exhausted else "生成完成")))
         card = card.replace('<span class="badge">running</span>', f'<span class="badge">{label} · {active} active</span>')
         updates = [s.get("updated_utc", "") for s in statuses if s.get("updated_utc")]
         latest = [g["latest_completion"] for s in statuses for g in s.get("groups", {}).values()
@@ -583,6 +591,9 @@ def write_index_page(destination: Path, run_root: Path) -> None:
                  f'最近有效交付：{html.escape(str(last[1]))} · {html.escape(str(last[0]))}</p>')
         return card.replace('<a class="button primary"', facts + '<a class="button primary"', 1)
     body = cards.sub(with_progress, body)
+    if all((run_root / "generations" / name / "STOP").exists() for name in ("vbench2_subset_full", "phygenbench_full")):
+        body = body.replace('四个主 Benchmark', 'I2V 主实验与历史实验')
+        body = re.sub(r'<p class="muted">主实验收敛为四个 benchmark：.*?</p>', '<p class="muted">当前 I2V 主实验为 Physics-IQ 与 RoboJudge。VBench-2.0 子集和 PhyGenBench 为已停止的 T2V 历史实验，已有产物保留。</p>', body, flags=re.DOTALL)
     destination.write_text(page("PixelWorld Index", body))
 
 
