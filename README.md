@@ -33,6 +33,11 @@ The current main benchmark portfolio is fixed in
 - VBench-2.0 five-dimension subset;
 - PhyGenBench 160 prompts.
 
+The added video-editing benchmark is [OpenVE-Bench](docs/OPENVE_BENCH.md):
+431 original-video/instruction tasks. A separate smoke adapter preserves the
+complete source duration, outputs edited RGB pixels, and exports the official
+submission CSV. The physics-aware editing benchmark is excluded.
+
 WorldArena, WorldScore, WBench and older multi-benchmark smokes remain
 historical/exploratory pages rather than the main portfolio.
 

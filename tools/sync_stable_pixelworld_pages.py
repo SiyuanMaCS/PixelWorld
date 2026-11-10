@@ -37,6 +37,7 @@ CORE_TARGETS = (
     "pixelworld/matrix_full.html",
     "pixelworld/vbench2_subset.html",
     "pixelworld/phygenbench.html",
+    "pixelworld/openve.html",
     "pixelworld/robojudge_assets",
     "pixelworld/bench_smoke_codex_20261109",
 )
@@ -617,6 +618,9 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         '<p class="note">Small physically interpretable supplement; model scores from Video-Coder paper are shown only as reference.</p>'
         '<a class="button primary" href="phygenbench.html">打开页面 →</a></article>'
         '</div><p><a class="button primary" href="smoke.html">打开 VBench2 / PhyGenBench smoke 输出 →</a></p></section>'
+        '<section><h2>视频编辑</h2><div class="grid"><article class="card"><span class="badge">smoke 配置</span><h3>OpenVE-Bench</h3>'
+        '<p class="desc">431 条原视频＋编辑指令，8 类编辑任务。代码直接生成编辑后的 RGB 视频。</p>'
+        '<a class="button primary" href="openve.html">查看 smoke 与编辑协议 →</a></article></div></section>'
         '<section><h2>Legacy 与探索入口</h2><div class="grid"><article class="card legacy"><h3>Legacy Physics-IQ full matrix</h3>'
         '<p class="desc">早期 legacy-v1 / 旧 Track 结果，只作历史参考，不计入 native_v2 主实验。</p>'
         '<a class="button" href="matrix_full.html">打开 legacy full matrix →</a></article>'
@@ -656,6 +660,32 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         body = body.replace('四个主 Benchmark', 'I2V 主实验与历史实验')
         body = re.sub(r'<p class="muted">主实验收敛为四个 benchmark：.*?</p>', '<p class="muted">当前 I2V 主实验为 Physics-IQ 与 RoboJudge。VBench-2.0 子集和 PhyGenBench 为已停止的 T2V 历史实验，已有产物保留。</p>', body, flags=re.DOTALL)
     destination.write_text(page("PixelWorld Index", body))
+
+
+def write_openve_page(run_root: Path, destination: Path) -> None:
+    status = read_json(run_root / 'generations/openve_smoke/status.json')
+    baselines = [('VACE',1.17),('OmniVideo',1.02),('InsViE',1.40),
+                 ('Lucy-Edit',1.95),('ICVE',2.25),('DITTO',2.06),('OpenVE-Edit',2.41)]
+    baseline_rows = ''.join(f'<tr><td>{name}</td><td>{score:.2f}</td></tr>' for name,score in baselines)
+    body = ('<section class="hero"><p class="eyebrow">OPENVE-BENCH · VIDEO EDITING</p><h1>OpenVE-Bench</h1>'
+            '<p class="muted">完整原视频＋编辑指令 → 用代码生成编辑后的 RGB 视频。仅加入 OpenVE，不包含 physics-aware editing / PVIR。</p></section>'
+            '<div class="card feature"><span class="badge">单条 smoke · 全量尚未启动</span>'
+            + status_facts(status)
+            + '<p>当前测试官方第 58 行：把银色轿车换成带蓝色发光细节的未来电动车，保持位置和运动。</p>'
+            '<p class="note">输入 1280×720、50 FPS、2.26 秒。PixelWorld 输出 256×144、9 帧、约 3.9823 FPS；保持完整时长与画面比例。4 FPS 是目标采样率，实际帧率根据完整时长计算。</p></div>'
+            '<h2>Smoke Model × Track</h2>'
+            + model_track_matrix(run_root,'openve_smoke',status,'openve_smoke')
+            + '<h2>编辑任务与评测</h2><div class="card"><p>431 条任务：风格 58、背景 59、局部修改 65、添加 67、删除 59、字幕 50、镜头 43、创意 30。</p>'
+            '<p>Text 可用代码读取原视频与 RGB 数组，关闭图片检查工具；Vision-Agent 另附首帧和输入接触表，自主决定是否看图与修订。编辑首帧允许改变。每版候选、代码和工具轨迹由 harness 保存。</p>'
+            '<p>评测使用官方八类 rubric 与分数解析器。Seed-1.6-VL 按 2 FPS 读取编辑前后的视频；指令遵循、内容与细节保真、画面稳定性按原脚本计算。</p>'
+            '<p class="warn">已配好 submission 导出与评测检查接口；Seed-1.6-VL 的评测 API 尚未配置，因此当前没有官方分数。其他 Seed 版本不会自动替代它。</p></div>'
+            '<h2>论文参考分数</h2><div class="scroll"><table><tr><th>Model</th><th>Seed-1.6-VL Overall / 5</th></tr>'
+            + baseline_rows + '</table></div>'
+            '<p class="note">来源：官方论文 v1 Table 2。Runway Aleph 的 3.50 仅来自每类 30 条、共 240 条的子集，单独保留，不作为全 431 条的直接比较。论文模型采用各自官方输入帧数与训练分辨率；PixelWorld 的采样参数另行报告。</p>'
+            '<p><a class="button" href="https://arxiv.org/html/2512.07826v1#S3.T2">官方论文 Table 2 ↗</a> '
+            '<a class="button" href="https://huggingface.co/datasets/Lewandofski/OpenVE-Bench">官方 431 条数据 ↗</a> '
+            '<a class="button" href="https://github.com/SiyuanMaCS/PixelWorld/blob/main/docs/OPENVE_BENCH.md">复现实验说明 ↗</a></p>')
+    destination.write_text(page('OpenVE-Bench · PixelWorld',body))
 
 
 def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: bool = False) -> dict:
@@ -704,6 +734,7 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
     write_legacy_page(pixelworld / "matrix_full.html")
     write_vbench_page(run_root, pixelworld / "vbench2_subset.html")
     write_phygen_page(run_root, pixelworld / "phygenbench.html")
+    write_openve_page(run_root, pixelworld / "openve.html")
 
     assets_src = heavy_web / "robojudge_assets"
     assets_dst = pixelworld / "robojudge_assets"

@@ -57,6 +57,17 @@ def test_v2v_predicts_future_instead_of_copying_last_historical_frame(tmp_path):
     assert freeze(tmp_path,tmp_path/'trace',0,candidate_key(tmp_path,spec),spec)
 
 
+def test_video_edit_can_change_the_first_frame(tmp_path):
+    from pixelworld.media import task_rules
+    spec, events = output(tmp_path, task_type='video_edit')
+    Image.new('RGB',(32,24),'black').save(tmp_path/'first_frame.png')
+    result = validate(tmp_path,events,0,'vision-agent',False,spec)
+    assert result['pass'] and result['frame0_exact'] is None
+    rules = task_rules(spec)
+    assert 'full duration' in rules and 'not a required copy' in rules
+    assert 'future continuation' not in rules
+
+
 def test_more_than_100_frames_are_checked_in_numeric_order(tmp_path):
     spec, events = output(tmp_path, n=121)
     assert validate(tmp_path, events, 0, "vision-agent", False, spec)["pass"]

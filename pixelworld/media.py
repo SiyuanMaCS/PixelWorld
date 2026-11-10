@@ -15,8 +15,8 @@ def contract(source: Path) -> dict:
     allowed = set(DEFAULT_MEDIA) | {"benchmark", "turn", "action"}
     if set(raw) - allowed:
         raise ValueError(f"Unsupported task fields: {set(raw) - allowed}")
-    if result["task_type"] not in ("i2v", "v2v", "t2v"):
-        raise ValueError("task_type must be i2v, v2v or t2v")
+    if result["task_type"] not in ("i2v", "v2v", "t2v", "video_edit"):
+        raise ValueError("task_type must be i2v, v2v, t2v or video_edit")
     for key in ("width", "height", "frames"):
         value = result[key]
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
@@ -39,6 +39,9 @@ def task_rules(spec: dict) -> str:
     if spec['task_type']=='v2v':
         inputs='`conditioning.mp4`, `conditioning_frames/`, `conditioning_info.json`, `conditioning_inspection.png`, `first_frame.png`, `prompt.txt` and `task_spec.json`'
         first=' Generate only the future continuation after the conditioning clip, without including the historical segment. `first_frame.png` is the last historical frame for reference; output frame 00 is a future prediction, not a required copy.'
+    if spec['task_type']=='video_edit':
+        inputs='`source_video.mp4`, `source_pixels.npz`, `source_info.json`, `source_inspection.png`, `first_frame.png`, `prompt.txt` and `task_spec.json`'
+        first=' Edit the supplied video over its full duration according to the instruction; preserve content and motion that the instruction does not ask to change. Output frame 00 is an edited frame, not a required copy of the original. `source_pixels.npz` contains sampled uint8 RGB frames in time-height-width-channel order.'
     audio = ""
     if spec["audio"]:
         rate, channels = spec["audio"]["sample_rate"], spec["audio"]["channels"]

@@ -265,7 +265,7 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         prior_output, prior_unknown, ignored_prior_usage = 0, False, []
     source = config.inputs_root / case_id
     spec = contract(source)
-    has_image = spec["task_type"] in ("i2v", "v2v")
+    has_image = spec["task_type"] in ("i2v", "v2v", "video_edit")
     if (has_image and not (source / "first_frame.png").is_file()) or not (source / "prompt.txt").is_file():
         raise FileNotFoundError(f"Missing prepared input for case {case_id}: {source}")
     run = run_path(config, model, track, case_id, attempt)
@@ -291,6 +291,11 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
             if not (source/name).is_file():raise FileNotFoundError(f'Missing historical input: {name}')
             shutil.copy2(source/name,workspace/name)
         shutil.copytree(source/'conditioning_frames',workspace/'conditioning_frames')
+    if spec['task_type']=='video_edit':
+        for name in ('source_video.mp4','source_pixels.npz','source_info.json','source_inspection.png'):
+            if not (source/name).is_file():
+                raise FileNotFoundError(f'Missing declared editing input: {name}')
+            shutil.copy2(source/name,workspace/name)
     for name in extra_inputs:
         if Path(name).is_absolute() or '..' in Path(name).parts:
             raise ValueError('Extra inputs must be relative paths within the prepared case')
@@ -317,6 +322,12 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
     task_text = task.read_text()
     if spec['task_type']=='v2v':
         task_text='Generate the future RGB continuation requested in `prompt.txt`, following `GENERATION_RULES.md`. The supplied conditioning video and frames contain only the historical segment. Use the permitted tools and choose your own approach to generation, checking and revision.\n'
+    if spec['task_type']=='video_edit':
+        task_text=('Edit the complete source video as requested in `prompt.txt`, following `GENERATION_RULES.md`. '
+                   'You must create and run `generate.py`, and call `artifact_io.save(...)` at least once before finishing. '
+                   'If you revise the video, save each revised candidate before continuing. '
+                   + ('Visual image tools are available.\n' if track=='vision-agent' else
+                      'The source is available through local code and numeric RGB operations; visual image tools are disabled.\n'))
     if not has_image:
         task_text = "Generate the RGB video requested in `prompt.txt`, following `GENERATION_RULES.md` and `task_spec.json`. There is no input image. Choose your own approach. " + ("Visual image tools are available; choose whether to inspect your output.\n" if track == "vision-agent" else "Visual image tools are disabled.\n")
     if task_file:
@@ -356,6 +367,8 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         command.remove('--ephemeral')
     if spec['task_type']=='v2v' and track!='text':
         command += ['-i' if model.cli_backend=='trae' else '--image',str(workspace/'conditioning_inspection.png')]
+    if spec['task_type']=='video_edit' and track!='text':
+        command += ['-i' if model.cli_backend=='trae' else '--image',str(workspace/'source_inspection.png')]
     try:
         version = subprocess.check_output([binary, "--version"], text=True).strip()
     except Exception:

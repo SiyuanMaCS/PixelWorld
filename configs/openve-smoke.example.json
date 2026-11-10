@@ -1,0 +1,25 @@
+{
+  "protocol": "pixelworld-openve-edit-v1-20261110",
+  "inputs_root": "data/openve/inputs",
+  "runs_root": "runs/openve-smoke",
+  "case_ids": ["openve_0058"],
+  "max_concurrency": 1,
+  "max_per_config": 1,
+  "max_attempts": 2,
+  "output_token_budget": 100000,
+  "models": [
+    {
+      "key": "your-model",
+      "model": "your-model-id",
+      "reasoning_effort": "high",
+      "tracks": ["text", "vision-agent"],
+      "provider": {
+        "type": "responses",
+        "id": "your-provider",
+        "name": "Your Responses provider",
+        "base_url": "https://your-responses-endpoint.example/v1",
+        "env_key": "PIXELWORLD_API_KEY"
+      }
+    }
+  ]
+}

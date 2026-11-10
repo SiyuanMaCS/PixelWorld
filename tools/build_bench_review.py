@@ -146,7 +146,8 @@ def build_case(run, output):
     video = export_pixels(ws, output / "final", spec)
     if video:
         body += '<div class=case-layout id=video><div>'+player({**video, "pixels": "final/" + video["pixels_file"], "poster": "final/poster.png"})+'</div>'
-        body += (f'<aside class=card><span class=badge>{"文本生成" if spec.get("task_type")=="t2v" else "首帧续写"}</span><h3 style="margin-top:14px">原始任务</h3>'
+        task_label = {'t2v':'文本生成','i2v':'首帧续写','v2v':'视频续写','video_edit':'视频编辑'}.get(spec.get('task_type'),'视频生成')
+        body += (f'<aside class=card><span class=badge>{task_label}</span><h3 style="margin-top:14px">原始任务</h3>'
                  f'<p>{html.escape(prompt)}</p><div class=facts><div><strong>{spec["frames"]/spec["fps"]:.2f}s</strong>视频时长</div>'
                  f'<div><strong>{count if count is not None else "—"}</strong>输出 tokens</div></div>'
                  '<p class=tiny>下方可播放每次保存的候选，查看检查图与代码变化。</p></aside></div>')
@@ -154,6 +155,11 @@ def build_case(run, output):
             body += '<p class=muted>此结果可播放，但该运行尚未通过最终提交审核。页面展示不代表评测通过。</p>'
     else:
         body += f'<div class=box id=video><h3>尚未保存可播放视频</h3><p class=desc>{html.escape(prompt)}</p><span class=pill>{html.escape(manifest["status"])}</span></div>'
+    if spec.get('task_type')=='video_edit':
+        source = run/'input_snapshot/source_video.mp4'
+        if source.is_file():
+            shutil.copy2(source,output/'source_video.mp4')
+            body += '<div class=card><h2>编辑前的完整原视频</h2><video controls preload=metadata src="source_video.mp4" style="width:100%;max-height:480px"></video><p class=note>上方为编辑结果；原视频是模型获准使用的输入。下方为逐轮保存的编辑候选。</p></div>'
     rounds = sorted((run / "trace").glob("round_*"))
     rounds += [p for recovery in sorted(run.glob('recovery_*')) for p in sorted((recovery/'trace').glob('round_*'))]
     body += ('<div class=section-head id=candidates><h2>逐轮保存的候选</h2><p>回放视频、检查图与代码变化。</p></div>'
