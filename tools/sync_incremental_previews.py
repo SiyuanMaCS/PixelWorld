@@ -3,6 +3,7 @@ from pathlib import Path
 import html
 import json
 import shutil
+import subprocess
 
 from tools.build_bench_review import build_case, case_page_is_current, document
 
@@ -16,6 +17,13 @@ SUITES = {"physics_iq": "bench_smoke_codex_20261109/physics_iq",
 
 
 def sync_previews(run_root, heavy_web, pixelworld, limit=16):
+    published = None
+    if (pixelworld.parent / '.git').exists():
+        result = subprocess.run(['git','ls-tree','-r','--name-only','HEAD'],cwd=pixelworld.parent,
+                                text=True,capture_output=True)
+        published = set(result.stdout.splitlines()) if result.returncode == 0 else set()
+    def committed(relative):
+        return published is None or 'pixelworld/' + relative.as_posix() in published
     groups = {}
     candidates = []
     for suite, prefix in SUITES.items():
@@ -32,7 +40,8 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=16):
             valid = [(run, m) for run, m in history if m["status"] == "complete" and m.get("validation", {}).get("pass")]
             selected = min(valid, key=lambda row: row[1]["attempt"]) if valid else max(history, key=lambda row: row[1]["attempt"])
             run, m = selected
-            if not case_page_is_current(run, pixelworld / relative / run.name):
+            if (not case_page_is_current(run, pixelworld / relative / run.name)
+                    or not committed(relative / run.name / 'index.html')):
                 candidates.append((m["status"] == "complete", m.get("completed_utc") or m["started_utc"], relative, run))
     candidates.sort(key=lambda row: row[:2], reverse=True)
     targets, updated = [], []
@@ -53,6 +62,8 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=16):
         except (OSError, ValueError, KeyError):
             continue
         targets.append("pixelworld/" + (relative / run.name).as_posix())
+        if published is not None:
+            published.add('pixelworld/' + (relative / run.name / 'index.html').as_posix())
         updated.append({"path": (relative / run.name / "index.html").as_posix(), **row})
     for relative, cases in groups.items():
         cards = []
@@ -61,7 +72,8 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=16):
             valid = [(run, m) for run, m in history if m["status"] == "complete" and m.get("validation", {}).get("pass")]
             selected = min(valid, key=lambda row: row[1]["attempt"]) if valid else max(history, key=lambda row: row[1]["attempt"])
             run, m = selected
-            ready = case_page_is_current(run, pixelworld / relative / run.name)
+            ready = (case_page_is_current(run, pixelworld / relative / run.name)
+                     and committed(relative / run.name / 'index.html'))
             valid_count += bool(valid)
             prepared_count += bool(valid) and ready
             caption = "已交付" if valid else m["status"]
@@ -76,7 +88,8 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=16):
             cards.append(f'<details><summary>全部 {len(history)} 次运行记录</summary>')
             for attempt_run, attempt in sorted(history, key=lambda row: row[1]["attempt"]):
                 label = f'Attempt {attempt["attempt"]}: {attempt["status"]}'
-                if case_page_is_current(attempt_run, pixelworld / relative / attempt_run.name):
+                if (case_page_is_current(attempt_run, pixelworld / relative / attempt_run.name)
+                        and committed(relative / attempt_run.name / 'index.html')):
                     cards.append(f'<p><a href="{attempt_run.name}/index.html">{html.escape(label)}</a></p>')
                 else:
                     cards.append(f'<p>{html.escape(label)} · 原始记录保留，预览待同步</p>')

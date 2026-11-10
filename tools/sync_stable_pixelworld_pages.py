@@ -1,9 +1,7 @@
-"""Sync lightweight PixelWorld monitor pages into SiyuanMaCS.github.io.
+"""Sync monitor pages and bounded case previews into the stable site repository.
 
-The full generated videos and trace pages stay in the heavy
-physics-iq-pixel-preview Pages repo. This script republishes only the small
-benchmark monitor pages under /pixelworld/ and rewrites heavy artifact links to
-absolute public URLs.
+Optional Pages delivery keeps exact media on main and publishes a small HTML
+branch. The legacy heavy-site links remain available for historical artifacts.
 """
 from __future__ import annotations
 
@@ -18,6 +16,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 from pathlib import Path
@@ -78,10 +77,10 @@ def check(cmd: list[str], cwd: Path) -> None:
 
 def pending_pages_deployment(stable_repo: Path) -> dict | None:
     credential = subprocess.run(
-        ["git", "credential", "fill"], cwd=stable_repo,
+        ["git", "credential", "fill"], cwd=Path(__file__).resolve().parents[1],
         input="protocol=https\nhost=github.com\n\n", text=True, capture_output=True,
         env={**os.environ, "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "Never"},
-        timeout=5,
+        timeout=30,
     )
     values = dict(line.split("=", 1) for line in credential.stdout.splitlines() if "=" in line)
     headers = {"Accept": "application/vnd.github+json"}
@@ -95,7 +94,6 @@ def pending_pages_deployment(stable_repo: Path) -> dict | None:
         workflows = json.load(response)["workflow_runs"]
     for workflow in workflows:
         if ("pages" in (workflow.get("name", "") + workflow.get("path", "")).lower()
-                and workflow.get("head_branch") == "main"
                 and workflow.get("status") != "completed"):
             return {"run_id": workflow["id"], "status": workflow["status"],
                     "sha": workflow["head_sha"], "url": workflow.get("html_url")}
@@ -692,7 +690,60 @@ def write_openve_page(run_root: Path, destination: Path) -> None:
     destination.write_text(page('OpenVE-Bench · PixelWorld',body))
 
 
-def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: bool = False) -> dict:
+def publish_delivery(stable_repo: Path, delivery_repo: Path, branch: str = 'pixelworld-pages') -> dict:
+    from tools.prepare_pages_site import build
+    origin = run(['git','remote','get-url','origin'],stable_repo).stdout.strip()
+    match = re.search(r'github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$',origin)
+    if not match:
+        raise ValueError('Pages delivery requires a GitHub source repository')
+    repository = match[1]
+    remote = 'https://github.com/' + repository + '.git'
+    revision = run(['git','rev-parse','HEAD'],stable_repo).stdout.strip()
+    marker = delivery_repo / '.git/pixelworld-delivery.json'
+    identity = {'repository':repository,'branch':branch}
+    if not delivery_repo.exists():
+        delivery_repo.mkdir(parents=True)
+        check(['git','init','-b',branch],delivery_repo)
+        check(['git','remote','add','origin',remote],delivery_repo)
+        for key,fallback in [('user.name','PixelWorld publisher'),('user.email','pixelworld-publisher@users.noreply.github.com')]:
+            value = run(['git','config',key],stable_repo).stdout.strip() or fallback
+            check(['git','config',key,value],delivery_repo)
+        marker.write_text(json.dumps(identity))
+    if not marker.is_file() or json.loads(marker.read_text()) != identity:
+        raise ValueError('Delivery directory must be a dedicated publisher-owned checkout')
+    if run(['git','rev-parse','--verify','HEAD'],delivery_repo).returncode:
+        existing = run(['git','ls-remote','origin','refs/heads/'+branch],delivery_repo)
+        if existing.returncode:
+            raise RuntimeError('Cannot verify delivery branch state')
+        if existing.stdout.strip():
+            check(['git','fetch','--depth=1','origin',branch],delivery_repo)
+            check(['git','checkout','-B',branch,'FETCH_HEAD'],delivery_repo)
+    if run(['git','symbolic-ref','--short','HEAD'],delivery_repo).stdout.strip() != branch:
+        raise ValueError('Unexpected delivery checkout branch')
+    tracked = run(['git','ls-files'],delivery_repo).stdout.splitlines()
+    with tempfile.TemporaryDirectory(prefix='pixelworld-pages-') as temp:
+        artifact = Path(temp)/'site'
+        record = build(stable_repo,artifact,repository,revision)
+        files = [str(p.relative_to(artifact)) for p in artifact.rglob('*') if p.is_file()]
+        for relative in tracked:
+            if not (artifact/relative).exists():
+                (delivery_repo/relative).unlink(missing_ok=True)
+        for relative in files:
+            target = delivery_repo/relative
+            target.parent.mkdir(parents=True,exist_ok=True)
+            shutil.copy2(artifact/relative,target)
+        for start in range(0,len(files+tracked),100):
+            check(['git','add','--all','--',*(files+tracked)[start:start+100]],delivery_repo)
+    changed = run(['git','diff','--cached','--quiet'],delivery_repo).returncode != 0
+    if changed:
+        check(['git','commit','-m','Publish PixelWorld pages for '+revision[:12]],delivery_repo)
+    # Retry a previous failed push even when the generated tree is unchanged.
+    check(['git','push','origin',branch],delivery_repo)
+    return {'changed':changed,'branch':branch,'commit':run(['git','rev-parse','HEAD'],delivery_repo).stdout.strip(),**record}
+
+
+def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: bool = False,
+              delivery_repo: Path | None = None) -> dict:
     waiting = publication_wait(stable_repo, core_only)
     if waiting:
         return waiting
@@ -762,7 +813,11 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
     check(["git", "add", *targets], stable_repo)
     staged = run(["git", "diff", "--cached", "--quiet", "--", *targets], stable_repo)
     if staged.returncode == 0:
-        return {"changed": False, "commit": None, "core_only": core_only, "gallery": gallery}
+        delivery = None
+        if delivery_repo:
+            check(['git','push','origin','main'],stable_repo)
+            delivery = publish_delivery(stable_repo,delivery_repo)
+        return {"changed": False, "commit": None, "core_only": core_only, "gallery": gallery, 'delivery':delivery}
 
     message = "Update PixelWorld benchmark monitor pages" if core_only else "Update PixelWorld benchmark monitor pages and galleries"
     check(["git", "commit", "-m", message], stable_repo)
@@ -770,7 +825,8 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
     push = run(["git", "push", "origin", "main"], stable_repo)
     if push.returncode:
         raise RuntimeError(f"git push failed\nSTDOUT:\n{push.stdout}\nSTDERR:\n{push.stderr}")
-    return {"changed": True, "commit": commit, "core_only": core_only, "gallery": gallery}
+    delivery = publish_delivery(stable_repo,delivery_repo) if delivery_repo else None
+    return {"changed": True, "commit": commit, "core_only": core_only, "gallery": gallery, 'delivery':delivery}
 
 
 def main() -> None:
@@ -782,6 +838,7 @@ def main() -> None:
     parser.add_argument("--interval", type=int, default=600)
     parser.add_argument("--once", action="store_true")
     parser.add_argument("--core-only", action="store_true", help="sync only lightweight monitor pages, not full galleries")
+    parser.add_argument('--delivery-repo',type=Path,help='Dedicated generated HTML checkout on the pixelworld-pages branch; media stays on main')
     args = parser.parse_args()
 
     args.status.parent.mkdir(parents=True, exist_ok=True)
@@ -813,6 +870,7 @@ def main() -> None:
                     args.heavy_web.resolve(),
                     args.stable_repo.resolve(),
                     core_only=args.core_only,
+                    delivery_repo=args.delivery_repo.resolve() if args.delivery_repo else None,
                 )
                 payload = {
                     "status": "ok",

@@ -44,6 +44,9 @@ historical/exploratory pages rather than the main portfolio.
 Live run entry points, background supervisors, and score-readiness rules are
 tracked in [docs/LIVE_RUNS_20261109.md](docs/LIVE_RUNS_20261109.md).
 
+The stable site's small Pages branch and exact, versioned media delivery are
+documented in [docs/PREVIEW_DELIVERY.md](docs/PREVIEW_DELIVERY.md).
+
 ## Included
 
 - Two default capability Tracks: Text and Vision-Agent; historical Vision-Input runs remain supported.
