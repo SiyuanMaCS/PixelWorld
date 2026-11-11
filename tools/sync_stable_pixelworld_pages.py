@@ -210,6 +210,21 @@ def latest_event_status(source: Path, model: str, track: str, case_id: str) -> s
 
 def group_manifest_stats(run_root: Path, benchmark: str) -> dict[tuple[str, str], dict]:
     source = run_root / "generations" / benchmark
+    try:groups=json.loads((source/'status.json').read_text()).get('groups',{})
+    except (OSError,ValueError):groups={}
+    immutable=bool(groups) and all(g.get('counts',{}).get('complete',0)>0 and g['counts']['complete']==sum(g['counts'].values()) for g in groups.values())
+    signature=[]
+    for key, group in sorted(groups.items()):
+        model,track=key.split('/',1)
+        try:stamp=(source/model/track).stat().st_mtime_ns
+        except OSError:stamp=None
+        signature.append([key,group.get('counts'),group.get('latest_completion'),stamp])
+    cache=run_root/'publication_stats_cache'/f'{benchmark}.json'
+    if immutable and cache.is_file():
+        try:
+            saved=json.loads(cache.read_text())
+            if saved['signature']==signature:return {tuple(k.split('/',1)):v for k,v in saved['stats'].items()}
+        except (OSError,ValueError,KeyError):pass
     stats: dict[tuple[str, str], dict] = {}
     if not source.exists():
         return stats
@@ -259,6 +274,11 @@ def group_manifest_stats(run_root: Path, benchmark: str) -> dict[tuple[str, str]
         bucket["avg_duration"] = bucket["duration_sum"] / bucket["duration_count"] if bucket["duration_count"] else None
         bucket["avg_output_tokens"] = bucket["output_sum"] / bucket["output_count"] if bucket["output_count"] else None
         bucket["avg_reasoning_tokens"] = bucket["reasoning_sum"] / bucket["reasoning_count"] if bucket["reasoning_count"] else None
+    if immutable:
+        cache.parent.mkdir(exist_ok=True)
+        temporary=cache.with_suffix('.tmp')
+        temporary.write_text(json.dumps({'signature':signature,'stats':{'/'.join(k):v for k,v in stats.items()}}))
+        temporary.replace(cache)
     return stats
 
 

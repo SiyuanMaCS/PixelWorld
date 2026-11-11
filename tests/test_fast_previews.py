@@ -68,3 +68,20 @@ def test_final_video_publishes_without_waiting_for_rich_renderer(tmp_path, monke
     assert result['updated']==[]
     assert len(commands)==1 and any(x.endswith('build_one_preview.py') for x in commands[0])
     assert 'quick.html' in (tmp_path/'public/fixture/m/text/index.html').read_text()
+
+
+def test_completed_statistics_cache_invalidates_on_a_new_completion(tmp_path):
+    from tools.build_baseline_monitor import completed_stats
+    root=tmp_path/'suite'
+    run=root/'m/text/case_0001_attempt_01'
+    run.mkdir(parents=True)
+    manifest=run/'run_manifest.json'
+    def update(tokens,stamp):
+        manifest.write_text(json.dumps({'status':'complete','validation':{'pass':True},
+            'duration_seconds':60,'token_usage':{'output_tokens':tokens,'input_tokens':10}}))
+        (root/'status.json').write_text(json.dumps({'groups':{'m/text':{'counts':{'complete':1},'latest_completion':[stamp,'0001']}}}))
+    update(100,'2026-11-11T00:00:00Z')
+    assert completed_stats(root,'m','text')['avg_output']==100
+    assert list((root/'publication_stats_cache').glob('*.json'))
+    update(200,'2026-11-11T00:01:00Z')
+    assert completed_stats(root,'m','text')['avg_output']==200

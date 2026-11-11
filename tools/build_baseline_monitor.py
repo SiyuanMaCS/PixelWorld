@@ -48,6 +48,16 @@ def event_status(generation, model, track, case):
     return f'<span class="{css}">{html.escape(label)}</span> · {fmt_age(age)} ago'
 
 def completed_stats(root, model, track):
+    group=read(root/'status.json').get('groups',{}).get(model+'/'+track,{})
+    counts=group.get('counts',{})
+    immutable=counts.get('complete',0)>0 and counts.get('complete')==sum(counts.values())
+    cache=root/'publication_stats_cache'/f'{model}__{track}.json'
+    signature=[counts,group.get('latest_completion')]
+    try:signature.append((root/model/track).stat().st_mtime_ns)
+    except OSError:signature.append(None)
+    saved=read(cache) if immutable else {}
+    if saved.get('signature')==signature:
+        return saved.get('stats')
     rows=[]
     for path in sorted((root/model/track).glob('case_*_attempt_*/run_manifest.json')):
         manifest=read(path)
@@ -64,9 +74,15 @@ def completed_stats(root, model, track):
     durations=[x['duration']/60 for x in rows]
     outputs=[x['output'] for x in rows]
     inputs=[x['input'] for x in rows if isinstance(x['input'],int)]
-    return {'n':len(rows),'avg_min':statistics.mean(durations),'p50_min':statistics.median(durations),
+    result={'n':len(rows),'avg_min':statistics.mean(durations),'p50_min':statistics.median(durations),
             'avg_output':statistics.mean(outputs),'p50_output':statistics.median(outputs),
             'avg_input':statistics.mean(inputs) if inputs else None,'p50_input':statistics.median(inputs) if inputs else None}
+    if immutable:
+        cache.parent.mkdir(exist_ok=True)
+        temporary=cache.with_suffix('.tmp')
+        temporary.write_text(json.dumps({'signature':signature,'stats':result}))
+        temporary.replace(cache)
+    return result
 
 def stats_cell(stats):
     if not stats:return '<td>—</td>'
