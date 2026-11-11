@@ -6,6 +6,8 @@ import sys
 import time
 import os
 import subprocess
+import fcntl
+from dataclasses import replace
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from pixelworld.config import load_config
@@ -14,6 +16,14 @@ from pixelworld.util import atomic_json, utc_now
 
 
 def ensure_manager(config, entry):
+    lock_path = Path(entry['pid_file']).with_suffix('.lock')
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with lock_path.open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _ensure_manager(config, entry)
+
+
+def _ensure_manager(config, entry):
     def command(pid):
         try:return (Path('/proc')/str(pid)/'cmdline').read_bytes()
         except OSError:return b''
@@ -41,6 +51,23 @@ def needs_manager(result):
     return any(result.get(key,0) for key in ('authorized_cases','pending_cases','running_cases'))
 
 
+def unfinished_retry_scope(config):
+    """Skip cohorts already reported complete; retain the original manager config."""
+    from pixelworld.supervisor import case_ids
+    expected = len(case_ids(config))
+    try:
+        groups = json.loads((config.runs_root/'status.json').read_text()).get('groups', {})
+    except (OSError, ValueError):
+        return config
+    models = []
+    for model in config.models:
+        tracks = tuple(track for track in model.tracks
+                       if groups.get(f'{model.key}/{track}', {}).get('counts', {}).get('complete') != expected)
+        if tracks:
+            models.append(replace(model, tracks=tracks))
+    return replace(config, models=tuple(models))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, action="append", required=True)
@@ -60,11 +87,14 @@ def main():
     while True:
         reports = []
         for path in args.config:
+            if args.status:
+                atomic_json(args.status, {'updated_utc':utc_now(), 'phase':'checking_config',
+                                          'current_config':str(path), 'reports':reports})
             config = load_config(path)
             if (config.runs_root / "STOP").exists():
                 reports.append({"config": str(path), "phase": "explicitly_stopped"})
                 continue
-            result = authorize_failed(config, args.extra_attempts, None if args.continuous else args.max_rounds,
+            result = authorize_failed(unfinished_retry_scope(config), args.extra_attempts, None if args.continuous else args.max_rounds,
                                       args.apply, args.cooldown if args.continuous else 0)
             entry=managers.get(str(config.source))
             if needs_manager(result) and args.apply and entry:

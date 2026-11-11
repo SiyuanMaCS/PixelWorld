@@ -58,6 +58,25 @@ def test_pending_authorization_recovers_manager_without_another_grant(tmp_path):
     assert not needs_manager({'authorized_cases':0,'pending_cases':0,'running_cases':0})
 
 
+def test_retry_service_skips_completed_cohort_without_changing_original_config(tmp_path):
+    from tools.watch_failed_retries import unfinished_retry_scope
+    config, model = fixture(tmp_path)
+    config.runs_root.mkdir()
+    (config.runs_root/'status.json').write_text(json.dumps({'groups':{'m/text':{'counts':{'complete':2}}}}))
+    filtered = unfinished_retry_scope(config)
+    assert filtered.models == ()
+    assert config.models[0].tracks == ('text',)
+    assert filtered.source == config.source
+
+
+def test_retry_service_retains_pending_and_exhausted_cohorts(tmp_path):
+    from tools.watch_failed_retries import unfinished_retry_scope
+    config, model = fixture(tmp_path)
+    config.runs_root.mkdir()
+    (config.runs_root/'status.json').write_text(json.dumps({'groups':{'m/text':{'counts':{'complete':1,'exhausted':1}}}}))
+    assert unfinished_retry_scope(config).models == config.models
+
+
 def test_new_retry_budget_is_fresh_and_accumulates_within_its_round(tmp_path):
     config, model = fixture(tmp_path)
     for attempt in (1, 2):

@@ -820,7 +820,8 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
     atomic_json(run_root/'preview_sync_progress.json',
                 {'updated_utc':utc_now(), 'prepared_details':len(previews['updated']),
                  'remaining_video_details':previews['remaining_complete'],
-                 'remaining_all_details':previews['remaining'], 'batch_limit':previews['batch_limit']})
+                 'remaining_all_details':previews['remaining'], 'batch_limit':previews['batch_limit'],
+                 'final_video_previews_updated':len(previews.get('quick_updated',[]))})
     repo_root = Path(__file__).resolve().parents[1]
     legacy_status = heavy_web.parent / "cleanroom_full_matrix_v1/status.json"
 
@@ -857,8 +858,10 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
     rewrite_monitor_html(heavy_web / "physics_iq_baseline.html", pixelworld / "physics_iq_baseline.html")
     rewrite_monitor_html(heavy_web / "robojudge.html", pixelworld / "robojudge.html")
     write_legacy_page(pixelworld / "matrix_full.html")
-    write_vbench_page(run_root, pixelworld / "vbench2_subset.html")
-    write_phygen_page(run_root, pixelworld / "phygenbench.html")
+    if not (run_root/'generations/vbench2_subset_full/STOP').exists() or not (pixelworld/'vbench2_subset.html').is_file():
+        write_vbench_page(run_root, pixelworld / "vbench2_subset.html")
+    if not (run_root/'generations/phygenbench_full/STOP').exists() or not (pixelworld/'phygenbench.html').is_file():
+        write_phygen_page(run_root, pixelworld / "phygenbench.html")
     write_openve_page(run_root, pixelworld / "openve.html")
     write_pcve_page(run_root, pixelworld / "pcve_rigid.html")
 
@@ -869,7 +872,10 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
             shutil.rmtree(assets_dst)
         shutil.copytree(assets_src, assets_dst)
 
-    targets = CORE_TARGETS + tuple(previews["targets"])
+    # Stage changed previews explicitly; do not traverse every historical media
+    # directory just to publish a fresh progress table.
+    core_files = tuple(p for p in CORE_TARGETS if (stable_repo/p).is_file())
+    targets = core_files + ('pixelworld/robojudge_assets',) + tuple(previews["targets"])
     gallery = {"changed": False, "commit": None}
     if not core_only:
         write_full_galleries(run_root, pixelworld, "vbench2_subset_full", "VBench-2.0 subset · full")
@@ -898,7 +904,8 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
         raise RuntimeError(f"git push failed\nSTDOUT:\n{push.stdout}\nSTDERR:\n{push.stderr}")
     delivery = publish_delivery(stable_repo,delivery_repo) if delivery_repo else None
     return {"changed": True, "commit": commit, "core_only": core_only, "gallery": gallery, 'delivery':delivery,
-            'preview_sync': {'updated':len(previews['updated']), 'remaining':previews['remaining'], 'batch_limit':64}}
+            'preview_sync': {'updated':len(previews['updated']), 'remaining':previews['remaining'],
+                             'batch_limit':previews['batch_limit'], 'quick_updated':len(previews.get('quick_updated',[]))}}
 
 
 def main() -> None:
