@@ -37,6 +37,10 @@ def ensure_manager(config, entry):
     return {'phase':'manager_restarted','pid':process.pid,'code_root':str(code)}
 
 
+def needs_manager(result):
+    return any(result.get(key,0) for key in ('authorized_cases','pending_cases','running_cases'))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, action="append", required=True)
@@ -63,7 +67,7 @@ def main():
             result = authorize_failed(config, args.extra_attempts, None if args.continuous else args.max_rounds,
                                       args.apply, args.cooldown if args.continuous else 0)
             entry=managers.get(str(config.source))
-            if result['authorized_cases'] and args.apply and entry:
+            if needs_manager(result) and args.apply and entry:
                 result['manager']=ensure_manager(config,entry)
             reports.append({"config": str(path), **result})
         result = {"updated_utc": utc_now(), "reports": reports}

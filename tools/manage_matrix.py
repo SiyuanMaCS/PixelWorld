@@ -28,6 +28,15 @@ def completed_scope(config,status):
     counts=status.get('totals',{})
     return expected>0 and status.get('total_runs')==expected and counts.get('complete',0)+counts.get('exhausted',0)==expected
 
+def authoritative_scope_complete(config_path, code_root):
+    """Recheck retry windows before accepting a stale terminal status hint."""
+    sys.path.insert(0, str(code_root.resolve()))
+    from pixelworld.config import load_config
+    from pixelworld.supervisor import case_ids, configurations, inspect
+    config=load_config(config_path)
+    return all(inspect(config,model,track,case)['state'] in ('complete','exhausted')
+               for model,track in configurations(config) for case in case_ids(config))
+
 def main():
     p=argparse.ArgumentParser();p.add_argument('--config',type=Path,required=True);p.add_argument('--code-root',type=Path,required=True);p.add_argument('--state',type=Path,required=True);p.add_argument('--resume',action='store_true');a=p.parse_args()
     cfg=read(a.config);root=Path(cfg['runs_root']);root.mkdir(parents=True,exist_ok=True);a.state.parent.mkdir(parents=True,exist_ok=True)
@@ -36,7 +45,7 @@ def main():
     child=None;restarts=0;env=os.environ.copy();env['PYTHONPATH']=str(a.code_root.resolve())
     while not stop.exists() and not managed_stop.exists():
         status=read(root/'status.json');counts=status.get('totals',{});total=status.get('total_runs',0)
-        if completed_scope(cfg,status):
+        if completed_scope(cfg,status) and authoritative_scope_complete(a.config,a.code_root):
             write(a.state,{'phase':'processed_all_requested_tasks','counts':counts,'total':total,'failures_preserved':True,'updated_utc':dt.datetime.now(dt.timezone.utc).isoformat()});return
         owner=status.get('supervisor_pid')
         active=child is not None and child.poll() is None

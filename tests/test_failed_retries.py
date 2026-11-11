@@ -46,6 +46,18 @@ def test_retry_preserves_failure_history_and_does_not_redo_success(tmp_path):
     assert authorize_failed(config, apply=True)["authorized_cases"] == 0
 
 
+def test_pending_authorization_recovers_manager_without_another_grant(tmp_path):
+    from tools.watch_failed_retries import needs_manager
+    config,model=fixture(tmp_path)
+    for attempt in (1,2):manifest(config,model,'bad',attempt,{'status':'failed'})
+    manifest(config,model,'good',1,{'status':'complete','validation':{'pass':True}})
+    authorize_failed(config,apply=True)
+    report=authorize_failed(config,apply=True)
+    assert report['authorized_cases']==0 and report['pending_cases']==1
+    assert needs_manager(report)
+    assert not needs_manager({'authorized_cases':0,'pending_cases':0,'running_cases':0})
+
+
 def test_new_retry_budget_is_fresh_and_accumulates_within_its_round(tmp_path):
     config, model = fixture(tmp_path)
     for attempt in (1, 2):

@@ -67,6 +67,7 @@ def authorize_failed(config: Benchmark, extra_attempts: int = 2, max_rounds: int
         data = json.loads(path.read_text()) if path.exists() else {"schema_version": 1, "cases": {}}
         _CACHE.pop(path, None)
         granted = []
+        pending_cases = running_cases = 0
         for model, track in configurations(config):
             parent = config.runs_root / model.key / track
             existing: dict[str, int] = {}
@@ -78,8 +79,11 @@ def authorize_failed(config: Benchmark, extra_attempts: int = 2, max_rounds: int
             for case in case_ids(config):
                 key = f"{model.key}/{track}/{case}"
                 history = data["cases"].get(key, [])
+                state = inspect(config, model, track, case)["state"]
+                pending_cases += state == "pending"
+                running_cases += state == "running"
                 if ((max_rounds is not None and len(history) >= max_rounds)
-                        or inspect(config, model, track, case)["state"] != "exhausted"):
+                        or state != "exhausted"):
                     continue
                 if history and cooldown_seconds:
                     import datetime as dt
@@ -99,6 +103,7 @@ def authorize_failed(config: Benchmark, extra_attempts: int = 2, max_rounds: int
             atomic_json(path, data)
             _CACHE.pop(path, None)
         return {"apply": apply, "authorized_cases": len(granted), "items": granted,
+                "pending_cases": pending_cases, "running_cases": running_cases,
                 "extra_attempts": extra_attempts, "max_retry_rounds": max_rounds,
                 "cooldown_seconds": cooldown_seconds,
                 "history_preserved": True}
