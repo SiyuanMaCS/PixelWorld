@@ -160,13 +160,27 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=8, quick_limit=64):
     jobs=run_root/'preview_render_jobs'
     jobs.mkdir(exist_ok=True)
     active=0
+    ready_rows=[]
     for job in jobs.glob('*.json'):
         try:
             state=json.loads(job.read_text());pid=state.get('pid')
+            if pid is None and job.with_suffix('.pid').is_file():pid=int(job.with_suffix('.pid').read_text())
             args=(Path('/proc')/str(pid)/'cmdline').read_bytes().split(b'\0')
             if any(x.endswith(b'build_one_preview.py') for x in args):active+=1
         except (OSError,ValueError):
             pass
+        try:
+            state=json.loads(job.read_text())
+            if state.get('phase')=='ready':
+                run=Path(state['run']);output=Path(state['output'])
+                relative=output.relative_to(heavy_web).parent
+                if run.is_relative_to(run_root/'generations') and not current(run,pixelworld/relative/run.name):
+                    ready_rows.append((state.get('row',{}).get('status')=='complete',state.get('updated_at',0),relative,run))
+        except (OSError,ValueError,KeyError):pass
+    # A rendered result is consumed even if newer completions displaced it
+    # from the normal priority list while the renderer was running.
+    ready_rows=ready_rows[:limit]
+    selected=ready_rows+[row for row in selected if all(row[3]!=ready[3] for ready in ready_rows)][:limit-len(ready_rows)]
     for _, _, relative, run in selected:
         progress('building_rich_trace', case=run.name, quick_ready=len(quick_updated), rich_ready=len(updated))
         staging = heavy_web / relative / run.name
@@ -175,16 +189,19 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=8, quick_limit=64):
         except (OSError,ValueError):state={}
         if state.get('phase')!='ready' or not case_page_is_current(run,staging):
             try:
-                args=(Path('/proc')/str(state.get('pid'))/'cmdline').read_bytes().split(b'\0')
+                pid=state.get('pid')
+                if pid is None and job.with_suffix('.pid').is_file():pid=int(job.with_suffix('.pid').read_text())
+                args=(Path('/proc')/str(pid)/'cmdline').read_bytes().split(b'\0')
                 running=any(x.endswith(b'build_one_preview.py') for x in args)
-            except OSError:running=False
+            except (OSError,ValueError):running=False
             cooldown=state.get('phase')=='failed' and time.time()-state.get('updated_at',0)<300
             if not running and not cooldown and active<2:
                 command=[sys.executable,'-u',str(Path(__file__).with_name('build_one_preview.py')),
                          '--run',str(run),'--output',str(staging),'--job',str(job)]
+                job.write_text(json.dumps({'phase':'queued','pid':None,'run':str(run),'updated_at':time.time()}))
                 with job.with_suffix('.log').open('ab') as log:
                     process=subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=log,stderr=subprocess.STDOUT,start_new_session=True)
-                job.write_text(json.dumps({'phase':'queued','pid':process.pid,'run':str(run),'updated_at':time.time()}))
+                job.with_suffix('.pid').write_text(str(process.pid)+'\n')
                 active+=1
             continue
         try:

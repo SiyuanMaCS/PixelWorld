@@ -11,6 +11,9 @@ def write(path,value):
     tmp=path.with_suffix('.tmp');tmp.write_text(json.dumps(value,indent=2));tmp.replace(path)
 
 def cuda_available():
+    remote_python=os.environ.get('ROBOJUDGE_EVAL_PYTHON')
+    if remote_python:
+        return subprocess.run([remote_python,'-c','import torch; raise SystemExit(0 if torch.cuda.is_available() else 1)'],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
     try:
         import torch
         return torch.cuda.is_available()
@@ -65,11 +68,12 @@ def main():
                         done[key]=state;continue
                     blocked.pop(key,None)
                 target.parent.mkdir(parents=True,exist_ok=True)
-                command=[sys.executable,str(evaluator),'prepare','--generations',str(root),'--model',model['key'],'--track',track,'--output',str(target)]
+                python=os.environ.get('ROBOJUDGE_EVAL_PYTHON',sys.executable)
+                command=[python,str(evaluator),'prepare','--generations',str(root),'--model',model['key'],'--track',track,'--output',str(target)]
                 with (a.output/(model['key']+'_'+track+'.log')).open('ab') as log:
                     code=subprocess.call(command,stdout=log,stderr=subprocess.STDOUT)
                     if code==0:
-                        command=[sys.executable,str(evaluator),'run','--output',str(target)]
+                        command=[python,str(evaluator),'run','--output',str(target)]
                         if a.allow_unsupported_bf16:command+=['--allow-unsupported-bf16']
                         with (a.output.parent/'gpu_metric.lock').open('a+') as lock:
                             fcntl.flock(lock,fcntl.LOCK_EX)
