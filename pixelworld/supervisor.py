@@ -170,6 +170,10 @@ def run(config: Benchmark, interval: float = 5.0) -> None:
     while not stop.exists():
         status, info = snapshot(config, os.getpid())
         atomic_json(config.runs_root / "status.json", status)
+        try:
+            settings=json.loads((config.source.parent/'scheduling_limits.json').read_text())
+        except (OSError,ValueError):
+            settings={}
         # A case-level failure must not cancel unrelated pending cases. Keep
         # its failure visible and surface it after every other case is terminal.
         terminal_failures = sum(item['state'] == 'exhausted' for item in info.values())
@@ -188,9 +192,12 @@ def run(config: Benchmark, interval: float = 5.0) -> None:
                 pending = [(case_id, info[(model.key, track, case_id)])
                            for case_id in case_ids(config)
                            if info[(model.key, track, case_id)]["state"] == "pending"]
+                if settings.get('prioritize_less_attempted_cases'):
+                    pending.sort(key=lambda row:(row[1]['attempt'],row[0]))
                 for case_id, item in pending[:available]:
                     fairness = status["groups"][key]["counts"].get("complete", 0)
-                    candidates.append((fairness, group_order[key], case_id, model, track, case_id, item))
+                    order=(item['attempt'],case_id) if settings.get('prioritize_less_attempted_cases') else case_id
+                    candidates.append((fairness, group_order[key], order, model, track, case_id, item))
             candidates.sort(key=lambda item: item[:3])
             with launch_guard(config) as (model_limit, model_counts):
                 launched = 0

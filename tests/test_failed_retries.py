@@ -164,3 +164,18 @@ def test_shared_model_limit_defers_launch_until_an_existing_slot_is_free(tmp_pat
     monkeypatch.setattr(supervisor, "_launch", launch)
     supervisor.run(config, interval=0.001)
     assert len(launched) == 1 and not samples
+
+
+def test_repeated_failure_does_not_starve_an_unattempted_case(tmp_path, monkeypatch):
+    from pixelworld import supervisor
+    config, model = fixture(tmp_path)
+    for attempt in (1,2):manifest(config,model,'bad',attempt,{'status':'failed'})
+    authorize_failed(config,max_rounds=None,apply=True)
+    (config.source.parent/'scheduling_limits.json').write_text(json.dumps({'prioritize_less_attempted_cases':True}))
+    launched=[]
+    def launch(*args):
+        launched.append(args[3]);(config.runs_root/'STOP').touch();return 123
+    monkeypatch.setattr(supervisor,'_launch',launch)
+    supervisor.run(config,interval=.001)
+    assert launched==['good','bad']
+    assert (run_path(config,model,'text','bad',1)/'run_manifest.json').is_file()

@@ -109,8 +109,10 @@ def test_running_placeholder_is_replaced_when_video_finishes(tmp_path):
     assert '尚未保存可播放视频' not in (output/'index.html').read_text()
 
 
-def test_incremental_indexes_do_not_link_to_an_unprepared_detail(tmp_path):
-    from tools.sync_incremental_previews import sync_previews
+def test_incremental_indexes_do_not_link_to_an_unprepared_detail(tmp_path, monkeypatch):
+    from tools import sync_incremental_previews as sync
+    from types import SimpleNamespace
+    monkeypatch.setattr(sync.subprocess,'Popen',lambda *args,**kwargs:SimpleNamespace(pid=99999999))
     root, web, public = tmp_path/'root',tmp_path/'staging',tmp_path/'public'
     for index in (1,2):
         run=root/'generations/robojudge/m/text'/f'case_{index}_attempt_01'
@@ -122,8 +124,12 @@ def test_incremental_indexes_do_not_link_to_an_unprepared_detail(tmp_path):
             'track':'text','attempt':1,'status':'complete','validation':{'pass':True},
             'started_utc':f'2026-11-09T00:00:0{index}Z','token_usage':{}}))
         np.savez_compressed(run/'workspace/pixels.npz',pixels=np.full((2,2,2),0x102030,dtype=np.uint32))
-    result=sync_previews(root,web,public,limit=1)
-    assert len(result['updated'])==1 and result['remaining']==1
+    result=sync.sync_previews(root,web,public,limit=1)
+    assert result['updated']==[] and result['remaining']==2
+    assert len(result['quick_updated'])==2
     page=(public/'bench_smoke_codex_20261109/robojudge/m/text/index.html').read_text()
-    assert '详情与视频资源正在同步' in page
-    assert page.count('视频、逐轮候选与生成过程')==1
+    assert 'case_1_attempt_01/index.html' not in page
+    assert 'case_2_attempt_01/index.html' not in page
+    for index in (1,2):
+        assert f'case_{index}_attempt_01/quick.html' in page
+        assert (public/f'bench_smoke_codex_20261109/robojudge/m/text/case_{index}_attempt_01/quick.html').is_file()

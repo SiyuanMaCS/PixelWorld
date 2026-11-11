@@ -26,6 +26,12 @@ already reported complete, updates its heartbeat between configurations, and
 locks manager creation to prevent duplicate restarts. Model-visible prompts
 and generation rules are unaffected.
 
+Recovery may enable `prioritize_less_attempted_cases` in the local scheduling
+limits. A repeatedly failing early case then cannot occupy every new slot while
+later cases have never been attempted. Existing attempts stay recorded, failed
+cases remain eligible for retry, and no continuation prompt or evaluation
+feedback is added to the agent conversation.
+
 Final-video previews use `quick.html`, with the same RGB tensor player as the
 rich review pages. They can be published before detailed candidate/trace pages
 finish rendering. Failed/unvalidated submissions cannot receive these previews.
