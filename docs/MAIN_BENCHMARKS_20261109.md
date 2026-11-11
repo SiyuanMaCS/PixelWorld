@@ -29,6 +29,10 @@ three-dimension VBench-2.0 table. The local official metadata currently exposes:
 This totals 291 dimension rows before any cross-file prompt de-duplication.
 Report selected-dimension scores only, never a full VBench-2.0 score.
 
+The official standard input validator requires three independent videos per
+prompt for these dimensions; the current one-video-per-row generation does not
+complete that sampling setting. See [the source-code audit](VBENCH2_OFFICIAL_PROTOCOL_AUDIT.md).
+
 ## PhyGenBench
 
 The local PhyGenBench prompt file contains 160 prompts:
