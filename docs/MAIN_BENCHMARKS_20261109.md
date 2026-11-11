@@ -18,6 +18,13 @@ OpenVE remains an optional completed smoke. No additional full benchmark is
 being launched. [PCVE setup and evaluation](PCVE_RIGIDBENCH.md) documents the
 source-only inputs, 1-based intervention frames and full-129 scoring scope.
 
+All five current model configurations request `reasoning_effort="high"`.
+Codex passes this explicitly and the Responses gateway forwards `high` to the
+upstream API. This is a fixed requested effort setting, not a claim that the
+providers use equal reasoning compute or that every model uses its highest
+available native setting. Report actual output/reasoning token usage separately
+from the external100k output-token limit per bounded retry round.
+
 ## VBench-2.0 subset
 
 The selected five dimensions are not the same as the Video-Coder paper's
