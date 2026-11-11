@@ -92,3 +92,18 @@ def test_home_marks_incomplete_terminal_cohort_without_claiming_running(tmp_path
     text = output.read_text()
     assert "生成结束 · 有未交付任务 · 0 active" in text
     assert "1,590 / 1,600" in text
+
+
+def test_home_does_not_claim_completion_during_retry_transition(tmp_path, monkeypatch):
+    path = tmp_path / "generations/pcve_smoke/status.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({"total_runs": 10, "totals": {"complete": 8, "running": 2}}))
+    monkeypatch.setattr(inspect_live_workers, "inspect_workers", lambda _: [])
+    output = tmp_path / "index.html"
+    pages.write_index_page(output, tmp_path)
+    text = output.read_text()
+    card = next(part for part in text.split('<article class="card feature">') if '<h3>PCVE-RigidBench' in part)
+    card = card.split('</article>', 1)[0]
+    assert "8 / 10" in card
+    assert "等待任务状态更新" in card
+    assert "生成完成" not in card

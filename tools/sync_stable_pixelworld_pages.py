@@ -668,7 +668,7 @@ def write_index_page(destination: Path, run_root: Path) -> None:
                      and not w.get("stat", "").startswith("Z") for w in workers)
         explicitly_stopped = all((run_root / "generations" / name / "STOP").exists() for name in suites[route])
         stopped_label = "已停止 · T2V 历史实验" if route in {"vbench2_subset.html", "phygenbench.html"} else "已停止"
-        label = stopped_label if explicitly_stopped else ("running" if active else ("待调度" if pending else ("生成结束 · 有未交付任务" if exhausted else "生成完成")))
+        label = stopped_label if explicitly_stopped else ("running" if active else ("待调度" if pending else ("生成结束 · 有未交付任务" if exhausted else ("生成完成" if total and complete == total else "等待任务状态更新"))))
         if route in {'openve.html','pcve_rigid.html'}:
             label = 'smoke · ' + label
         card = card.replace('<span class="badge">running</span>', f'<span class="badge">{label} · {active} active</span>')
