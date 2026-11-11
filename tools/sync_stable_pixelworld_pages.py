@@ -325,7 +325,7 @@ def model_track_matrix(run_root: Path, benchmark: str, status: dict, slug: str) 
             pending = counts.get("pending", max(total - complete - running - exhausted, 0))
             latest = group.get("latest_completion")
             if isinstance(latest, list) and len(latest) >= 2:
-                latest_case, latest_time = latest[0], latest[1]
+                latest_time, latest_case = latest[0], latest[1]
             else:
                 latest_case = "—"
                 latest_time = (manifest_stats.get((model_key, track), {}) or {}).get("latest_completed") or "—"
@@ -601,8 +601,10 @@ def write_phygen_page(run_root: Path, destination: Path) -> None:
         + "</table></div>"
     )
     if (run_root / "generations/phygenbench_full/STOP").exists():
-        body = body.replace('running · native_v2', '已停止 · T2V 历史实验')
-        body = body.replace('<h2>Model × Track Progress</h2>', '<p class="note">本批输入只有文本，无首帧。已按用户要求停止；不属于 I2V 主实验，已有产物保留。</p><h2>Model × Track Progress</h2>')
+        body = body.replace('running · native_v2', '已暂停 · 保留已有视频')
+        body = body.replace('<h2>Model × Track Progress</h2>', '<p class="note">按用户要求暂停新增生成和评测；已有视频与轨迹继续同步。</p><h2>Model × Track Progress</h2>')
+    if (destination.parent/'phygen_quick/index.html').is_file():
+        body = '<p><a class="button primary" href="phygen_quick/index.html">▶ 直接看已提交的视频 →</a></p>' + body
     destination.write_text(page("PhyGenBench · PixelWorld", body))
 
 

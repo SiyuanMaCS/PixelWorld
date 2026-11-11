@@ -24,6 +24,11 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=64):
         published = set(result.stdout.splitlines()) if result.returncode == 0 else set()
     def committed(relative):
         return published is None or 'pixelworld/' + relative.as_posix() in published
+    try:
+        quick_cases = set(json.loads((pixelworld/'phygen_quick/manifest.json').read_text()).get('cases', []))
+    except (OSError, ValueError):
+        quick_cases = set()
+    quick_gallery_ready = committed(Path('phygen_quick/index.html')) and (pixelworld/'phygen_quick/index.html').is_file()
     groups = {}
     group_statuses = {}
     group_stopped = {}
@@ -85,6 +90,7 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=64):
             run, m = selected
             ready = (case_page_is_current(run, pixelworld / relative / run.name)
                      and committed(relative / run.name / 'index.html'))
+            quick_ready = bool(valid) and quick_gallery_ready and f'{m["model_key"]}/{m["track"]}/{case}' in quick_cases
             valid_count += bool(valid)
             prepared_count += bool(valid) and ready
             group = group_statuses.get(relative, {})
@@ -104,6 +110,9 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=64):
                 if poster.is_file():
                     cards.append(f'<img loading=lazy src="{run.name}/final/poster.png" style="width:100%;image-rendering:pixelated">')
                 cards.append(f'<p><a href="{run.name}/index.html">视频、逐轮候选与生成过程 →</a></p>')
+            elif quick_ready:
+                quick_url = '../'*len(relative.parts)+f'phygen_quick/index.html?model={m["model_key"]}&amp;track={m["track"]}&amp;case={case}'
+                cards.append(f'<p><a href="{quick_url}">▶ 播放已提交视频 · 完整轨迹同步中</a></p>')
             else:
                 cards.append('<p class=note>生成状态已更新，详情与视频资源正在同步。</p>')
             cards.append(f'<details><summary>全部 {len(history)} 次运行记录</summary>')
