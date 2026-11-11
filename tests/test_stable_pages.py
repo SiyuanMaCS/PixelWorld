@@ -90,7 +90,7 @@ def test_home_marks_incomplete_terminal_cohort_without_claiming_running(tmp_path
     output = tmp_path / "index.html"
     pages.write_index_page(output, tmp_path)
     text = output.read_text()
-    assert "生成结束 · 有未交付任务 · 0 active" in text
+    assert "本轮失败 · 等待重试 · 0 active" in text
     assert "1,590 / 1,600" in text
 
 
@@ -107,3 +107,20 @@ def test_home_does_not_claim_completion_during_retry_transition(tmp_path, monkey
     assert "8 / 10" in card
     assert "等待任务状态更新" in card
     assert "生成完成" not in card
+
+
+def test_pcve_full_page_and_home_report_129_case_scope(tmp_path, monkeypatch):
+    path = tmp_path / 'generations/pcve_smoke/status.json'
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({'cases':129, 'configurations':10, 'total_runs':1290,
+                               'totals':{'complete':8, 'pending':1282}, 'groups':{}}))
+    monkeypatch.setattr(inspect_live_workers, 'inspect_workers', lambda _: [])
+    output = tmp_path / 'pcve.html'
+    pages.write_pcve_page(tmp_path, output)
+    text = output.read_text()
+    assert 'Full 129' in text and '1,290' in text
+    assert '当前为生成 smoke' not in text
+    pages.write_index_page(tmp_path / 'index.html', tmp_path)
+    text = (tmp_path / 'index.html').read_text()
+    assert '8 / 1,290' in text
+    assert '主实验固定为五个 benchmark' in text

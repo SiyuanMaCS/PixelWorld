@@ -1,5 +1,6 @@
 import html
 import json
+import subprocess
 from pathlib import Path
 from tools.prepare_pages_site import build,rewrite
 
@@ -34,3 +35,26 @@ def test_sparse_checkout_rewrites_media_known_to_git_even_if_not_downloaded():
     assert f'/{REV}/pixelworld/a/p.png' in text
     assert f'/{REV}/pixelworld/pixels.rgb.gz' in text
     assert 'https://other.example/x.png' in text
+
+
+def test_git_batch_reads_only_pinned_committed_content(tmp_path):
+    root = tmp_path / 'repo'
+    case = root / 'pixelworld/a'
+    case.mkdir(parents=True)
+    (root / 'index.html').write_text('Committed personal homepage')
+    (case / 'index.html').write_text('<img src="poster.png">Committed case')
+    (case / 'poster.png').write_bytes(b'poster')
+    subprocess.run(['git','init','-q',str(root)],check=True)
+    subprocess.run(['git','-C',str(root),'add','.'],check=True)
+    subprocess.run(['git','-C',str(root),'-c','user.name=test','-c','user.email=test@example.invalid',
+                    'commit','-qm','fixture'],check=True)
+    revision = subprocess.check_output(['git','-C',str(root),'rev-parse','HEAD'],text=True).strip()
+    (root / 'index.html').write_text('UNPUBLISHED HOME EDIT')
+    (case / 'index.html').write_text('UNPUBLISHED CASE EDIT')
+    (root / 'private.txt').write_text('UNTRACKED PRIVATE DATA')
+    destination = tmp_path / 'site'
+    build(root,destination,'owner/repo',revision)
+    assert (destination / 'index.html').read_text() == 'Committed personal homepage'
+    assert 'Committed case' in (destination / 'pixelworld/a/index.html').read_text()
+    assert f'/{revision}/pixelworld/a/poster.png' in (destination / 'pixelworld/a/index.html').read_text()
+    assert not (destination / 'private.txt').exists()

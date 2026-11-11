@@ -78,7 +78,7 @@ def stats_cell(stats):
 def activity_badge(counts):
     if counts.get('running',0)>0:return '<span class=badge>ACTIVE</span>'
     if counts.get('complete',0)>=198:return '<span class=pill>DONE</span>'
-    return '<span class="pill">IDLE</span>'
+    return '<span class="pill">RETRY</span>' if counts.get('exhausted',0) else '<span class="pill">QUEUED</span>'
 
 def build(run,web,legacy):
     status=read(run/'generations/physics_iq/status.json')
@@ -114,7 +114,7 @@ def build(run,web,legacy):
                         f'{html.escape(case)}: {event_status(gen_root,model,track,case)}'
                         for case in (entry.get('running_cases') or [])[:3]
                     )
-                body+=(f'<td>{activity_badge(c)} <strong>{c.get("complete",0)}/198 有效视频</strong><span class=status>{c.get("running",0)}运行中 · {c.get("exhausted",0)}终止 · {c.get("pending",198-c.get("complete",0)-c.get("running",0)-c.get("exhausted",0))}待生成</span>'
+                body+=(f'<td>{activity_badge(c)} <strong>{c.get("complete",0)}/198 有效视频</strong><span class=status>{c.get("running",0)}运行中 · {c.get("exhausted",0)}本轮失败/待重试 · {c.get("pending",198-c.get("complete",0)-c.get("running",0)-c.get("exhausted",0))}待调度</span>'
                        + (f'<span class=status>正在跑：{html.escape(running_cases)}</span>' if running_cases else '')
                        + (f'<span class=status>最近事件：{activity}</span>' if activity else '')
                        + f'<span class=status>最新完成 UTC：{html.escape(str(last[0]))}<br>{html.escape(str(last[1]))}</span>'

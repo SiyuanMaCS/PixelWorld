@@ -1,6 +1,6 @@
 # PixelWorld main benchmark set
 
-The main PixelWorld portfolio is now four benchmarks:
+The main PixelWorld portfolio is fixed at five benchmarks:
 
 | Benchmark | Role | Scope |
 |---|---|---|
@@ -8,10 +8,15 @@ The main PixelWorld portfolio is now four benchmarks:
 | Physics-IQ Verified | Physical continuation anchor | 198 official BPP/I2V tasks, Text and Vision-Agent. |
 | VBench-2.0 subset | Dynamic world consistency | Mechanics, Material, Motion Rationality, Dynamic Spatial Relationship, Instance Preservation. |
 | PhyGenBench | Compact physical concept coverage | 160 text prompts mapped to Mechanics, Optics, Thermal and Material. |
+| PCVE-RigidBench | Physical counterfactual video editing | 129 official quantitative English edits, Text and Vision-Agent; native 96 frames at 24 FPS. |
 
 WorldArena, WorldScore, WBench and older smoke experiments are no longer part
 of the main portfolio. They remain available as exploratory or historical
 links only.
+
+OpenVE remains an optional completed smoke. No additional full benchmark is
+being launched. [PCVE setup and evaluation](PCVE_RIGIDBENCH.md) documents the
+source-only inputs, 1-based intervention frames and full-129 scoring scope.
 
 ## VBench-2.0 subset
 

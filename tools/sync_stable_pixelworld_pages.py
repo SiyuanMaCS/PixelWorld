@@ -342,7 +342,8 @@ def model_track_matrix(run_root: Path, benchmark: str, status: dict, slug: str) 
                     )
                 running_activity = "<br>".join(parts)
             exhausted_cases = ", ".join((group.get("exhausted_cases") or [])[:3])
-            activity = "ACTIVE" if running else ("DONE" if complete >= total and total else "IDLE")
+            stopped = (source/'STOP').exists()
+            activity = "PAUSED" if stopped else ("ACTIVE" if running else ("DONE" if complete >= total and total else ("RETRY" if exhausted else "QUEUED")))
             activity_class = "badge" if activity == "ACTIVE" else "pill"
             cells.append(
                 '<td class="run-cell">'
@@ -351,7 +352,7 @@ def model_track_matrix(run_root: Path, benchmark: str, status: dict, slug: str) 
                 f'<span class="run-num">{complete}/{total}</span>'
                 '</div>'
                 f'<div class="run-meta"><span class="live">{running} running</span> · {pending} pending · '
-                f'<span class="bad">{exhausted} exhausted/failed</span></div>'
+                f'<span class="bad">{exhausted} 本轮失败/待重试</span></div>'
                 f'<div class="run-meta">latest: {html.escape(str(latest_case))}<br>{html.escape(str(latest_time))}</div>'
                 f'<div class="run-meta">avg time {fmt_seconds(stats.get("avg_duration"))} · '
                 f'avg output {fmt_number(stats.get("avg_output_tokens"))} tok · '
@@ -620,7 +621,7 @@ def write_index_page(destination: Path, run_root: Path) -> None:
     }
     body = (
         '<section class="hero"><p class="eyebrow">PIXELWORLD MAIN BENCHMARKS</p><h1>PixelWorld Index</h1>'
-        '<p class="muted">现有四个全量实验继续运行：RoboJudge、Physics-IQ、VBench-2.0 subset 和 PhyGenBench。PCVE-RigidBench 纳入必跑，目前进行五模型 smoke；OpenVE 暂不启动全量。'
+        '<p class="muted">主实验固定为五个 benchmark：RoboJudge、Physics-IQ、VBench-2.0 五维 subset、PhyGenBench 和 PCVE-RigidBench。PCVE 已获准五模型全量视频编辑；OpenVE 仅保留已有 smoke。'
         "WorldArena、WBench、WorldScore 等保留为历史/探索入口，不再作为主线。</p></section>"
         '<section id="benchmarks"><h2>主 Benchmark 与进度</h2><div class="grid">'
         '<article class="card feature"><span class="badge">running</span><h3>RoboJudge shared-50</h3>'
@@ -640,7 +641,7 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         '<p class="note">Small physically interpretable supplement; model scores from Video-Coder paper are shown only as reference.</p>'
         '<a class="button primary" href="phygenbench.html">打开页面 →</a></article>'
         '<article class="card feature"><span class="badge">running</span><h3>PCVE-RigidBench · 必跑</h3>'
-        '<p class="desc">129 条物理反事实视频编辑。五模型 × Text/Vision-Agent 的官方单案例 smoke 已启动。</p>'
+        '<p class="desc">129 条官方物理反事实视频编辑 × 五模型 × Text/Vision-Agent，共 1,290 条视频；复用已有成功 smoke。</p>'
         '<p class="note">定量英语指令 · 96 帧 / 24 FPS / 4 秒 · 目标视频和物理真值仅用于评测。</p>'
         '<a class="button primary" href="pcve_rigid.html">打开 PCVE 进度 →</a></article>'
         '</div><p><a class="button primary" href="smoke.html">打开 VBench2 / PhyGenBench smoke 输出 →</a></p></section>'
@@ -668,8 +669,8 @@ def write_index_page(destination: Path, run_root: Path) -> None:
                      and not w.get("stat", "").startswith("Z") for w in workers)
         explicitly_stopped = all((run_root / "generations" / name / "STOP").exists() for name in suites[route])
         stopped_label = "已停止 · T2V 历史实验" if route in {"vbench2_subset.html", "phygenbench.html"} else "已停止"
-        label = stopped_label if explicitly_stopped else ("running" if active else ("待调度" if pending else ("生成结束 · 有未交付任务" if exhausted else ("生成完成" if total and complete == total else "等待任务状态更新"))))
-        if route in {'openve.html','pcve_rigid.html'}:
+        label = stopped_label if explicitly_stopped else ("running" if active else ("待调度" if pending else ("本轮失败 · 等待重试" if exhausted else ("生成完成" if total and complete == total else "等待任务状态更新"))))
+        if route == 'openve.html' or (route == 'pcve_rigid.html' and not any(s.get('cases', 0) == 129 for s in statuses)):
             label = 'smoke · ' + label
         card = card.replace('<span class="badge">running</span>', f'<span class="badge">{label} · {active} active</span>')
         updates = [s.get("updated_utc", "") for s in statuses if s.get("updated_utc")]
@@ -684,6 +685,13 @@ def write_index_page(destination: Path, run_root: Path) -> None:
                  f'最近有效交付：{html.escape(str(last[1]))} · {html.escape(str(last[0]))}</p>')
         return card.replace('<a class="button primary"', facts + '<a class="button primary"', 1)
     body = cards.sub(with_progress, body)
+    preview = read_json(run_root / 'preview_sync_progress.json')
+    if preview:
+        body += ('<section><h2>视频详情同步</h2><div class="card">'
+                 f'<p>本轮处理 {preview.get("prepared_details",0)} 条详情；'
+                 f'仍有 {preview.get("remaining_video_details",0)} 条已生成视频的详情等待同步。</p>'
+                 f'<p class=note>详情检查时间 UTC：{html.escape(str(preview.get("updated_utc","—")))}。'
+                 '生成完成数量与网页详情同步数量分别统计；正在同步的案例保留原始产物和逐轮记录。</p></div></section>')
     if all((run_root / "generations" / name / "STOP").exists() for name in ("vbench2_subset_full", "phygenbench_full")):
         body = body.replace('四个主 Benchmark', 'I2V 主实验与历史实验')
         body = re.sub(r'<p class="muted">主实验收敛为四个 benchmark：.*?</p>', '<p class="muted">当前 I2V 主实验为 Physics-IQ 与 RoboJudge。VBench-2.0 子集和 PhyGenBench 为已停止的 T2V 历史实验，已有产物保留。</p>', body, flags=re.DOTALL)
@@ -718,23 +726,28 @@ def write_openve_page(run_root: Path, destination: Path) -> None:
 
 def write_pcve_page(run_root: Path, destination: Path) -> None:
     status=read_json(run_root/'generations/pcve_smoke/status.json')
+    full = status.get('cases') == 129
+    scope_label = '全量 · 五模型 × 两个 Track' if full else '五模型 smoke · 全量输入准备中'
+    scope_text = ('129 条 × 5 个模型 × Text/Vision-Agent，共 1,290 条视频。已有成功 smoke 和逐轮历史原样保留。'
+                  if full else '全量已获准，正在准备 129 条官方输入；现有单案例 smoke 结果原样保留。')
     baselines=[('VACE',-0.042,146.26,0.273),('Ditto',-0.120,149.94,0.264),
                ('MiniMax H3',-0.096,152.00,0.250),('Seedance 2.5',-0.087,144.99,0.231),
                ('No edit',0,143.13,0.289),('VideoPhysEdit',0.376,66.70,0.421)]
     rows=''.join(f'<tr><td>{name}</td><td>{pes:.3f}</td><td>{te:.2f}</td><td>{iou:.3f}</td></tr>' for name,pes,te,iou in baselines)
     body=('<section class=hero><p class=eyebrow>PCVE-RIGIDBENCH · PHYSICAL VIDEO EDITING</p><h1>PCVE-RigidBench</h1>'
           '<p class=muted>给定完整源视频和物理干预指令，生成对应的反事实运动与交互。</p></section>'
-          '<div class="card feature"><span class=badge>必跑 · 五模型 smoke</span>'+status_facts(status)+
-          '<p>已发出 5 个模型 × Text/Vision-Agent，共 10 个单案例测试。当前限制 smoke 同时 2 个，优先保证已有全量实验运行。</p>'
-          '<p class=note>统一输入：三个空气曲棍球槌碰撞；从第 1 帧开始，将红色球槌质量变为原来的 4 倍。</p>'
+          '<div class="card feature"><span class=badge>'+scope_label+'</span>'+status_facts(status)+
+          '<p>'+scope_text+'</p>'
+          '<p class=note>首个案例：三个空气曲棍球槌碰撞；从第 1 帧开始，将红色球槌质量变为原来的 4 倍。其他案例使用各自完整原视频和官方指令。</p>'
           '<p class=note>官方原视频已核验：1280×720、24 FPS、96 帧、4 秒。生成规格：256×144、24 FPS、96 帧、4 秒；保留原生时间轴，无帧率填充。</p></div>'
-          '<h2>Model × Track · Smoke</h2>'+model_track_matrix(run_root,'pcve_smoke',status,'pcve_smoke')+
+          '<h2>Model × Track · '+('Full 129' if full else 'Smoke')+'</h2>'+model_track_matrix(run_root,'pcve_smoke',status,'pcve_smoke')+
+          '<h2>自动评测状态</h2>'+evaluation_scheduler_table(run_root/'evaluation/pcve_full_scheduler/scheduler.json')+
           '<h2>输入、协议与评测</h2><div class=card><p>正式数据共 129 条、20 个刚体场景：质量 32、摩擦 21、恢复系数 13、初始速度 26、添加 7、删除 30。117 条从首帧干预，12 条在中途干预。</p>'
           '<p>采用官方 quantitative.en。指令帧号从 1 开始，第 1 帧对应 0 秒。编辑前保留事实历史；编辑后生成物理变化引起的运动及其他受影响物体的交互。</p>'
           '<p>Agent 只读原视频、RGB 数组、输入检查图与指令；不提供 edited_video、ground_truth、physics_diff 或 edit_summary。仍用代码直接写 RGB，不调用图像/视频生成模型或外部物理仿真/渲染引擎；允许 Python 数学、几何与像素操作。</p>'
-          '<p>官方评测：PES、轨迹误差 TE、Mask IoU，以及 PSNR/SSIM/LPIPS/CLIP/FVD。GroundingDINO＋SAM2 和真值仅留在评测侧。当前为生成 smoke，尚未报告 PCVE 分数。</p></div>'
+          '<p>官方评测：PES、轨迹误差 TE、Mask IoU，以及 PSNR/SSIM/LPIPS/CLIP/FVD。GroundingDINO＋SAM2、I3D 和真值仅留在评测侧；每个模型/Track 完成 129 条后进入原版评测。尚未报告 PCVE 分数。</p></div>'
           '<h2>官方论文全 129 条参考</h2><div class=scroll><table><tr><th>Model</th><th>PES ↑</th><th>TE ↓</th><th>Mask IoU ↑</th></tr>'+rows+'</table></div>'
-          '<p class=note>PES=1 表示匹配反事实变化；0 表示没有优于原视频不编辑；负值表示更差。参考表来自官方论文 Table 1；本轮 smoke 不作为全量分数。</p>'
+          '<p class=note>PES=1 表示匹配反事实变化；0 表示没有优于原视频不编辑；负值表示更差。参考表来自官方论文 Table 1；只将完整 129 条的原版评测与该表比较。</p>'
           '<p><a class=button href="https://videophysedit.github.io/">官方项目 ↗</a> <a class=button href="https://github.com/Hammour-steak/PCVE-RigidBench">官方代码 ↗</a> <a class=button href="https://huggingface.co/datasets/ccmoony/PCVE-RigidBench">官方数据 ↗</a></p>')
     destination.write_text(page('PCVE-RigidBench · PixelWorld',body))
 
@@ -781,8 +794,9 @@ def publish_delivery(stable_repo: Path, delivery_repo: Path, branch: str = 'pixe
             target = delivery_repo/relative
             target.parent.mkdir(parents=True,exist_ok=True)
             shutil.copy2(artifact/relative,target)
-        for start in range(0,len(files+tracked),100):
-            check(['git','add','--all','--',*(files+tracked)[start:start+100]],delivery_repo)
+        staging_paths = sorted(set(files + tracked))
+        for start in range(0,len(staging_paths),1000):
+            check(['git','add','--all','--',*staging_paths[start:start+1000]],delivery_repo)
     changed = run(['git','diff','--cached','--quiet'],delivery_repo).returncode != 0
     if changed:
         check(['git','commit','-m','Publish PixelWorld pages for '+revision[:12]],delivery_repo)
@@ -800,6 +814,11 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
     pixelworld = stable_repo / "pixelworld"
     pixelworld.mkdir(parents=True, exist_ok=True)
     previews = sync_previews(run_root, heavy_web, pixelworld)
+    from pixelworld.util import atomic_json, utc_now
+    atomic_json(run_root/'preview_sync_progress.json',
+                {'updated_utc':utc_now(), 'prepared_details':len(previews['updated']),
+                 'remaining_video_details':previews['remaining_complete'],
+                 'remaining_all_details':previews['remaining'], 'batch_limit':previews['batch_limit']})
     repo_root = Path(__file__).resolve().parents[1]
     legacy_status = heavy_web.parent / "cleanroom_full_matrix_v1/status.json"
 
@@ -876,7 +895,8 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
     if push.returncode:
         raise RuntimeError(f"git push failed\nSTDOUT:\n{push.stdout}\nSTDERR:\n{push.stderr}")
     delivery = publish_delivery(stable_repo,delivery_repo) if delivery_repo else None
-    return {"changed": True, "commit": commit, "core_only": core_only, "gallery": gallery, 'delivery':delivery}
+    return {"changed": True, "commit": commit, "core_only": core_only, "gallery": gallery, 'delivery':delivery,
+            'preview_sync': {'updated':len(previews['updated']), 'remaining':previews['remaining'], 'batch_limit':64}}
 
 
 def main() -> None:

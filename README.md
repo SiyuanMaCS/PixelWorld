@@ -31,7 +31,8 @@ The current main benchmark portfolio is fixed in
 - RoboJudge shared-50;
 - Physics-IQ Verified;
 - VBench-2.0 five-dimension subset;
-- PhyGenBench 160 prompts.
+- PhyGenBench 160 prompts;
+- PCVE-RigidBench 129 physical counterfactual video-editing tasks.
 
 The added video-editing benchmark is [OpenVE-Bench](docs/OPENVE_BENCH.md):
 431 original-video/instruction tasks. A separate smoke adapter preserves the
@@ -41,7 +42,8 @@ submission CSV. The previously requested PVIR removal benchmark is excluded.
 [PCVE-RigidBench](docs/PCVE_RIGIDBENCH.md) is required for physical counterfactual
 editing: 129 official tasks, quantitative English prompts, a native 96-frame /
 24-FPS / four-second timeline, and strict separation of target/physics ground
-truth from generation. Five models across both native Tracks are in smoke.
+truth from generation. Full generation uses five models across both native
+Tracks, with byte-identical successful smoke submissions reused.
 OpenVE remains optional and is not launched at full scale.
 
 WorldArena, WorldScore, WBench and older multi-benchmark smokes remain

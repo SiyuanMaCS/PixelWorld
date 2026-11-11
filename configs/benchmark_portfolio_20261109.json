@@ -1,6 +1,6 @@
 {
   "schema": "pixelworld-benchmark-portfolio-v1",
-  "updated": "2026-11-09",
+  "updated": "2026-11-11",
   "primary_benchmarks": [
     {
       "id": "robojudge_shared50",
@@ -25,13 +25,28 @@
       "label": "VBench-2.0 five-dimension subset",
       "task_type": "t2v",
       "scope": "Five official VBench-2.0 dimensions selected for dynamic world-model behavior.",
-      "status": "configured",
+      "status": "running",
       "dimensions": [
-        {"name": "Mechanics", "official_prompt_count": 57},
-        {"name": "Material", "official_prompt_count": 50},
-        {"name": "Motion_Rationality", "official_prompt_count": 58},
-        {"name": "Dynamic_Spatial_Relationship", "official_prompt_count": 69},
-        {"name": "Instance_Preservation", "official_prompt_count": 57}
+        {
+          "name": "Mechanics",
+          "official_prompt_count": 57
+        },
+        {
+          "name": "Material",
+          "official_prompt_count": 50
+        },
+        {
+          "name": "Motion_Rationality",
+          "official_prompt_count": 58
+        },
+        {
+          "name": "Dynamic_Spatial_Relationship",
+          "official_prompt_count": 69
+        },
+        {
+          "name": "Instance_Preservation",
+          "official_prompt_count": 57
+        }
       ],
       "total_prompts_if_deduplicated_by_dimension_file": 291,
       "monitor": "https://siyuanmacs.github.io/pixelworld/vbench2_subset.html",
@@ -42,7 +57,7 @@
       "label": "PhyGenBench",
       "task_type": "t2v",
       "scope": "160 prompts covering mechanics/optics/thermal/material physical concepts.",
-      "status": "configured",
+      "status": "running",
       "source": "/mnt/bn/embodied-lf3/masiyuan/PhysFix-workspace/phygenbench/phygen_prompts.json",
       "category_mapping": {
         "Force": "Mechanics",
@@ -53,6 +68,22 @@
       },
       "monitor": "https://siyuanmacs.github.io/pixelworld/phygenbench.html",
       "notes": "Small physically interpretable supplement; model scores from Video-Coder paper are shown only as reference."
+    },
+    {
+      "id": "pcve_rigidbench_129",
+      "label": "PCVE-RigidBench",
+      "task_type": "video_edit",
+      "scope": "129 official quantitative English source-video edits x Text/Vision-Agent",
+      "status": "running",
+      "monitor": "https://siyuanmacs.github.io/pixelworld/pcve_rigid.html",
+      "native_frames": 96,
+      "native_fps": 24,
+      "duration_seconds": 4,
+      "generation_resolution": [
+        256,
+        144
+      ],
+      "notes": "Five-model full generation; existing successful smoke artifacts and all histories are preserved. Targets and physics ground truth stay outside generation."
     }
   ],
   "legacy_pages": [
@@ -64,7 +95,7 @@
     {
       "label": "Older multi-benchmark smoke",
       "url": "https://siyuanmacs.github.io/physics-iq-pixel-preview/bench_smoke_20261106/index.html",
-      "reason": "Exploratory smoke examples; not part of the four-benchmark main portfolio."
+      "reason": "Exploratory smoke examples; not part of the five-benchmark main portfolio."
     }
   ]
 }

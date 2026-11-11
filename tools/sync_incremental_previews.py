@@ -16,7 +16,7 @@ SUITES = {"physics_iq": "bench_smoke_codex_20261109/physics_iq",
           "openve_smoke": "openve_smoke", "pcve_smoke": "pcve_smoke"}
 
 
-def sync_previews(run_root, heavy_web, pixelworld, limit=16):
+def sync_previews(run_root, heavy_web, pixelworld, limit=64):
     published = None
     if (pixelworld.parent / '.git').exists():
         result = subprocess.run(['git','ls-tree','-r','--name-only','HEAD'],cwd=pixelworld.parent,
@@ -25,8 +25,15 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=16):
     def committed(relative):
         return published is None or 'pixelworld/' + relative.as_posix() in published
     groups = {}
+    group_statuses = {}
+    group_stopped = {}
     candidates = []
     for suite, prefix in SUITES.items():
+        status_path = run_root / 'generations' / suite / 'status.json'
+        try:
+            generation = json.loads(status_path.read_text())
+        except (OSError, ValueError):
+            generation = {}
         for path in (run_root / "generations" / suite).glob("*/*/case_*_attempt_*/run_manifest.json"):
             run = path.parent
             try:
@@ -34,6 +41,8 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=16):
             except (OSError, ValueError):
                 continue
             relative = Path(prefix) / manifest["model_key"] / manifest["track"]
+            group_statuses[relative] = generation.get('groups', {}).get(f'{manifest["model_key"]}/{manifest["track"]}', {})
+            group_stopped[relative] = (run_root/'generations'/suite/'STOP').exists()
             groups.setdefault(relative, {}).setdefault(manifest["case_id"], []).append((run, manifest))
     for relative, cases in groups.items():
         for history in cases.values():
@@ -47,9 +56,11 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=16):
     targets, updated = [], []
     complete = [row for row in candidates if row[0]]
     other = [row for row in candidates if not row[0]]
-    recent_count = (limit + 1) // 2
+    other_count = min(len(other), max(1, limit // 8))
+    complete_budget = limit - other_count
+    recent_count = (complete_budget + 1) // 2
     selected = complete[:recent_count]
-    selected += [row for row in reversed(complete) if row not in selected][:limit-len(selected)]
+    selected += [row for row in reversed(complete) if row not in selected][:complete_budget-len(selected)]
     selected += other[:limit-len(selected)]
     for _, _, relative, run in selected:
         staging = heavy_web / relative / run.name
@@ -76,7 +87,17 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=16):
                      and committed(relative / run.name / 'index.html'))
             valid_count += bool(valid)
             prepared_count += bool(valid) and ready
-            caption = "已交付" if valid else m["status"]
+            group = group_statuses.get(relative, {})
+            if valid:
+                caption = '已交付'
+            elif group_stopped.get(relative):
+                caption = '调度已暂停'
+            elif case in (group.get('running_cases') or []):
+                caption = '运行中'
+            elif m['status'] == 'failed':
+                caption = '本次 attempt 失败 · 等待重试/调度'
+            else:
+                caption = m['status']
             cards.append(f'<article class=card><h3>{html.escape(case)}</h3><span class=pill>{html.escape(caption)}</span>')
             if ready:
                 poster = pixelworld / relative / run.name / "final/poster.png"
@@ -102,4 +123,6 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=16):
                 '<div class=video-grid>' + "".join(cards) + '</div>')
         (destination / "index.html").write_text(document(str(relative), body, depth=len(relative.parts)))
         targets.append("pixelworld/" + (relative / "index.html").as_posix())
-    return {"updated": updated, "targets": targets, "remaining": max(0, len(candidates)-len(updated))}
+    delivered = sum(row.get('status') == 'complete' for row in updated)
+    return {"updated": updated, "targets": targets, "remaining": max(0, len(candidates)-len(updated)),
+            "remaining_complete": max(0, len(complete)-delivered), "batch_limit":limit}

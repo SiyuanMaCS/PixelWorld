@@ -27,6 +27,8 @@ CONFIG_TO_GENERATION = {
     "robojudge_seed21_native_v2_full.json": "robojudge_seed21_native_v2",
     "vbench2_subset_full.json": "vbench2_subset_full",
     "phygenbench_full.json": "phygenbench_full",
+    "pcve_smoke.json": "pcve_smoke",
+    "pcve_full.json": "pcve_smoke",
 }
 
 

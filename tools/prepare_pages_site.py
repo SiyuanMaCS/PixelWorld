@@ -7,16 +7,12 @@ from __future__ import annotations
 
 import argparse
 import html
-import io
 from html.parser import HTMLParser
 import json
 from pathlib import Path
 import re
-import shutil
 import subprocess
 import posixpath
-import tarfile
-import tempfile
 from urllib.parse import quote, unquote, urlsplit
 
 MEDIA = ('.png','.jpg','.jpeg','.webp','.gif','.mp4','.webm','.wav','.npz','.gz','.zip')
@@ -84,36 +80,65 @@ def build(source: Path, destination: Path, repository: str, revision: str) -> di
     source=source.resolve();destination=destination.resolve()
     if destination==source:raise ValueError('Output must be separate from source')
     git_source = (source/'.git').exists()
+    blobs = {}
     if git_source:
-        known=set(subprocess.check_output(['git','-C',str(source),'ls-tree','-r','--name-only',revision],text=True).splitlines())
+        tree = subprocess.check_output(['git','-C',str(source),'ls-tree','-r','-z',revision])
+        known = set()
+        for entry in tree.split(b'\0'):
+            if not entry:
+                continue
+            metadata, name = entry.split(b'\t', 1)
+            mode, kind, oid = metadata.split()
+            name = name.decode('utf-8', errors='surrogateescape')
+            known.add(name)
+            if kind == b'blob' and mode in (b'100644', b'100755'):
+                blobs[name] = oid
     else:
         known={str(p.relative_to(source)) for p in source.rglob('*') if p.is_file() and not p.is_relative_to(destination)}
     if destination.exists():raise FileExistsError('Use an empty artifact directory')
     destination.mkdir(parents=True)
     paths=[p for p in sorted(known) if not p.startswith(('.github/','.git/')) and not is_media(p)]
     count=size=rewritten=0
-    with tempfile.TemporaryDirectory(prefix='pages-source-snapshot-') as temp:
-        snapshot=Path(temp)
-        if git_source:
-            # Read committed blobs, never publish unrelated unstaged edits.
-            for start in range(0,len(paths),500):
-                archive=subprocess.check_output(['git','-C',str(source),'archive',revision,'--',*paths[start:start+500]])
-                with tarfile.open(fileobj=io.BytesIO(archive),mode='r:') as tar:
-                    for member in tar:
-                        if not member.isfile():continue
-                        relative=Path(member.name)
-                        if relative.is_absolute() or '..' in relative.parts:raise ValueError('Unsafe archive path')
-                        target=snapshot/relative;target.parent.mkdir(parents=True,exist_ok=True)
-                        with tar.extractfile(member) as stream:target.write_bytes(stream.read())
-        else:snapshot=source
-        for relative in paths:
-            original=snapshot/relative
-            if not original.is_file():continue
+    def contents():
+        if not git_source:
+            for relative in paths:
+                original = source / relative
+                if original.is_file():
+                    yield relative, original.read_bytes()
+            return
+        # Resolve paths once, then stream only committed blobs through one Git
+        # process. Avoid repeated archive tree walks and temporary file copies.
+        process = subprocess.Popen(['git','-C',str(source),'cat-file','--batch'],
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        try:
+            for relative in paths:
+                oid = blobs.get(relative)
+                if oid is None:
+                    continue
+                name = Path(relative)
+                if name.is_absolute() or '..' in name.parts:
+                    raise ValueError('Unsafe committed path')
+                process.stdin.write(oid + b'\n')
+                process.stdin.flush()
+                header = process.stdout.readline().split()
+                if len(header) != 3 or header[0] != oid or header[1] != b'blob':
+                    raise ValueError('Unexpected committed blob response')
+                size = int(header[2])
+                payload = process.stdout.read(size)
+                if len(payload) != size or process.stdout.read(1) != b'\n':
+                    raise ValueError('Truncated committed blob')
+                yield relative, payload
+        finally:
+            process.stdin.close()
+            process.stdout.close()
+            if process.wait(timeout=30):
+                raise RuntimeError('Committed blob reader failed')
+    for relative, payload in contents():
             target=destination/relative;target.parent.mkdir(parents=True,exist_ok=True)
             if relative.startswith('pixelworld/') and relative.endswith('.html'):
-                before=original.read_text();after=rewrite(before,relative,known,repository,revision)
+                before=payload.decode('utf-8');after=rewrite(before,relative,known,repository,revision)
                 target.write_text(after);rewritten+=before!=after
-            else:shutil.copy2(original,target)
+            else:target.write_bytes(payload)
             count+=1;size+=target.stat().st_size
     (destination/'.nojekyll').touch()
     result={'files':count,'artifact_bytes':size,'rewritten_pages':rewritten,

@@ -14,13 +14,13 @@ There are **129** edits in **20** synthetic rigid-body scenes: mass 32, friction
 
 The input is a complete source video and an editing instruction. The output is the complete counterfactual video on the same timeline, preserving factual history before the intervention and depicting changed motion/interactions afterward. This differs from predicting a continuation after the source clip.
 
-## Fixed smoke protocol
+## Fixed full-generation protocol
 
 The paper and downloaded first source video both specify **96 frames, 24 FPS, 4 seconds**, at source resolution 1280×720. The smoke uses **256×144, 96 unique RGB frames, 24 FPS, 4 seconds**. Unlike the existing 4-FPS experiments, PCVE keeps its native temporal grid because its instructions and trajectory scoring use explicit frame numbers. No duplicate-frame upsampling is used.
 
 Instructions are the original **`prompts.quantitative.en`**, as used for the official reported baselines. The released manifest counts source frames from **1**: frame 1 is time zero. The input metadata explicitly records the execution frame and `(frame-1)/24` seconds.
 
-The ten background smoke configurations cover GPT-6.1-Sol, GPT-5.6-Sol, GPT-6-Astra, DeepSeek-V4.1-Flash and Seed-2.1-Pro-0915, each in Text and Vision-Agent. The first task is the first official manifest entry: `air_hockey_chain/edit_heavy_middle_mallet`, increasing the red mallet's mass by a factor of four from frame 1. Smoke concurrency is two across all models so the four ongoing full experiments retain their capacity.
+Full generation covers GPT-6.1-Sol, GPT-5.6-Sol, GPT-6-Astra, DeepSeek-V4.1-Flash and Seed-2.1-Pro-0915, each in Text and Vision-Agent: **129 × 5 × 2 = 1,290 videos**. The first task is `air_hockey_chain/edit_heavy_middle_mallet`, increasing the red mallet's mass by a factor of four from frame 1. Existing successful smoke submissions and all failed-attempt histories are preserved. The shared launch cap remains four per model across benchmarks; the full PCVE supervisor allows ten concurrent tasks, at most one per model/Track, subject to that shared cap.
 
 The same native v2 submission/recording rules apply: runnable `generate.py`, required `artifact_io.save`, saved intermediate candidates, autonomous checking/refinement and external token recording. Python/numpy/PIL/OpenCV pixel operations and mathematical geometry/dynamics are allowed. Generation cannot call external physics/rendering engines or image/video models.
 
@@ -37,7 +37,14 @@ python -m tools.setup_pcve prepare \
   --case-index 0
 ```
 
-Omit `--case-index` to prepare the full 129 tasks, using a fresh immutable input root. Use your own installed Codex; this harness is checked with CLI **0.167.0**. Generation configuration and model routing follow the main README. Runtime `pcve_smoke.json` is the current ten-configuration one-case smoke; it is not a full benchmark run.
+Omit `--case-index` to prepare all 129 tasks in a fresh immutable input root. Use your own installed Codex; this harness is checked with CLI **0.167.0**, and current runs record **0.167.1**. Copy [the full configuration template](../configs/pcve-full.example.json), set your model and Responses provider, then run:
+
+```bash
+python -m tools.setup_pcve prepare --data-root data/pcve-rigid --inputs-root data/pcve-rigid-inputs
+python -m pixelworld.cli matrix run --config configs/pcve-local.json
+```
+
+The current full runtime configuration is `runs/bench_codex_20261109/pcve_full.json`. Its input and generation directories retain the historical `pcve_smoke` name to preserve original run manifests, snapshots, retry windows and published URLs. The full scope is explicitly 129 cases in the configuration and status file. The original one-case `pcve_smoke.json` is retained as provenance and no longer has a separate active supervisor.
 
 ## Official evaluation
 
@@ -55,7 +62,17 @@ python vendor/pcve-rigid-source/eval/compute_metrics.py \
 
 For full evaluation, omit `--limit` only after all 129 cases are present. Source/edited ground truth, scene tracking descriptions and the original GroundingDINO/SAM2 tracker stay outside generation. The official scorer resizes predictions to target resolution; matching native 24-FPS frame indices preserves the four-second timeline.
 
-The tracker uses GroundingDINO Tiny and SAM2.1 Hiera-L. The released tracker has an author-specific absolute SAM2 checkpoint path; a portable evaluator setup must point to the same checkpoint locally without changing the scoring logic. Current host checks show no CUDA access and SAM2, LPIPS, OpenCLIP and scikit-image are not installed in the foreground environment. Therefore **generation smoke is running, but no PCVE score is claimed**. Installation and scoring are separate from generation delivery.
+The tracker uses GroundingDINO Tiny and SAM2.1 Hiera-L; FVD uses the official Kinetics-400 I3D TorchScript extractor. Install the original evaluator's dependencies in a separate environment, including PyTorch with CUDA, `sam2`, `transformers`, `torchmetrics`, `lpips`, `open_clip_torch`, `av`, `imageio`, NumPy and Pillow. Place the original SAM2.1 Hiera-L and I3D checkpoints under `vendor/pcve-eval-models/`, or set `PCVE_SAM2_CHECKPOINT` and `PCVE_I3D_CHECKPOINT`. Set `PCVE_EVAL_PYTHON` if that environment uses a different Python executable.
+
+[The complete-cohort adapter](../tools/evaluate_pcve_full.py) verifies all 129 submissions, the pinned untouched source, checkpoint files and CUDA/dependencies before exporting. Its evaluator-side driver overrides only the two author-specific checkpoint path defaults; the original tracker, thresholds, alignment, PES floor and metrics remain unchanged. Target videos and GT JSON are fetched only into the evaluator-side data root. Original per-case metrics must cover exactly 129 cases without failures before a full summary is accepted, and missing FVD/visual metrics are not reported as a complete result.
+
+```bash
+PCVE_EVAL_PYTHON=/path/to/eval-env/bin/python python tools/evaluate_pcve_full.py \
+  --config configs/pcve-local.json --model your-model --track vision-agent \
+  --output evaluation/pcve/your-model/vision-agent
+```
+
+Current runtime auto-evaluation is monitored under `evaluation/pcve_full_scheduler/`; it waits for each complete 129-case model/Track cohort. Generation is active; no PCVE score or successful GPU evaluation smoke is claimed until the original evaluator actually runs. Checkpoint/environment blockers remain visible and do not stop generation.
 
 The main physical metrics are **PES**, trajectory error **TE**, and **Mask IoU**. Visual metrics are PSNR, SSIM, LPIPS, CLIP similarity and FVD. PES measures improvement over leaving the source unedited: `max(1 - sum(TE_prediction)/sum(TE_no_edit), -1)`, with the official null-error eligibility filter. Thus PES=0 means no improvement over the source; positive means the intended physical change was better captured.
 

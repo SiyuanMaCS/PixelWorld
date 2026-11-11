@@ -77,8 +77,10 @@ def prepare(root: Path, inputs: Path, indices=None):
     return records
 
 
-def export(config_path: Path, model: str, track: str, benchmark_root: Path, baseline: str):
+def export(config_path: Path, model: str, track: str, benchmark_root: Path, baseline: str,
+           predictions_root: Path | None = None):
     config=load_config(config_path);config.model(model);selected={}
+    prediction_base = predictions_root or benchmark_root/'predictions'
     for path in (config.runs_root/model/track).glob('case_*/run_manifest.json'):
         m=json.loads(path.read_text())
         if m['status']!='complete' or not m.get('validation',{}).get('pass'):continue
@@ -87,12 +89,12 @@ def export(config_path: Path, model: str, track: str, benchmark_root: Path, base
     rows=[]
     for case,(run,m) in sorted(selected.items()):
         info=json.loads((config.inputs_root/case/'preparation_record.json').read_text())
-        output=benchmark_root/'predictions'/baseline/'videos'/info['scene']/(info['official_case_id']+'.mp4')
+        output=prediction_base/baseline/'videos'/info['scene']/(info['official_case_id']+'.mp4')
         encode_pixels(run/'workspace',m['media_contract'],output)
         rows.append({'case_id':case,'global_id':info['global_id'],'attempt':m['attempt'],'output':str(output),
                      'frames':96,'fps':24,'source_run':str(run)})
     result={'rows':rows,'exported':len(rows),'full_official_scope':len(rows)==TOTAL,
             'dataset_revision':DATASET_REVISION,'evaluator_revision':EVALUATOR_REVISION,'scores_computed':False}
-    folder=benchmark_root/'predictions'/baseline;folder.mkdir(parents=True,exist_ok=True)
+    folder=prediction_base/baseline;folder.mkdir(parents=True,exist_ok=True)
     atomic_json(folder/'pixelworld_submission.json',result)
     return result
