@@ -503,6 +503,23 @@ def status_facts(status: dict) -> str:
     )
 
 
+def protocol_audit_notice(run_root: Path, benchmark: str) -> str:
+    audit = read_json(run_root / f"evaluation/{benchmark}_official_protocol_audit.json")
+    if not audit:
+        return ""
+    if benchmark == "vbench2":
+        return ('<div class="card legacy"><h3>官方采样要求待确认</h3>'
+                '<p>标准模式每个 prompt 要求 3 份独立视频；当前每个只有 1 份。'
+                '现有生成继续保留，当前单样本覆盖不能作为标准三样本结果。'
+                '不复制视频补齐；追加生成等待实验负责人决定。</p>'
+                '<a class="link" href="https://github.com/SiyuanMaCS/PixelWorld/blob/main/docs/VBENCH2_OFFICIAL_PROTOCOL_AUDIT.md">官方代码审计 →</a></div>')
+    return ('<div class="card legacy"><h3>官方评测依赖待配置</h3>'
+            '<p>160 条 caption 已与官方逐条核对。主榜组合使用 VQAScore、'
+            'GPT-4o-0513、LLaVA-Interleave 和 InternVideo2；当前尚无已确认的 '
+            'GPT-4o-0513 接口。开源分支分数不能直接替代主榜组合分数。</p>'
+            '<a class="link" href="https://github.com/SiyuanMaCS/PixelWorld/blob/main/docs/PHYGENBENCH_OFFICIAL_PROTOCOL_AUDIT.md">官方代码审计 →</a></div>')
+
+
 def write_vbench_page(run_root: Path, destination: Path) -> None:
     status = read_json(run_root / "generations/vbench2_subset_full/status.json")
     smoke = read_json(run_root / "generations/vbench2_subset_smoke/status.json")
@@ -525,7 +542,8 @@ def write_vbench_page(run_root: Path, destination: Path) -> None:
         f'更新时间 UTC：{html.escape(status.get("updated_utc", "—"))}。</p>'
         '<p><a class="button primary" href="vbench2_subset_full/index.html">打开 full 生成画廊 →</a>'
         '<a class="button" href="smoke.html">查看 smoke 视频 →</a></p></div>'
-        "<h2>Model × Track Progress</h2>"
+        + protocol_audit_notice(run_root, "vbench2")
+        + "<h2>Model × Track Progress</h2>"
         + model_track_matrix(run_root, "vbench2_subset_full", status, "vbench2_subset_full")
         +
         "<h2>Evaluation Watcher</h2>"
@@ -565,7 +583,8 @@ def write_phygen_page(run_root: Path, destination: Path) -> None:
         f'更新时间 UTC：{html.escape(status.get("updated_utc", "—"))}。</p>'
         '<p><a class="button primary" href="phygenbench_full/index.html">打开 full 生成画廊 →</a>'
         '<a class="button" href="smoke.html">查看 smoke 视频 →</a></p></div>'
-        "<h2>Model × Track Progress</h2>"
+        + protocol_audit_notice(run_root, "phygenbench")
+        + "<h2>Model × Track Progress</h2>"
         + model_track_matrix(run_root, "phygenbench_full", status, "phygenbench_full")
         +
         "<h2>Evaluation Watcher</h2>"

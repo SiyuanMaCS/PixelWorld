@@ -5,6 +5,20 @@ from types import SimpleNamespace
 from tools import inspect_live_workers, sync_stable_pixelworld_pages as pages
 
 
+def test_protocol_notice_reports_actual_sampling_and_judge_blockers(tmp_path):
+    evaluation = tmp_path/'evaluation'
+    evaluation.mkdir()
+    (evaluation/'vbench2_official_protocol_audit.json').write_text('{}')
+    assert pages.protocol_audit_notice(tmp_path, 'vbench2') == ''
+    (evaluation/'vbench2_official_protocol_audit.json').write_text('{"standard_videos_per_prompt":3}')
+    text = pages.protocol_audit_notice(tmp_path, 'vbench2')
+    assert '3 份独立视频' in text and '当前每个只有 1 份' in text
+    assert '不复制视频补齐' in text
+    (evaluation/'phygenbench_official_protocol_audit.json').write_text('{"prompt_count":160}')
+    text = pages.protocol_audit_notice(tmp_path, 'phygenbench')
+    assert 'GPT-4o-0513' in text and '开源分支分数不能直接替代' in text
+
+
 def test_active_deployment_defers_all_rendering_and_git_mutations(tmp_path, monkeypatch):
     busy = {"run_id": 123, "status": "in_progress", "sha": "old"}
     monkeypatch.setattr(pages, "pending_pages_deployment", lambda _: busy)
