@@ -7,7 +7,7 @@ from PIL import Image
 
 from pixelworld.audit import validate
 from pixelworld.constants import ASSET_ROOT
-from pixelworld.media import contract
+from pixelworld.media import contract, task_rules, DEFAULT_MEDIA
 from pixelworld.snapshot import candidate_key, freeze
 
 
@@ -86,3 +86,16 @@ def test_export_derives_missing_inspection_without_mutating_candidate(tmp_path):
     assert (target/'inspection.png').is_file()
     assert not (tmp_path/'inspection.png').exists()
     assert (tmp_path/'pixels.npz').read_bytes()==original
+
+
+def test_photographic_target_is_explicit_and_leaves_existing_task_modes_unchanged(tmp_path):
+    base = DEFAULT_MEDIA | {'task_type':'t2v'}
+    assert 'photographic realism' not in task_rules(base)
+    (tmp_path/'task_spec.json').write_text(json.dumps(base | {'visual_target':'photoreal'}))
+    photo = contract(tmp_path)
+    assert photo['visual_target'] == 'photoreal'
+    assert 'live-action photographic realism' in task_rules(photo)
+    assert 'directly in image/pixel space' in task_rules(photo)
+    assert 'Do not build a separate scene/world model' in task_rules(photo)
+    for kind in ['i2v','v2v','video_edit']:
+        assert 'photographic realism' not in task_rules(DEFAULT_MEDIA | {'task_type':kind})

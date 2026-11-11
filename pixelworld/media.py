@@ -12,11 +12,13 @@ def contract(source: Path) -> dict:
     path = source / "task_spec.json" if source.is_dir() else source
     raw = json.loads(path.read_text()) if path.is_file() else {}
     result = DEFAULT_MEDIA | raw
-    allowed = set(DEFAULT_MEDIA) | {"benchmark", "turn", "action"}
+    allowed = set(DEFAULT_MEDIA) | {"benchmark", "turn", "action", "visual_target"}
     if set(raw) - allowed:
         raise ValueError(f"Unsupported task fields: {set(raw) - allowed}")
     if result["task_type"] not in ("i2v", "v2v", "t2v", "video_edit"):
         raise ValueError("task_type must be i2v, v2v, t2v or video_edit")
+    if 'visual_target' in raw and (raw['visual_target'] != 'photoreal' or result['task_type'] != 't2v'):
+        raise ValueError('visual_target=photoreal is an opt-in target for a separately versioned T2V run')
     for key in ("width", "height", "frames"):
         value = result[key]
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:
@@ -49,11 +51,15 @@ def task_rules(spec: dict) -> str:
         rate, channels = spec["audio"]["sample_rate"], spec["audio"]["channels"]
         samples = round(n / fps * rate)
         audio = f"\n- Also generate {samples} PCM samples at {rate} Hz, {channels} channel(s), synchronized to the RGB video; pass `audio=` (int16 shape `({samples},{channels})`) to `artifact_io.save`."
+    realism = ''
+    if spec.get('visual_target') == 'photoreal':
+        realism = ('\n- Construct the video directly in image/pixel space. Do not build a separate scene/world model or physics simulation and render it into video.'
+                   '\n- Aim for live-action photographic realism for the full scene, with coherent appearance and motion.')
     return f"""# PixelWorld generation contract v2
 
 - Use only {inputs}. Work inside this workspace. No network, other cases, reference continuations, masks, scores, memory, external AI models, learned weights, external simulation/rendering engines, or subagents.
 - Generate {n} RGB frames at {w}×{h}, {fps:g} fps, for {n/fps:g} seconds.{first}
 - You must create `generate.py`, run it, and call `artifact_io.save(frames, case_dir)` at least once before finishing. Finish only after the required output artifacts exist. Keep `generate.py` runnable so it regenerates the submitted RGB video.{audio}
-- Local Python/numpy/PIL, mathematical geometry, motion, lighting, copying and warping pixels are allowed.
+- Local Python/numpy/PIL, mathematical geometry, motion, lighting, copying and warping pixels are allowed.{realism}
 - If you revise the video, save each revised candidate before continuing. Avoid repeated revision without a clear expected improvement; aim for high-quality output while considering efficiency.
 """
