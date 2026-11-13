@@ -31,7 +31,7 @@ def finite(value):
 
 def note(value):
     if isinstance(value,dict):
-        value='; '.join(str(value[k]) for k in ('phase','missing_relative_path','missing','detail','reason') if value.get(k))
+        value='; '.join(str(value[k]) for k in ('phase','blocker','missing_relative_path','missing','detail','reason') if value.get(k))
     return clean(str(value or ''))[:1200]
 
 
@@ -66,6 +66,7 @@ def physics_score(score, model, track):
         return None
     return {'metrics':{'Verified':100*score['verified_score'],'Original formula':100*score['original_formula_score']},
             'units':'/100','scope':198,'prompt_setting':score.get('prompt_setting'),
+            'independent_runs':score.get('independent_runs',1),
             'fps':score.get('fps'),'frames':score.get('frames'),'resolution':score.get('resolution'),
             'completed_utc':score.get('completed_utc'),'source_revision':score['upstream_commit'],
             'dataset_revision':score['dataset_revision'],'metrics_sha256':score.get('official_metrics_sha256')}
@@ -128,8 +129,9 @@ def collect(run_root: Path):
             cohort=run_root/'evaluation'/folder/model/track
             execution=read(cohort/'execution.json')
             active=evaluator_active(cohort,commands)
-            phase=entry.get('phase') or 'waiting_for_generation'
-            blocker=(scheduler.get('blocked') or {}).get(key) or entry.get('blocker') or entry.get('error')
+            blocked=(scheduler.get('blocked') or {}).get(key) or {}
+            phase=blocked.get('phase') or entry.get('phase') or 'waiting_for_generation'
+            blocker=blocked or entry.get('blocker') or entry.get('error')
             if active and execution.get('phase')=='official_evaluation' and phase in ('adapter_evaluation','failed'):
                 phase='official_evaluation'
             if phase=='failed':phase='waiting_for_evaluation_retry'
@@ -148,11 +150,15 @@ def collect(run_root: Path):
                 row.update(phase='blocked_current_generation_mismatch',blocker='Scored scope disagrees with current validated generation inventory')
             elif phase=='complete' or entry.get('phase')=='full_shared50_scored':
                 row.update(phase='blocked_score_provenance',blocker='Full score metadata or original task identities did not pass verification')
+            elif active and row['accepted']==expected:
+                row.update(phase='official_evaluation',blocker='')
             elif phase in ('official_evaluation','official_full_evaluation','adapter_evaluation') and not active:
                 watcher_alive=any(pid==scheduler.get('pid') and any(Path(v).name.startswith('watch_') for v in argv)
                                   for pid,argv in commands)
                 row.update(phase='preparing_evaluation' if watcher_alive else 'stale_evaluation')
                 if not watcher_alive:row['blocker']='Recorded evaluator stage has no matching live process'
+            elif row['accepted']==expected and phase=='waiting_for_generation':
+                row['phase']='waiting_for_evaluator'
             elif not counts.get('running',0) and not counts.get('pending',0) and row['accepted']<expected and counts.get('exhausted',0):
                 row.update(phase='incomplete_generation',blocker='Full official scope is incomplete; no missing-video score imputation')
             result['cohorts'].append(row)

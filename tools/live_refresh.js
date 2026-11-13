@@ -175,15 +175,16 @@
     if(!rows.length)return;
     let box=document.querySelector('#live-evaluation');
     if(!box){box=document.createElement('section');box.id='live-evaluation';box.className='card';const hero=document.querySelector('main .hero');if(hero&&!context?.case)hero.after(box);else document.querySelector('main').append(box);}
-    const phases={complete:'完整官方范围已评分',waiting_for_generation:'等待完整生成',incomplete_generation:'生成未覆盖完整范围',official_evaluation:'原版评测运行中',official_full_evaluation:'导出 / 原版评测',adapter_evaluation:'导出 / 准备评测',preparing_evaluation:'导出 / 准备评测',stale_evaluation:'评测进程已退出 · 待恢复',waiting_for_evaluation_retry:'评测中断 · 等待重试',waiting_for_cuda:'等待 GPU',blocked_score_provenance:'评分范围 / 身份未通过验证',blocked_evaluation_prerequisites:'评测资源暂缺'};
+    const phases={complete:'完整官方范围已评分',waiting_for_generation:'等待完整生成',waiting_for_evaluator:'已生成 · 等待评分队列',incomplete_generation:'生成未覆盖完整范围',official_evaluation:'原版评测运行中',official_full_evaluation:'导出 / 原版评测',adapter_evaluation:'导出 / 准备评测',preparing_evaluation:'导出 / 准备评测',stale_evaluation:'评测进程已退出 · 待恢复',waiting_for_evaluation_retry:'评测中断 · 等待重试',waiting_for_cuda:'等待 GPU',blocked_score_provenance:'评分范围 / 身份未通过验证',blocked_evaluation_prerequisites:'评测资源暂缺'};
     let body='<h2>实时自动评测</h2><p class="note">记录更新：'+esc(data.updated_utc)+'。只有完整官方范围通过验证才显示组均分。</p>';
     for(const name of [...new Set(rows.map(r=>r.benchmark))]){
       const selected=rows.filter(r=>r.benchmark===name);
       body+='<h3>'+esc(name)+'</h3><div class="scroll"><table><tr><th>模型</th><th>Track</th><th>生成</th><th>评测阶段</th><th>指标</th><th>说明</th></tr>';
       for(const r of selected){const score=r.full_scope_scored?r.score:null;
         const values=score?Object.entries(score.metrics).map(([k,v])=>esc(k)+': <strong>'+Number(v).toFixed(2)+'</strong>').join('<br>'):'—';
-        const note=score?`${score.units} · 完整 ${score.scope} 条${score.table8_comparability_verified===false?' · 论文 Table 8 可比性尚未确认':''}`:r.blocker;
-        body+=`<tr><td>${esc(label(r.model_key))}</td><td>${r.track==='text'?'Text':'Vision'}</td><td>${r.accepted}/${r.expected}</td><td>${esc(phases[r.phase]||r.phase)}</td><td>${values}</td><td>${esc(note)}</td></tr>`;
+        const note=score?`${score.units} · 完整 ${score.scope} 条${score.independent_runs?' · '+score.independent_runs+' independent run':''}${score.table8_comparability_verified===false?' · 论文 Table 8 可比性尚未确认':''}`:r.blocker;
+        const counts=r.generation_counts || {}, groupUrl='/pixelworld/live.html?'+new URLSearchParams({suite:r.suite,model:r.model_key,track:r.track});
+        body+=`<tr><td><a href="${groupUrl}">${esc(label(r.model_key))}</a></td><td>${r.track==='text'?'Text':'Vision'}</td><td>${r.accepted}/${r.expected}<br>${counts.running||0} active · ${counts.pending||0} pending</td><td>${esc(phases[r.phase]||r.phase)}</td><td>${values}</td><td>${esc(note)}</td></tr>`;
       }
       body+='</table></div>';
     }
