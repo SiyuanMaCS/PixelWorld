@@ -138,7 +138,10 @@ def step(config_path: Path, output: Path, benchmark: str, evaluator_command: str
                 entry.update(phase="failed", error_type=type(exc).__name__, error=str(exc),
                              official_or_adapter_score=False)
                 prerequisites = cohort / 'prerequisites.json'
-                if prerequisites.is_file() and prerequisites.stat().st_mtime >= evaluation_started:
+                # Filesystems can round mtime to a coarser clock than time.time.
+                # The small tolerance accepts this invocation's fresh write,
+                # while older watch iterations remain excluded.
+                if prerequisites.is_file() and prerequisites.stat().st_mtime >= evaluation_started - 1:
                     detail = json.loads(prerequisites.read_text())
                     if str(detail.get('phase','')).startswith('blocked_'):
                         entry.update(phase='blocked_evaluation_prerequisites',

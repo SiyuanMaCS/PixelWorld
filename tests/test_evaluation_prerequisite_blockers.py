@@ -19,6 +19,6 @@ def test_reference_download_blocker_remains_retryable_and_unscored(tmp_path, mon
     monkeypatch.setattr(watcher.subprocess,'call',failed_download)
     state=watcher.step(Path('config.json'),tmp_path/'evaluation','pcve','echo evaluator',{})
     item=state['m/text']
-    assert item['phase']=='blocked_evaluation_prerequisites'
+    assert item['phase']=='blocked_evaluation_prerequisites',item
     assert item['retryable'] is True and item['official_or_adapter_score'] is False
     assert item['phase'] not in watcher.TERMINAL
