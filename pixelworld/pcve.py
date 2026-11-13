@@ -30,6 +30,17 @@ def fetch(root: Path, relative: str):
     return target
 
 
+def evaluation_reference_paths(edits: list[dict]) -> list[str]:
+    """All pinned evaluator inputs, including source trajectories used by PES.
+
+    These references belong only in the evaluation dataset, never a workspace.
+    """
+    paths = {row[key] for row in edits for key in ('source_video', 'edited_video', 'ground_truth')}
+    paths.update(f"scenes/{row['scene']}/cases/{row['source_case_id']}/ground_truth_transforms.json"
+                 for row in edits)
+    return sorted(paths)
+
+
 def prepare(root: Path, inputs: Path, indices=None):
     manifest=fetch(root,'benchmark_manifest.json');data=json.loads(manifest.read_text())
     if sha256(manifest)!=MANIFEST_SHA256:raise ValueError('PCVE manifest differs from its official dataset revision')

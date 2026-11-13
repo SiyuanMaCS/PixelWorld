@@ -5,6 +5,14 @@ from pixelworld.media import task_rules
 from pixelworld.util import sha256
 
 
+def test_evaluation_inventory_includes_source_and_edited_ground_truth():
+    row={'scene':'ball_block','source_case_id':'baseline',
+         'source_video':'source.mp4','edited_video':'edited.mp4','ground_truth':'edit_gt.json'}
+    paths=pcve.evaluation_reference_paths([row, row])
+    assert paths == ['edit_gt.json', 'edited.mp4',
+                     'scenes/ball_block/cases/baseline/ground_truth_transforms.json', 'source.mp4']
+
+
 def test_pcve_inputs_exclude_ground_truth_outcomes_and_use_original_frame_numbers(tmp_path,monkeypatch):
     root=tmp_path/'data';root.mkdir();source=root/'source.mp4';source.write_bytes(b'original input fixture')
     row={'global_id':'scene/case','scene':'scene','case_id':'case','source_video':'source.mp4',

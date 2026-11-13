@@ -110,7 +110,7 @@ def test_new_retry_budget_is_fresh_and_accumulates_within_its_round(tmp_path):
     assert _prior_attempt_usage(config, model, "text", "bad", 4)[:2] == (60000, False)
 
 
-def test_live_old_attempt_is_not_duplicated_by_a_retry_grant(tmp_path):
+def test_live_old_attempt_is_not_duplicated_by_a_retry_grant(tmp_path, monkeypatch):
     config, model = fixture(tmp_path)
     for attempt in (1, 2):
         manifest(config, model, "bad", attempt, {"status": "failed"})
@@ -119,7 +119,28 @@ def test_live_old_attempt_is_not_duplicated_by_a_retry_grant(tmp_path):
     (old / "run_manifest.json").write_text(json.dumps({"status": "running"}))
     (old / "logs").mkdir()
     (old / "logs/supervisor.pid").write_text(str(os.getpid()))
+    monkeypatch.setattr('pixelworld.supervisor._pid_alive', lambda path, expected_arguments=(): True)
     assert inspect(config, model, "text", "bad")["state"] == "running"
+
+
+def test_reused_pid_does_not_hide_a_completed_later_attempt(tmp_path):
+    config, model = fixture(tmp_path)
+    old = manifest(config, model, 'bad', 1, {'status':'running'})
+    (old/'logs').mkdir()
+    (old/'logs/supervisor.pid').write_text(str(os.getpid()))
+    manifest(config, model, 'bad', 2, {'status':'complete','validation':{'pass':True}})
+    assert inspect(config, model, 'text', 'bad')['state'] == 'complete'
+    assert inspect(config, model, 'text', 'bad')['attempt'] == 2
+    (run_path(config, model, 'text', 'bad', 2)/'run_manifest.json').unlink()
+    assert inspect(config, model, 'text', 'bad')['state'] != 'running'
+
+
+def test_validated_submission_takes_priority_over_an_older_live_record(tmp_path, monkeypatch):
+    config, model = fixture(tmp_path)
+    manifest(config, model, 'bad', 1, {'status':'running'})
+    manifest(config, model, 'bad', 2, {'status':'complete','validation':{'pass':True}})
+    monkeypatch.setattr('pixelworld.supervisor._pid_alive', lambda path, expected_arguments=(): True)
+    assert inspect(config, model, 'text', 'bad')['state'] == 'complete'
 
 
 def test_budget_exhaustion_and_max_retry_rounds_still_bound_work(tmp_path):

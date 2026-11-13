@@ -61,16 +61,15 @@ def main():
         raise ValueError('Official dataset manifest mismatch')
     rows = json.loads(manifest_path.read_text())['edits']
     # These files remain evaluator-side; they are never copied into a workspace.
-    for row in rows:
-        for key in ['source_video','edited_video','ground_truth']:
-            try:
-                pcve.fetch(args.data_root, row[key])
-            except OSError as exc:
-                atomic_json(output/'prerequisites.json', {
-                    'phase':'blocked_reference_download', 'missing_relative_path':row[key],
-                    'detail':str(exc)[:800], 'dataset_revision':pcve.DATASET_REVISION,
-                    'scores_computed':False, 'updated_utc':utc_now()})
-                raise
+    for relative in pcve.evaluation_reference_paths(rows):
+        try:
+            pcve.fetch(args.data_root, relative)
+        except OSError as exc:
+            atomic_json(output/'prerequisites.json', {
+                'phase':'blocked_reference_download', 'missing_relative_path':relative,
+                'detail':str(exc)[:800], 'dataset_revision':pcve.DATASET_REVISION,
+                'scores_computed':False, 'updated_utc':utc_now()})
+            raise
     baseline = f'pixelworld_{args.model}_{args.track}'
     prediction_root = output/'predictions'
     exported = pcve.export(args.config,args.model,args.track,args.data_root,baseline,prediction_root)
@@ -103,7 +102,11 @@ def main():
             or any(r.get('status')!='completed' for r in evaluated)):
         raise ValueError('Original metrics contain missing, failed, or duplicate cases')
     scores = metrics['aggregate']
-    if any(scores.get('overall',{}).get(k) is None for k in ['pes','traj_px','mask_iou','psnr','ssim','lpips','clip_sim']) or scores.get('fvd') is None:
+    missing_physics = [r['global_id'] for r in evaluated if r.get('physics_status') == 'no_ground_truth']
+    if missing_physics or any(scores.get('overall',{}).get(k) is None for k in ['pes','traj_px','mask_iou','psnr','ssim','lpips','clip_sim']) or scores.get('fvd') is None:
+        atomic_json(output/'prerequisites.json', {
+            'phase':'blocked_incomplete_official_metrics', 'missing_physics_cases':missing_physics,
+            'scores_computed':False, 'updated_utc':utc_now()})
         raise ValueError('Official metrics are incomplete; do not report a full score')
     atomic_json(output/'summary.json', {'benchmark':'PCVE-RigidBench','complete_official129':True,
                 'case_count':pcve.TOTAL,'model':args.model,'track':args.track,'scores':scores,

@@ -35,7 +35,7 @@ def configurations(config: Benchmark) -> list[tuple[Model, str]]:
     return [(model, track) for model in config.models for track in model.tracks]
 
 
-def _pid_alive(path: Path) -> bool:
+def _pid_alive(path: Path, expected_arguments: tuple[str, ...] = ()) -> bool:
     try:
         pid = int(path.read_text().strip())
         os.kill(pid, 0)
@@ -50,6 +50,18 @@ def _pid_alive(path: Path) -> bool:
             state = stat.rsplit(") ", 1)[1].split()[0]
             if state == "Z":
                 return False
+            if expected_arguments:
+                try:
+                    arguments = (proc / str(pid) / "cmdline").read_bytes().decode().rstrip("\0").split("\0")
+                except FileNotFoundError:
+                    return False
+                except OSError:
+                    return True
+                # PID numbers are reused after a reboot or process exit. A
+                # surviving number alone does not identify this case runner.
+                if not any(tuple(arguments[i:i + len(expected_arguments)]) == expected_arguments
+                           for i in range(len(arguments))):
+                    return False
         return True
     except (FileNotFoundError, ValueError, ProcessLookupError, PermissionError):
         return False
@@ -65,10 +77,14 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
     launch_limit = min(limit, config.max_total_attempts) if config.max_total_attempts is not None else limit
     floor = grant["start_attempt"] if grant else 1
     pending = None
+    running = None
     budget_terminal = None
     for attempt in range(1, limit + 1):
         run = run_path(config, model, track, case_id, attempt)
         manifest_path = run / "run_manifest.json"
+        runner_arguments = ("-m", "pixelworld.cli", "run-case", "--config", str(config.source),
+                            "--model", model.key, "--track", track, "--case", case_id,
+                            "--attempt", str(attempt))
         if not run.exists():
             if floor <= attempt <= launch_limit and pending is None:
                 pending = {"state": "pending", "attempt": attempt, "run": str(run)}
@@ -76,16 +92,18 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
         try:
             manifest = json.loads(manifest_path.read_text())
         except (FileNotFoundError, json.JSONDecodeError):
-            if _pid_alive(run / "logs" / "supervisor.pid"):
-                return {"state": "running", "attempt": attempt, "run": str(run)}
+            if _pid_alive(run / "logs" / "supervisor.pid", runner_arguments):
+                running = running or {"state": "running", "attempt": attempt, "run": str(run)}
+                continue
             stale += 1
             continue
         if manifest.get("status") == "complete" and manifest.get("validation", {}).get("pass"):
             return {"state": "complete", "attempt": attempt, "run": str(run),
                     "duration_seconds": manifest.get("duration_seconds"),
                     "completed_utc": manifest.get("completed_utc")}
-        if manifest.get("status") == "running" and _pid_alive(run / "logs" / "supervisor.pid"):
-            return {"state": "running", "attempt": attempt, "run": str(run)}
+        if manifest.get("status") == "running" and _pid_alive(run / "logs" / "supervisor.pid", runner_arguments):
+            running = running or {"state": "running", "attempt": attempt, "run": str(run)}
+            continue
         if attempt > launch_limit:
             continue
         if not manifest.get('retryable', True) and manifest.get('stop_reason') in (
@@ -97,6 +115,8 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
             failed += 1
         else:
             stale += 1
+    if running:
+        return running
     if budget_terminal:
         return budget_terminal
     if pending:
