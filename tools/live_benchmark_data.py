@@ -76,7 +76,8 @@ def export_candidate(source, destination, spec, label, utc):
     pixels = source / 'pixels.npz'
     if not pixels.is_file():
         return None
-    digest = hashlib.sha256(pixels.read_bytes()).hexdigest()[:20]
+    from pixelworld.util import sha256
+    digest = sha256(pixels)[:20]
     prefix = 'assets/' + digest
     target = destination / prefix
     locks=destination/'.asset-locks';locks.mkdir(parents=True,exist_ok=True)
@@ -85,9 +86,11 @@ def export_candidate(source, destination, spec, label, utc):
         video = export_pixels(source, target, spec)
     if not video:
         return None
-    value = {**video, 'label': label, 'utc': utc,
-             'pixels': prefix + '/' + video['pixels_file'],
+    value = {**video, 'label': label, 'utc': utc,'asset_id':digest,
+             'pixels': prefix + '/' + video['pixels_file'] if video.get('pixels_file') else None,
              'poster': prefix + '/poster.png'}
+    if video.get('chunks'):
+        value['chunks']=[{**c,'pixels':prefix+'/'+c['pixels_file']}for c in video['chunks']]
     for name in ('inspection.png', 'transition_check.png'):
         if (source / name).is_file():
             value[name.split('.')[0]] = image_asset(source / name, destination)
@@ -127,7 +130,7 @@ def case_data(run, destination, previous=None):
         try:
             final = export_candidate(run / 'workspace', destination, spec,
                                      '当前保存结果', manifest.get('completed_utc'))
-            if final and (not versions or versions[-1]['pixels'] != final['pixels']):
+            if final and (not versions or versions[-1].get('asset_id',versions[-1]['pixels']) != final['asset_id']):
                 versions.append(final)
         except (OSError, ValueError, KeyError, EOFError, BadZipFile):
             pass
@@ -184,7 +187,7 @@ def case_data(run, destination, previous=None):
 
 
 def sources(run_root):
-    primary = ('physics_iq_512w24fps_gpt_native', 'physics_iq', 'physics_iq_gpt_native_v2',
+    primary = ('physics_iq_720p24fps','physics_iq_4k24fps','physics_iq_512w24fps_gpt_native', 'physics_iq', 'physics_iq_gpt_native_v2',
                'physics_iq_seed21_native_v2', 'robojudge', 'robojudge_seed21_native_v2', 'pcve_smoke')
     values = [(name, run_root / 'generations' / name) for name in primary]
     paired = run_root.parent / 'phygen_pixelspace_v2_20261112/generations'
@@ -309,6 +312,7 @@ def referenced_assets(detail):
     values = [detail.get('first_frame'), detail.get('source_video')]
     for video in detail.get('candidates',[]):
         values += [video.get(k) for k in ('pixels','poster','inspection','transition_check')]
+        values += [c.get('pixels')for c in video.get('chunks',[])]
     for event in detail.get('events',[]):
         values += event.get('images',[])
     return set(path for path in values if path)
@@ -396,6 +400,7 @@ def async_update(run_root,destination,cache,pool,pending,render_root,
                        for h in cases.values() if any(a['status']=='complete' for a in h)]
             measured=[a['output_tokens'] for a in completed if a.get('output_tokens') is not None]
             payload={'suite':suite,'model_key':model,'track':track,'counts':group.get('counts') or {},
+                'paused':(source/'STOP').exists(),
                 'cases_total':status.get('cases'),'updated_utc':status.get('updated_utc'),'cases':cases,
                 'mean_duration_seconds':group.get('mean_duration_seconds'),
                 'mean_output_tokens_cached':sum(measured)/len(measured) if measured else None,

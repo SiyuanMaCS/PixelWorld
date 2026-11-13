@@ -31,7 +31,18 @@ class PixelPlayer{
  pause(){this.playing=false;this.node.querySelector('.play').textContent='▶ 播放'}
  async toggle(){try{await this.load();if(this.playing)this.pause();else{if(this.frame>=this.d.frames-1)this.frame=0;this.start()}}catch(e){}}
 }
-window.__benchPlayers=[];document.querySelectorAll('.player').forEach(n=>{let p=new PixelPlayer(n,JSON.parse(n.dataset.video));n.dataset.state='idle';let start=p.start.bind(p),pause=p.pause.bind(p);p.start=()=>{n.dataset.state='playing';start()};p.pause=()=>{n.dataset.state='paused';pause()};n.querySelector('canvas').onclick=()=>p.toggle();let overlay=n.querySelector('.play-overlay');if(overlay)overlay.onclick=()=>p.toggle();window.__benchPlayers.push(p)});window.__benchReady=true;
+class ChunkedPixelPlayer extends PixelPlayer{
+ constructor(node,d){super(node,d);this.buffers=new Map();this.requests=new Map();this.seek.oninput=async()=>{this.pause();this.frame=+this.seek.value;await this.ensureFrame(this.frame);this.draw()};}
+ chunkIndex(frame){return this.d.chunks.findIndex(c=>frame>=c.first_frame&&frame<c.first_frame+c.frames)}
+ async ensureFrame(frame){const index=this.chunkIndex(frame);if(index<0)throw Error('missing RGB chunk');if(!this.buffers.has(index)){
+  if(!this.requests.has(index)){const chunk=this.d.chunks[index];this.requests.set(index,(async()=>{const response=await fetch(chunk.pixels);if(!response.ok)throw Error('HTTP '+response.status);const bytes=new Uint8Array(await new Response(response.body.pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());if(bytes.length!==this.d.width*this.d.height*chunk.frames*3)throw Error('RGB chunk length mismatch');this.buffers.set(index,bytes);this.frames=true;for(const key of this.buffers.keys())if(key!==index&&key!==index-1)this.buffers.delete(key)})().finally(()=>this.requests.delete(index)));}
+  await this.requests.get(index);
+ }return index;}
+ async load(){try{await this.ensureFrame(this.frame);this.draw()}catch(error){this.note.textContent='载入失败：'+error.message;throw error}}
+ draw(){const index=this.chunkIndex(this.frame),bytes=this.buffers.get(index);if(!bytes)return;const chunk=this.d.chunks[index],local=this.frame-chunk.first_frame,n=this.d.width*this.d.height,rgba=new Uint8ClampedArray(n*4);for(let i=0;i<n;i++){const offset=(i*chunk.frames+local)*3;rgba[4*i]=bytes[offset];rgba[4*i+1]=bytes[offset+1];rgba[4*i+2]=bytes[offset+2];rgba[4*i+3]=255}this.ctx.putImageData(new ImageData(rgba,this.d.width,this.d.height),0,0);this.seek.value=this.frame;this.note.textContent=(this.frame/this.d.fps).toFixed(2)+' / '+(this.d.frames/this.d.fps).toFixed(2)+' s · '+(this.frame+1)+'/'+this.d.frames+' · 原生像素分块';}
+ start(){this.playing=true;this.epoch=performance.now()-this.frame*1000/this.d.fps;this.node.querySelector('.play').textContent='Ⅱ 暂停';const tick=async now=>{if(!this.playing)return;this.frame=Math.max(0,Math.min(this.d.frames-1,Math.floor((now-this.epoch)*this.d.fps/1000)));const before=performance.now();try{await this.ensureFrame(this.frame)}catch(error){this.note.textContent='载入失败：'+error.message;this.pause();return}this.epoch+=performance.now()-before;if(!this.playing)return;this.draw();if(now-this.epoch>=this.d.frames*1000/this.d.fps){this.pause();return}requestAnimationFrame(tick)};requestAnimationFrame(tick)}
+}
+window.__benchPlayers=[];document.querySelectorAll('.player').forEach(n=>{const data=JSON.parse(n.dataset.video);let p=data.chunks?new ChunkedPixelPlayer(n,data):new PixelPlayer(n,data);n.dataset.state='idle';let start=p.start.bind(p),pause=p.pause.bind(p);p.start=()=>{n.dataset.state='playing';start()};p.pause=()=>{n.dataset.state='paused';pause()};n.querySelector('canvas').onclick=()=>p.toggle();let overlay=n.querySelector('.play-overlay');if(overlay)overlay.onclick=()=>p.toggle();window.__benchPlayers.push(p)});window.__benchReady=true;
 document.querySelectorAll('[data-panel]').forEach(b=>b.onclick=()=>{document.querySelectorAll('[data-panel]').forEach(x=>x.setAttribute('aria-selected',String(x===b)));document.querySelectorAll('.benchmark-panel').forEach(x=>x.hidden=x.id!==b.dataset.panel)});
 """
 
@@ -61,6 +72,8 @@ def document(title, body, depth=0, case_page=False):
 
 
 def player(data):
+    if data.get('chunks'):
+        data={**data,'chunks':[{**c,'pixels':c.get('pixels',c['pixels_file'])}for c in data['chunks']]}
     return (f"<div class=player data-video='{html.escape(json.dumps(data), quote=True)}'>"
             '<div class=player-frame><canvas aria-label="生成视频"></canvas><button class=play-overlay aria-label="播放视频">▶</button></div>'
             "<div class=controls><button class=play>▶ 播放</button>"
@@ -68,12 +81,21 @@ def player(data):
             "</div><p class=status>点击播放 · 原生 RGB 像素</p></div>")
 
 
-def export_pixels(source, target, spec):
+def video_paths(video,prefix):
+    result={**video,'poster':prefix+'/poster.png'}
+    if video.get('chunks'):
+        result['chunks']=[{**c,'pixels':prefix+'/'+c['pixels_file']}for c in video['chunks']]
+    else:result['pixels']=prefix+'/'+video['pixels_file']
+    return result
+
+
+def export_pixels(source, target, spec, chunk_bytes=96*1024*1024):
     target.mkdir(parents=True, exist_ok=True)
     path = source / "pixels.npz"
     if not path.is_file():
         return None
-    source_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    from pixelworld.util import sha256
+    source_hash = sha256(path)
     receipt = target / 'export_receipt.json'
     media = {k: spec[k] for k in ('width', 'height', 'frames', 'fps')}
     cached = None
@@ -82,7 +104,9 @@ def export_pixels(source, target, spec):
             saved = json.loads(receipt.read_text())
             data = saved['video']
             if (saved.get('source_npz_sha256') == source_hash and saved.get('media') == media
-                    and (target/data['pixels_file']).is_file() and (target/'poster.png').is_file()):
+                    and all((target/name).is_file() for name in
+                            ([data['pixels_file']] if data.get('pixels_file') else [c['pixels_file'] for c in data.get('chunks',[])]))
+                    and (target/'poster.png').is_file()):
                 cached = data
         except (ValueError, KeyError, TypeError):
             pass
@@ -95,7 +119,24 @@ def export_pixels(source, target, spec):
         packed = d["pixels"]
         if packed.shape != (spec["height"], spec["width"], spec["frames"]):
             return None
-        packed = packed.transpose(2, 0, 1).astype(np.uint32)
+        if spec['width']*spec['height']*spec['frames']*3>chunk_bytes:
+            count=max(1,chunk_bytes//(spec['width']*spec['height']*3));chunks=[];last_hash=None
+            for start in range(0,spec['frames'],count):
+                end=min(start+count,spec['frames'])
+                block=np.empty((spec['height'],spec['width'],end-start,3),dtype=np.uint8)
+                for channel,shift in enumerate((16,8,0)):block[...,channel]=(packed[:,:,start:end]>>shift)&255
+                payload=gzip.compress(block.tobytes(),compresslevel=6,mtime=0)
+                name='pixels_'+hashlib.sha256(payload).hexdigest()[:16]+'.rgb.gz'
+                (target/name).write_bytes(payload)
+                chunks.append({'first_frame':start,'frames':end-start,'pixels_file':name,'layout':'pixel-time'})
+                if start==0:Image.fromarray(block[:,:,0,:]).save(target/'poster.png')
+                if end==spec['frames']:last_hash=hashlib.sha256(block[:,:,-1,:].tobytes()).hexdigest()
+            video={**media,'chunks':chunks,'layout':'pixel-time-chunks','last_rgb_sha256':last_hash}
+            for name in ('inspection.png','transition_check.png'):
+                if (source/name).is_file():shutil.copy2(source/name,target/name)
+            receipt.write_text(json.dumps({'source_npz_sha256':source_hash,'media':media,'video':video}))
+            return video
+        packed = packed.transpose(2, 0, 1).astype(np.uint32,copy=False)
         rgb = np.stack([(packed >> shift) & 255 for shift in (16, 8, 0)], axis=-1).astype(np.uint8)
     # Pixel/time-major layout compresses stationary pixels across time, even
     # when a whole RGB frame exceeds gzip's 32KB spatial history window.
@@ -220,7 +261,7 @@ def build_case(run, output):
         body += '</section>'
     video = export_pixels(ws, output / "final", spec)
     if video:
-        body += '<div class=case-layout id=video><div>'+player({**video, "pixels": "final/" + video["pixels_file"], "poster": "final/poster.png"})+'</div>'
+        body += '<div class=case-layout id=video><div>'+player(video_paths(video,'final'))+'</div>'
         task_label = {'t2v':'文本生成','i2v':'首帧续写','v2v':'视频续写','video_edit':'视频编辑'}.get(spec.get('task_type'),'视频生成')
         body += (f'<aside class=card><span class=badge>{task_label}</span><h3 style="margin-top:14px">原始任务</h3>'
                  f'<p>{html.escape(prompt)}</p><div class=facts><div><strong>{spec["frames"]/spec["fps"]:.2f}s</strong>视频时长</div>'
@@ -255,7 +296,7 @@ def build_case(run, output):
         previous = code
         prefix = f"candidate_{i:02d}"
         body += (f'<details class=candidate{" open" if i==0 else ""}><summary><strong>候选 {i+1:02d}</strong><span class=status>播放与检查图</span><time>{html.escape(stamp)}</time></summary><div class=candidate-content>'
-                 + player({**data, "pixels": f"{prefix}/{data['pixels_file']}", "poster": f"{prefix}/poster.png"}))
+                 + player(video_paths(data,prefix)))
         body += '<div class=checks>'
         for name in ("inspection.png", "transition_check.png"):
             if (output / prefix / name).exists():

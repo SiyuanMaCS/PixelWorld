@@ -38,6 +38,34 @@ def publish(checkout: Path):
             '<a href="/pixelworld/phygen_pixelspace.html">协议与进度 →</a></p>'
             '<p id="live-poll-time" class="note">正在读取当前模型与四个条件的进度…</p>'))
         changed.append(gallery)
+        resolution='pixelworld/physics_iq_resolution.html'
+        (checkout/resolution).write_text(document('Physics-IQ · 720p / 4K · 24 FPS',
+            '<section class=hero><p class=eyebrow>PHYSICS-IQ · RESOLUTION ABLATION</p>'
+            '<h1>Physics-IQ · 720p / 4K</h1><p>两档都采用24 FPS、120帧、5秒；'
+            'GPT-6.1-Sol、GPT-5.6-Sol、DeepSeek-V4.1-Flash × Text/Vision。</p></section>'
+            '<p><a href="/pixelworld/index.html">← PixelWorld 总览</a></p>'
+            '<div class=card><strong>2,376 条全量视频</strong><p>每档198条官方BPP/I2V任务 × 三模型 × 两Track。'
+            '首帧来自官方原始4K照片；720p直接缩小，4K保留原始RGB。分辨率ablation只用于Physics-IQ。</p></div>'
+            '<section id="resolution-runs"><p>正在读取两个独立实验组的进度…</p></section>'
+            '<p class=note>原生视频与保存候选分开记录。大像素流分块加载，不通过重复帧或放大低分辨率视频提交。</p>'))
+        changed.append(resolution)
+        smoke='pixelworld/physics_iq_4k_smoke/index.html';(checkout/smoke).parent.mkdir(parents=True,exist_ok=True)
+        (checkout/smoke).write_text(document('Physics-IQ · GPT-6.1-Sol · 4K Smoke',
+            '<section class=hero><p class=eyebrow>PHYSICS-IQ · NATIVE 4K SMOKE</p><h1>GPT-6.1-Sol · 4K Smoke</h1>'
+            '<p>3840×2160 · 24 FPS · 120 帧 · 5 秒。正在读取已通过格式检查的原生像素、代码与工具记录。</p></section>'
+            '<p id="live-poll-time">正在读取4K smoke…</p>'))
+        changed.append(smoke)
+        for name in ['pixelworld/index.html','pixelworld/pixelworld-index.html']:
+            p=checkout/name
+            if p.exists():
+                text=p.read_text()
+                if 'id="physics-resolution-entry"' not in text:
+                    card='<article class="card feature" id="physics-resolution-entry"><span class="badge">独立全量实验</span><h3>Physics-IQ · 720p / 4K · 24 FPS</h3><p>三模型 × Text/Vision，两个分辨率各198条；合计2,376条视频。</p><a class="button" href="physics_iq_resolution.html">打开分辨率对照与实时进度 →</a></article>'
+                    p.write_text(text.replace('</main>',card+'</main>'));changed.append(name)
+                text=p.read_text()
+                if 'id="physics-4k-smoke-entry"' not in text:
+                    card='<article class="card feature" id="physics-4k-smoke-entry"><span class="badge">smoke</span><h3>GPT-6.1-Sol · 原生4K Smoke</h3><p>3840×2160、24FPS、120帧；原生播放、代码与实际工具记录。</p><a class="button" href="physics_iq_4k_smoke/index.html">播放4K smoke →</a></article>'
+                    p.write_text(text.replace('</main>',card+'</main>'));changed.append(name)
         paths = subprocess.check_output(['git','ls-files','--','pixelworld'], cwd=checkout, text=True).splitlines()
         for relative in paths:
             if not relative.endswith('.html'):

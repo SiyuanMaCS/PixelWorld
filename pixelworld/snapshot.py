@@ -80,7 +80,7 @@ def freeze(workspace: Path, trace: Path, index: int, key, media: dict | None = N
                 raise ValueError('Auxiliary candidate output changed while freezing')
         with np.load(temporary / 'pixels.npz', allow_pickle=False) as archive:
             pixels = archive['pixels']
-        if pixels.dtype != np.uint32 or pixels.shape not in ((h,w,n),(n,h,w)) or np.any(pixels > 0xFFFFFF):
+        if pixels.dtype != np.uint32 or pixels.shape not in ((h,w,n),(n,h,w)) or int(pixels.max()) > 0xFFFFFF:
             raise ValueError('Invalid RGB tensor')
         frames = pixels.transpose(2,0,1) if pixels.shape == (h,w,n) else pixels
         for i in range(spec["frames"]):
@@ -107,10 +107,14 @@ def freeze(workspace: Path, trace: Path, index: int, key, media: dict | None = N
                         image.verify()
                 except (OSError, ValueError):
                     path.unlink();copied.remove(name);omitted.append(name)
-        rgb_frames = np.stack([(frames >> 16) & 255, (frames >> 8) & 255, frames & 255],axis=-1).astype(np.uint8)
+        digest=hashlib.sha256()
+        for frame in frames:
+            rgb=np.empty((h,w,3),dtype=np.uint8)
+            for channel,shift in enumerate((16,8,0)):rgb[...,channel]=(frame>>shift)&255
+            digest.update(rgb.tobytes())
         record = {'round':index,'utc':utc_now(),'generate_sha256':key[0],'pixels_sha256':key[1],
                   'inspection_sha256':sha256(temporary/'inspection.png') if (temporary/'inspection.png').is_file() else None,
-                  'canonical_rgb_sha256':hashlib.sha256(np.ascontiguousarray(rgb_frames).tobytes()).hexdigest(),
+                  'canonical_rgb_sha256':digest.hexdigest(),
                   'files':copied,'omitted_invalid_optional_images':omitted,
                   'audio_sha256':key[3] if len(key)>3 else None,
                   'required_output_files_complete': all((temporary/name).is_file() for name in

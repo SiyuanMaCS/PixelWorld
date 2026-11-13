@@ -10,6 +10,8 @@ from pixelworld.smoke_web import clean
 from tools.evaluate_robojudge_shared50 import CODE_REVISION, CHECKPOINT_REVISION, DATASET_REVISION, TASKS_SHA256
 
 COHORTS = {
+    'physics_iq_720p24fps':('Physics-IQ Verified · 720p24fps','physics_720p24fps_full_scheduler',198),
+    'physics_iq_4k24fps':('Physics-IQ Verified · 4K24fps','physics_4k24fps_full_scheduler',198),
     'physics_iq':('Physics-IQ Verified','physics_full_scheduler',198),
     'physics_iq_gpt_native_v2':('Physics-IQ Verified','physics_gpt_native_v2_full_scheduler',198),
     'physics_iq_seed21_native_v2':('Physics-IQ Verified','physics_seed21_native_v2_full_scheduler',198),

@@ -303,7 +303,7 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         (source / "first_frame.png", workspace / "first_frame.png"),
         (source / "prompt.txt", workspace / "prompt.txt"),
         (task_root / "GENERATION_RULES.md", workspace / "GENERATION_RULES.md"),
-        (ASSET_ROOT / "artifact_io.py", workspace / "artifact_io.py"),
+        (ASSET_ROOT / ("artifact_io_large.py" if spec['width']*spec['height']*spec['frames']*3>100*1024*1024 and not spec.get('audio') else "artifact_io.py"), workspace / "artifact_io.py"),
         (ASSET_ROOT / "player_template.html", workspace / "player_template.html"),
     ):
         if origin.is_file():

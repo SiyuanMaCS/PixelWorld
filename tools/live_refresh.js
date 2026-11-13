@@ -27,6 +27,7 @@
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const label = key => ({'gpt61-sol':'GPT-6.1-Sol','gpt56-sol':'GPT-5.6-Sol','gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash','seed21-pro':'Seed-2.1-Pro-0915'}[key] || key);
   const prefixes = {
+    physics_iq_720p24fps:'physics_iq_720p24fps',physics_iq_4k24fps:'physics_iq_4k24fps',
     physics_iq_512w24fps_gpt_native: 'physics_iq_512w24fps_gpt_native',
     'bench_smoke_codex_20261109/physics_iq': 'physics_iq',
     'bench_smoke_codex_20261109/physics_iq_gpt_native_v2': 'physics_iq_gpt_native_v2',
@@ -36,9 +37,10 @@
   };
   const query = new URLSearchParams(location.search);
   let context = null;
+  if(location.pathname.endsWith('/physics_iq_4k_smoke/index.html'))context={suite:'physics_iq_4k24fps',model:'gpt61-sol',track:'text',case:'0001',attempt:'1'};
   if (location.pathname.endsWith('/live.html')) {
     context = {suite:query.get('suite'),model:query.get('model'),track:query.get('track'),case:query.get('case'),attempt:query.get('attempt')};
-  } else {
+  } else if(!context) {
     const relative = location.pathname.split('/pixelworld/')[1] || '';
     for (const [prefix,suite] of Object.entries(prefixes)) {
       if (!relative.startsWith(prefix + '/')) continue;
@@ -52,7 +54,7 @@
     }
   }
   const phygenGallery = location.pathname.endsWith('/phygen_pixelspace_smoke/index.html');
-  const relevant = context || phygenGallery || /\/(index|pixelworld-index|physics_iq_baseline|physics_iq_512w24fps|robojudge|pcve_rigid|phygen_pixelspace)\.html$/.test(location.pathname);
+  const relevant = context || phygenGallery || /\/(index|pixelworld-index|physics_iq_baseline|physics_iq_512w24fps|physics_iq_resolution|robojudge|pcve_rigid|phygen_pixelspace)\.html$/.test(location.pathname);
   if (!relevant) return;
   window.__pixelworldLiveRefreshActive = true;
   async function get(path) {
@@ -67,12 +69,14 @@
   function asset(path) { return path ? root + path : ''; }
   function video(v) {
     const data = {...v,pixels:asset(v.pixels),poster:asset(v.poster)};
+    if(v.chunks)data.chunks=v.chunks.map(c=>({...c,pixels:asset(c.pixels)}));
     return `<div class="player" data-video='${esc(JSON.stringify(data))}'><div class="player-frame"><canvas></canvas><button class="play-overlay">▶</button></div><div class="controls"><button class="play">▶ 播放</button><button class="replay">↻ 重播</button><input class="seek" type="range" min="0" step="1" value="0"></div><p class="status">点击播放 · 保存的 RGB 候选</p></div>`;
   }
   function initializePlayers() {
     window.__benchPlayers = [];
     document.querySelectorAll('.player').forEach(node => {
-      const p = new PixelPlayer(node,JSON.parse(node.dataset.video));
+      const data=JSON.parse(node.dataset.video);
+      const p = data.chunks?new ChunkedPixelPlayer(node,data):new PixelPlayer(node,data);
       const draw = p.draw.bind(p);
       p.draw = () => {p.frame=Math.max(0,Math.min(p.d.frames-1,p.frame));draw();};
       node.dataset.state = 'idle';
@@ -122,7 +126,7 @@
     let box=document.querySelector('#live-group-status');
     if(!box){box=document.createElement('div');box.id='live-group-status';box.className='card';const hero=document.querySelector('main .hero');if(hero)hero.after(box);else document.querySelector('main').prepend(box);}
     const c=d.counts;
-    box.innerHTML=`<span class="badge">实时进度</span> ${c.complete || 0}/${d.cases_total || 0} 有效交付 · ${c.running || 0} 运行中 · ${c.pending || 0} 待生成 · ${c.exhausted || 0} 未交付<p class="note">状态：${esc(d.updated_utc)}。保存候选可以直接播放，无需等待 agent 结束。</p>`;
+    box.innerHTML=`<span class="badge">${d.paused?'已暂停':'实时进度'}</span> ${c.complete || 0}/${d.cases_total || 0} 有效交付 · ${d.paused?0:c.running || 0} 运行中 · ${c.pending || 0} 待生成 · ${c.exhausted || 0} 未交付<p class="note">状态：${esc(d.updated_utc)}。保存候选可以直接播放，无需等待 agent 结束。</p>`;
     box.innerHTML+=`<p class="note">平均耗时 ${d.mean_duration_seconds!=null?(d.mean_duration_seconds/60).toFixed(1)+' 分钟':'—'} · 已加载 ${d.token_mean_cases || 0} 条成功记录，平均输出 ${d.mean_output_tokens_cached!=null?Math.round(d.mean_output_tokens_cached).toLocaleString()+' token':'—'}</p>`;
     box.innerHTML+=`<p class="note">历史详情覆盖：${Object.keys(d.cases || {}).length}/${d.cases_total || 0}。后台持续补齐已完成样本；当前候选使用独立更新通道。</p>`;
     const old=document.querySelector('main > p');
@@ -162,6 +166,15 @@
   }
   function summary(catalogue) {
     const groups=catalogue.groups;
+    if(location.pathname.endsWith('/physics_iq_resolution.html')){
+      const container=document.querySelector('#resolution-runs');
+      if(container){let body='';for(const [suite,title] of [['physics_iq_720p24fps','720p · 1280×720 · 24 FPS'],['physics_iq_4k24fps','4K · 3840×2160 · 24 FPS']]){
+        const selected=groups.filter(g=>g.suite===suite);body+='<h2>'+title+'</h2><div class="scroll"><table><tr><th>模型</th><th>Text</th><th>Vision</th></tr>';
+        for(const model of [...new Set(selected.map(g=>g.model_key))]){body+='<tr><td>'+esc(label(model))+'</td>';for(const track of ['text','vision-agent']){const g=selected.find(x=>x.model_key===model&&x.track===track),c=g?.counts||{},link='/pixelworld/live.html?'+new URLSearchParams({suite,model,track});body+=`<td><strong>${c.complete||0}/${g?.cases_total||198}</strong> · ${c.running||0} active<br>${c.pending||0} pending · ${c.exhausted||0} 未交付<br><a href="${link}">视频、修订与工具记录 →</a></td>`}body+='</tr>'}
+        body+='</table></div>';}
+        if(container.innerHTML!==body)container.innerHTML=body;
+      }
+    }
     if(location.pathname.endsWith('/physics_iq_512w24fps.html')) {
       const selected=groups.filter(g=>g.suite==='physics_iq_512w24fps_gpt_native');
       const table=document.querySelector('table.matrix');
@@ -180,6 +193,7 @@
     if(context)rows=rows.filter(r=>r.suite===context.suite&&r.model_key===context.model&&r.track===context.track);
     else if(location.pathname.endsWith('/physics_iq_baseline.html'))rows=rows.filter(r=>r.suite.startsWith('physics_iq')&&!r.suite.includes('512'));
     else if(location.pathname.endsWith('/physics_iq_512w24fps.html'))rows=rows.filter(r=>r.suite.includes('512w24fps'));
+    else if(location.pathname.endsWith('/physics_iq_resolution.html'))rows=rows.filter(r=>r.suite==='physics_iq_720p24fps'||r.suite==='physics_iq_4k24fps');
     else if(location.pathname.endsWith('/robojudge.html'))rows=rows.filter(r=>r.suite.startsWith('robojudge'));
     else if(location.pathname.endsWith('/pcve_rigid.html'))rows=rows.filter(r=>r.suite==='pcve_smoke');
     else if(phygenGallery || location.pathname.endsWith('/phygen_pixelspace.html'))return;

@@ -207,7 +207,7 @@ def validated_rgb(run: Path, case: dict, source_first_frame: Path | None = None)
     spec = json.loads((run / "media_contract.json").read_text())
     media = tuple(spec.get(k) for k in ('width','height','fps','frames'))
     if (spec != manifest.get("media_contract") or spec.get('task_type') != 'i2v'
-            or spec.get('audio') is not None or media not in ((256,144,4,20),(512,288,24,120))):
+            or spec.get('audio') is not None or media not in ((256,144,4,20),(512,288,24,120),(1280,720,24,120),(3840,2160,24,120))):
         raise ValueError("Physics-IQ export requires an authorized native five-second media contract")
     width,height,fps,count = media
     snapshot = conditioning_evidence_directory(run, manifest)
@@ -219,13 +219,17 @@ def validated_rgb(run: Path, case: dict, source_first_frame: Path | None = None)
         raise ValueError("Input is not the pinned official base BPP")
     with Image.open(snapshot / "first_frame.png") as image:
         initial = np.asarray(image.convert("RGB"))
-    if width == 512:
+    if width in (512,1280,3840):
         if source_first_frame is None:
             raise ValueError('High-resolution conditioning requires its preserved canonical source frame')
         with Image.open(source_first_frame) as image:
             source = image.convert('RGB')
-            canonical = np.asarray(source)
-            expected_initial = np.asarray(source.resize((width,height),Image.Resampling.LANCZOS))
+            if width in (1280,3840):
+                if sha256(source_first_frame)!=case['source_sha256'] or source.size!=(3840,2160):
+                    raise ValueError('Native official conditioning source changed')
+                canonical=np.asarray(source.resize((256,144),Image.Resampling.BOX))
+            else:canonical = np.asarray(source)
+            expected_initial = np.asarray(source if width==3840 else source.resize((width,height),Image.Resampling.LANCZOS))
     else:
         canonical = initial
         expected_initial = initial
@@ -239,10 +243,12 @@ def validated_rgb(run: Path, case: dict, source_first_frame: Path | None = None)
     with np.load(tensor, allow_pickle=False) as data:
         pixels = data["pixels"]
         if (pixels.shape != (height, width, count) or pixels.dtype.kind not in "ui"
-                or np.any(pixels < 0) or np.any(pixels > 0xFFFFFF)):
+                or int(pixels.min())<0 or int(pixels.max())>0xFFFFFF):
             raise ValueError("Invalid submitted Physics-IQ RGB tensor")
-        packed = pixels.transpose(2, 0, 1).astype(np.uint32)
-        rgb = np.stack([(packed >> s) & 255 for s in (16, 8, 0)], axis=-1).astype(np.uint8)
+        packed = pixels.transpose(2, 0, 1).astype(np.uint32,copy=False)
+        rgb=np.empty((count,height,width,3),dtype=np.uint8)
+        for index,frame in enumerate(packed):
+            for channel,shift in enumerate((16,8,0)):rgb[index,:,:,channel]=(frame>>shift)&255
     frames = run / "workspace/frames"
     if {p.name for p in frames.glob("*.png")} != {f"{i:02d}.png" for i in range(count)}:
         raise ValueError("Incomplete or extra Physics-IQ PNG sequence")
@@ -276,6 +282,8 @@ def export_videos(config: Benchmark, model_key: str, track: str, output: Path) -
         if inventory.get('schema') == 'pixelworld-highres-physics-iq-inputs-v1':
             conditioning = {r['id']: (Path(inventory['source_inputs']) / r['id'] / 'first_frame.png',
                                       r['source_first_frame_sha256']) for r in inventory['cases']}
+        elif inventory.get('schema')=='pixelworld-native-source-physics-iq-inputs-v1':
+            conditioning={r['id']:(Path(r['source_file']),r['source_sha256'])for r in inventory['cases']}
 
     def encode(case: dict) -> dict:
         info = accepted[case["id"]]
@@ -294,13 +302,18 @@ def export_videos(config: Benchmark, model_key: str, track: str, output: Path) -
             "-frames:v", str(spec['frames']), "-an", "-c:v", "libx264rgb", "-preset", "ultrafast",
             "-threads", "1", "-crf", "0", "-pix_fmt", "rgb24", "-r", str(spec['fps']), str(target),
         ], check=True)
-        decoded = subprocess.run([
+        decoder = subprocess.Popen([
             ffmpeg, "-hide_banner", "-loglevel", "error", "-i", str(target),
             "-f", "rawvideo", "-pix_fmt", "rgb24", "pipe:1",
-        ], check=True, stdout=subprocess.PIPE).stdout
-        expected = rgb.tobytes()
-        if decoded != expected:
-            raise RuntimeError(f"Lossless RGB export mismatch: {case['id']}")
+        ], stdout=subprocess.PIPE)
+        try:
+            for frame in rgb:
+                expected=frame.tobytes()
+                if decoder.stdout.read(len(expected))!=expected:raise RuntimeError(f"Lossless RGB export mismatch: {case['id']}")
+            if decoder.stdout.read(1) or decoder.wait()!=0:raise RuntimeError('Unexpected decoded RGB frame count')
+        finally:
+            if decoder.poll() is None:decoder.terminate();decoder.wait()
+            decoder.stdout.close()
         return {"id": case["id"], "filename": target.name,
                 "video_sha256": sha256(target), "decoded_rgb_exact": True,
                 "source_run": info["run"], "source_run_manifest_sha256": sha256(Path(info["run"]) / "run_manifest.json"),
@@ -314,10 +327,12 @@ def export_videos(config: Benchmark, model_key: str, track: str, output: Path) -
                                        else "early_workspace_inputs_hash_verified",
                 "input_rgb_sha256": hashlib.sha256(rgb[0].tobytes()).hexdigest(),
                 "canonical_input_rgb_sha256": case["resized_rgb_sha256"],
-                "conditioning_transform": 'canonical256_lanczos512' if spec['width']==512 else 'canonical256_identity',
+                "conditioning_transform": ('official_source_rgb_identity' if spec['width']==3840 else
+                    'official_source_lanczos720' if spec['width']==1280 else 'canonical256_lanczos512' if spec['width']==512 else 'canonical256_identity'),
                 "media_contract": spec, "base_bpp_sha256": case["prompt_sha256"]}
 
-    with ThreadPoolExecutor(max_workers=8) as executor:
+    workers=1 if conditioning and any(path.stat().st_size>1024*1024 for path,_ in conditioning.values()) else 8
+    with ThreadPoolExecutor(max_workers=workers) as executor:
         records = list(executor.map(encode, cases))
     formats = {tuple(r['media_contract'][k] for k in ('width','height','fps','frames')) for r in records}
     if len(formats) != 1:

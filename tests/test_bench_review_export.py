@@ -29,6 +29,22 @@ def test_changed_candidate_retains_old_url_and_exports_new_rgb(tmp_path):
     np.testing.assert_array_equal(decoded[:,:,1], np.broadcast_to([64,80,96],(2,2,3)))
 
 
+def test_chunked_native_pixels_round_trip_all_frames_without_downsampling(tmp_path):
+    source=tmp_path/'source';source.mkdir();target=tmp_path/'public'
+    rng=np.random.default_rng(7);rgb=rng.integers(0,256,(7,3,4,3),dtype=np.uint8)
+    values=rgb.astype(np.uint32);packed=(values[...,0]<<16)|(values[...,1]<<8)|values[...,2]
+    np.savez_compressed(source/'pixels.npz',pixels=packed.transpose(1,2,0))
+    spec={'width':4,'height':3,'frames':7,'fps':24}
+    video=export_pixels(source,target,spec,chunk_bytes=72)
+    assert [c['frames']for c in video['chunks']]==[2,2,2,1]
+    blocks=[]
+    for c in video['chunks']:
+        block=np.frombuffer(gzip.decompress((target/c['pixels_file']).read_bytes()),dtype=np.uint8).reshape(3,4,c['frames'],3)
+        blocks.append(block.transpose(2,0,1,3))
+    np.testing.assert_array_equal(np.concatenate(blocks),rgb)
+    assert export_pixels(source,target,spec,chunk_bytes=72)==video
+
+
 def test_robojudge_text_and_vision_scores_keep_track_and_partial_scope(tmp_path, monkeypatch):
     root, output = tmp_path/'run', tmp_path/'web'
     for suffix, pa, ia in [('text_gpu_smoke', 2, 2), ('gpu_smoke', 3, 5)]:
