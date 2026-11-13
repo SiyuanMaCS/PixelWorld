@@ -3,6 +3,16 @@ import numpy as np
 from tools.live_benchmark_data import case_data, update
 
 
+def test_time_bucket_pointer_is_immutable_and_names_an_existing_revision(tmp_path):
+    from tools.live_benchmark_data import save_head_pointer
+    p=save_head_pointer(tmp_path, 'a'*40, now=1794577801)
+    assert json.loads(p.read_text())['revision']=='a'*40
+    assert save_head_pointer(tmp_path, 'b'*40, now=1794577820)==p
+    assert json.loads(p.read_text())['revision']=='a'*40
+    newer=save_head_pointer(tmp_path, 'b'*40, now=1794577831)
+    assert newer != p and json.loads(newer.read_text())['revision']=='b'*40
+
+
 def make_run(root, status='running', video=True):
     run = root / 'generations/physics_iq_512w24fps_gpt_native/m/text/case_0001_attempt_01'
     (run / 'workspace').mkdir(parents=True)

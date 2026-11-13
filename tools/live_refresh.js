@@ -6,25 +6,22 @@
   let lastHeadCheck = 0;
   async function refreshHead() {
     const now = Date.now();
-    if (now - lastHeadCheck < 60000) return;
+    if (now - lastHeadCheck < 10000) return;
     lastHeadCheck = now;
-    try {
-      // Raw branch URLs can retain an older commit at a CDN edge even when
-      // cache:no-store is used. Resolve the public ref, then read immutable
-      // commit URLs. Share the minute-level ref check across this user's tabs.
-      const cached = JSON.parse(localStorage.getItem('pixelworld-live-head') || 'null');
-      if (cached && now - cached.at < 60000 && /^[a-f0-9]{40}$/.test(cached.sha)) {
-        root = rawBase + cached.sha + '/pixelworld/';
+    // Unique time-bucket paths avoid stale raw-branch CDN entries. Each
+    // pointer names a previously pushed commit, so metadata and assets agree.
+    // This uses public static files and no rate-limited GitHub API calls.
+    for (let offset = 1; offset <= 3; offset++) {
+      const seconds = (Math.floor(now / 30000) - offset) * 30;
+      const day = new Date(seconds * 1000).toISOString().slice(0,10);
+      try {
+        const response = await fetch(rawBase + 'pixelworld-live/pixelworld/live-heads/' + day + '/' + seconds + '.json', {cache:'no-store'});
+        if (!response.ok) continue;
+        const sha = (await response.json()).revision;
+        if (!/^[a-f0-9]{40}$/.test(sha)) continue;
+        root = rawBase + sha + '/pixelworld/';
         return;
-      }
-      const response = await fetch('https://api.github.com/repos/' + repository + '/git/ref/heads/pixelworld-live', {cache:'no-store'});
-      if (!response.ok) return;
-      const sha = (await response.json()).object?.sha;
-      if (!/^[a-f0-9]{40}$/.test(sha)) return;
-      root = rawBase + sha + '/pixelworld/';
-      localStorage.setItem('pixelworld-live-head', JSON.stringify({sha,at:now}));
-    } catch (_) {
-      // Keep the last usable root if the public API or storage is unavailable.
+      } catch (_) {}
     }
   }
   const esc = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

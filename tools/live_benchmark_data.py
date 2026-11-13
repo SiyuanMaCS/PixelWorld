@@ -44,6 +44,16 @@ def save(path, value):
     return True
 
 
+def save_head_pointer(destination, revision, now=None):
+    """Publish an immutable time-bucket pointer to an already-pushed commit."""
+    bucket = int(time.time() if now is None else now) // 30 * 30
+    day = datetime.fromtimestamp(bucket, timezone.utc).date().isoformat()
+    path = destination / 'live-heads' / day / f'{bucket}.json'
+    if not path.exists():
+        save(path, {'revision': revision, 'bucket_unix': bucket})
+    return path
+
+
 def image_asset(source, destination):
     if not source.is_file():
         return None
@@ -373,7 +383,9 @@ def main():
     while True:
         start = time.monotonic()
         try:
+            published_revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
             async_update(args.run_root.resolve(),destination,cache,pool,pending,render_root)
+            save_head_pointer(destination, published_revision)
             save(cache_path, cache)
             subprocess.run(['git', 'add', '--', 'pixelworld', ':(exclude)pixelworld/**/*.tmp'], cwd=root, check=True)
             if subprocess.run(['git', 'diff', '--cached', '--quiet'], cwd=root).returncode:
