@@ -73,6 +73,8 @@
     window.__benchPlayers = [];
     document.querySelectorAll('.player').forEach(node => {
       const p = new PixelPlayer(node,JSON.parse(node.dataset.video));
+      const draw = p.draw.bind(p);
+      p.draw = () => {p.frame=Math.max(0,Math.min(p.d.frames-1,p.frame));draw();};
       node.dataset.state = 'idle';
       const start = p.start.bind(p), pause = p.pause.bind(p);
       p.start = () => {node.dataset.state='playing'; start();};
