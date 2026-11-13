@@ -31,6 +31,14 @@ def run(spec_path):
         return
     (root/'watchdog.pid').write_text(str(os.getpid())+'\n')
     while not (root/'STOP').exists():
+        reload_error=None
+        try:
+            updated=json.loads(spec_path.read_text())
+            if Path(updated['state_root']).resolve()!=root.resolve():
+                raise ValueError('Restart explicitly before changing the watchdog state directory')
+            spec=updated
+        except (OSError,ValueError,KeyError) as exc:
+            reload_error=str(exc)
         states = {}
         for service in spec['services']:
             name = service['name']
@@ -54,7 +62,7 @@ def run(spec_path):
             else:
                 states[name] = {'phase':'active','pid':int(Path(service['pid_file']).read_text().strip())}
         payload = {'pid':os.getpid(),'updated_at':time.time(),'services':states,
-                   'scope':spec['scope'],'generation_rules_modified':False}
+                   'scope':spec['scope'],'generation_rules_modified':False,'config_reload_error':reload_error}
         temporary = root/'health.tmp'
         temporary.write_text(json.dumps(payload, indent=2)+'\n')
         temporary.replace(root/'health.json')

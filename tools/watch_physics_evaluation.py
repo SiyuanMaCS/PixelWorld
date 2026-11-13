@@ -126,9 +126,11 @@ def step(config, resource: Path | None, output: Path, states: dict, n_process: i
                     if code:raise RuntimeError(f'Original evaluator exited {code}; log retained')
                     metrics_path=result/'physics-IQ-benchmark-verified/results'/f'{videos.name}_metrics.json'
                     metrics=json.loads(metrics_path.read_text())
+                    submission=json.loads((cohort/'generated_videos_5s/input_manifest.json').read_text())
                     score={'protocol':'Physics-IQ Verified official','inputs':198,'independent_runs':1,
                            'model_key':model.key,'track':track,'input_mode':'I2V','prompt_setting':'bpp-base',
-                           'fps':4,'frames':20,'duration_seconds':5,'resolution':[256,144],
+                           'fps':submission['fps'],'frames':submission['frames'],
+                           'duration_seconds':submission['duration_seconds'],'resolution':submission['resolution'],
                            'upstream_commit':PHYSICS_IQ_COMMIT,'dataset_revision':PHYSICS_IQ_DATASET_REVISION,
                            'verified_score':metrics['final_score_view'],'original_formula_score':metrics['final_score_orig'],
                            'official_metrics_sha256':sha256(metrics_path),'completed_utc':utc_now(),

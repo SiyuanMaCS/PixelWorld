@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from tools.build_bench_review import export_pixels
 from pixelworld.smoke_web import clean
+from tools.live_evaluation_data import collect as collect_evaluation
 
 PUBLIC_SCHEMA = 2
 
@@ -377,6 +378,9 @@ def main():
     cache_path = root / '.publisher_cache.json'
     cache = read(cache_path)
     pool=ThreadPoolExecutor(max_workers=4)
+    evaluation_pool=ThreadPoolExecutor(max_workers=1)
+    evaluation_future=None
+    evaluation_error=None
     pending={}
     render_root=root/'.render-cache'
     render_root.mkdir(exist_ok=True)
@@ -385,6 +389,15 @@ def main():
         try:
             published_revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
             async_update(args.run_root.resolve(),destination,cache,pool,pending,render_root)
+            if evaluation_future is not None and evaluation_future.done():
+                try:
+                    save(destination/'evaluation.json',evaluation_future.result())
+                    evaluation_error=None
+                except Exception as exc:
+                    evaluation_error=str(exc)
+                evaluation_future=None
+            if evaluation_future is None:
+                evaluation_future=evaluation_pool.submit(collect_evaluation,args.run_root.resolve())
             save_head_pointer(destination, published_revision)
             save(cache_path, cache)
             subprocess.run(['git', 'add', '--', 'pixelworld', ':(exclude)pixelworld/**/*.tmp'], cwd=root, check=True)
@@ -394,7 +407,7 @@ def main():
             subprocess.run(['git', 'push', 'origin', 'pixelworld-live'], cwd=root, check=True, timeout=60)
             save(root / '.publisher_status.json', {'pid': __import__('os').getpid(), 'updated_unix': time.time(),
                  'duration_seconds': time.monotonic() - start, 'groups': len(cache), 'status': 'ok',
-                 'pending_case_reads':len(pending)})
+                 'pending_case_reads':len(pending),'evaluation_reader_error':evaluation_error})
         except Exception as exc:
             save(root / '.publisher_status.json', {'pid': __import__('os').getpid(), 'updated_unix': time.time(),
                  'status': 'error', 'error': str(exc)})

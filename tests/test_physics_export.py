@@ -46,6 +46,57 @@ def test_native_physics_legacy_five_file_input_does_not_need_task_spec(tmp_path)
     assert not (run/'input_snapshot/task_spec.json').exists()
 
 
+def highres_fixture(tmp_path):
+    run,case=fixture_run(tmp_path)
+    source=run/'canonical_first_frame.png'
+    (run/'input_snapshot/first_frame.png').rename(source)
+    with Image.open(source) as image:
+        initial=image.resize((512,288),Image.Resampling.LANCZOS)
+    initial.save(run/'input_snapshot/first_frame.png')
+    for p in (run/'workspace/frames').glob('*.png'):p.unlink()
+    for i in range(120):initial.save(run/'workspace/frames'/f'{i:02d}.png')
+    np.savez_compressed(run/'workspace/pixels.npz',pixels=np.full((288,512,120),0x102030,dtype=np.uint32))
+    spec={'task_type':'i2v','width':512,'height':288,'frames':120,'fps':24,'audio':None,
+          'benchmark':'physics_iq_highres_24fps'}
+    (run/'media_contract.json').write_text(json.dumps(spec))
+    path=run/'run_manifest.json';m=json.loads(path.read_text())
+    m.update(media_contract=spec,input_image_sha256=sha256(run/'input_snapshot/first_frame.png'),
+             pixels_sha256=sha256(run/'workspace/pixels.npz'))
+    path.write_text(json.dumps(m))
+    return run,case,source
+
+
+def test_highres_export_preserves_native120_frames_and_pinned_source_conditioning(tmp_path):
+    run,case,source=highres_fixture(tmp_path)
+    rgb,m=physics.validated_rgb(run,case,source)
+    assert rgb.shape==(120,288,512,3) and m['media_contract']['fps']==24
+    with pytest.raises(ValueError,match='canonical source'):physics.validated_rgb(run,case)
+    Image.new('RGB',(256,144),'red').save(source)
+    with pytest.raises(ValueError,match='switch-frame resize'):physics.validated_rgb(run,case,source)
+
+
+def test_highres_lossless_video_keeps_native_fps_without_frame_padding(tmp_path,monkeypatch):
+    import shutil
+    if shutil.which('ffmpeg') is None:pytest.skip('ffmpeg unavailable')
+    run,case,source=highres_fixture(tmp_path)
+    case['generated_video_name']='fixture.mp4'
+    p=run/'run_manifest.json';m=json.loads(p.read_text());m.update(model_key='m',track='text');p.write_text(json.dumps(m))
+    inputs=tmp_path/'inputs';inputs.mkdir()
+    (tmp_path/'inputs_manifest.json').write_text(json.dumps({
+        'schema':'pixelworld-highres-physics-iq-inputs-v1','source_inputs':str(tmp_path),
+        'cases':[{'id':'0001','source_first_frame_sha256':sha256(source)}]}))
+    canonical=tmp_path/'0001';canonical.mkdir();shutil.copyfile(source,canonical/'first_frame.png')
+    model=SimpleNamespace(key='m');config=SimpleNamespace(inputs_root=inputs,model=lambda _:model)
+    monkeypatch.setattr(physics,'official_cases',lambda:[case])
+    monkeypatch.setattr(physics,'inspect',lambda *args:{'state':'complete','run':str(run)})
+    directory=physics.export_videos(config,'m','text',tmp_path/'evaluation')
+    receipt=json.loads((tmp_path/'evaluation/input_manifest.json').read_text())
+    assert directory.joinpath('fixture.mp4').is_file()
+    assert (receipt['fps'],receipt['frames'],receipt['resolution'])==(24,120,[512,288])
+    assert receipt['videos'][0]['decoded_rgb_exact'] is True
+    assert receipt['videos'][0]['conditioning_transform']=='canonical256_lanczos512'
+
+
 def early_workspace_run(tmp_path):
     run, case = fixture_run(tmp_path)
     for name in ['first_frame.png', 'prompt.txt']:

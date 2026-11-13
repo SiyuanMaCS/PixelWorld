@@ -99,3 +99,17 @@ reports all four conditions: T2V-Text, T2V-Vision, I2V-Text, and I2V-Vision.
 Running attempts expose current tokens and tools. Failed model attempts retain
 their diagnostics; infrastructure interruptions are displayed as `stale`. Final
 submission counts still come from the original supervisor status and validation.
+
+`evaluation.json` carries verified full-cohort scores, original scorer revisions,
+generation coverage and evaluator stages. A dedicated background reader updates
+it without blocking candidate publication. Physics-IQ fractions are displayed
+as `/100`; RoboJudge PA/IA retain their original 1–5 scale. RoboJudge's complete
+shared-50 scope does not by itself establish comparability to the paper's Table 8.
+That comparison remains explicitly unverified. Individual RoboJudge PA/IA values
+appear on case pages when the complete paired evaluation passes verification.
+
+Only allowlisted numerical score fields and sanitized blockers are public. An
+incomplete cohort, mismatched scorer revision, duplicate task identity or
+disagreement with current generation coverage prevents a full score claim.
+Evaluator activity is checked against live process commands; a leftover execution
+file alone does not establish that scoring is running.

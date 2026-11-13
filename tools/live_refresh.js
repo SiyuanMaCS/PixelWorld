@@ -52,7 +52,7 @@
     }
   }
   const phygenGallery = location.pathname.endsWith('/phygen_pixelspace_smoke/index.html');
-  const relevant = context || phygenGallery || /\/(index|pixelworld-index|physics_iq_512w24fps|phygen_pixelspace)\.html$/.test(location.pathname);
+  const relevant = context || phygenGallery || /\/(index|pixelworld-index|physics_iq_baseline|physics_iq_512w24fps|robojudge|pcve_rigid|phygen_pixelspace)\.html$/.test(location.pathname);
   if (!relevant) return;
   window.__pixelworldLiveRefreshActive = true;
   async function get(path) {
@@ -164,10 +164,39 @@
     const routes={'Physics-IQ 512w24fps':['physics_iq_512w24fps_gpt_native'],'Physics-IQ Verified':['physics_iq','physics_iq_gpt_native_v2','physics_iq_seed21_native_v2'],'RoboJudge shared-50':['robojudge','robojudge_seed21_native_v2'],'PCVE-RigidBench · 必跑':['pcve_smoke'],'PhyGenBench · T2V + I2V':groups.filter(g=>g.suite.startsWith('phygen_')).map(g=>g.suite)};
     document.querySelectorAll('article.card.feature').forEach(card=>{const scopes=routes[card.querySelector('h3')?.textContent];if(!scopes)return;const selected=groups.filter(g=>scopes.includes(g.suite));if(!selected.length)return;const total=selected.reduce((a,g)=>a+(g.cases_total || 0),0),count=name=>selected.reduce((a,g)=>a+(g.counts[name] || 0),0);const badge=card.querySelector('.badge');if(badge)badge.textContent=count('running')?'running · '+count('running')+' active':count('complete')===total?(selected.some(g=>g.suite.startsWith('phygen_'))?'smoke 已完成':'生成完成'):'进度已更新';let facts=card.querySelector('.facts');if(!facts){facts=document.createElement('div');facts.className='facts';card.querySelector('a')?.before(facts);}facts.innerHTML=`<div><strong>${count('complete')} / ${total}</strong>有效视频</div><div><strong>${count('running')}</strong>运行中</div><div><strong>${count('pending')}</strong>待生成</div>`;});
   }
+  function renderEvaluation(data) {
+    let rows=data.cohorts || [];
+    if(context)rows=rows.filter(r=>r.suite===context.suite&&r.model_key===context.model&&r.track===context.track);
+    else if(location.pathname.endsWith('/physics_iq_baseline.html'))rows=rows.filter(r=>r.suite.startsWith('physics_iq')&&!r.suite.includes('512'));
+    else if(location.pathname.endsWith('/physics_iq_512w24fps.html'))rows=rows.filter(r=>r.suite.includes('512w24fps'));
+    else if(location.pathname.endsWith('/robojudge.html'))rows=rows.filter(r=>r.suite.startsWith('robojudge'));
+    else if(location.pathname.endsWith('/pcve_rigid.html'))rows=rows.filter(r=>r.suite==='pcve_smoke');
+    else if(phygenGallery || location.pathname.endsWith('/phygen_pixelspace.html'))return;
+    if(!rows.length)return;
+    let box=document.querySelector('#live-evaluation');
+    if(!box){box=document.createElement('section');box.id='live-evaluation';box.className='card';const hero=document.querySelector('main .hero');if(hero&&!context?.case)hero.after(box);else document.querySelector('main').append(box);}
+    const phases={complete:'完整官方范围已评分',waiting_for_generation:'等待完整生成',incomplete_generation:'生成未覆盖完整范围',official_evaluation:'原版评测运行中',official_full_evaluation:'导出 / 原版评测',adapter_evaluation:'导出 / 准备评测',preparing_evaluation:'导出 / 准备评测',stale_evaluation:'评测进程已退出 · 待恢复',waiting_for_evaluation_retry:'评测中断 · 等待重试',waiting_for_cuda:'等待 GPU',blocked_score_provenance:'评分范围 / 身份未通过验证',blocked_evaluation_prerequisites:'评测资源暂缺'};
+    let body='<h2>实时自动评测</h2><p class="note">记录更新：'+esc(data.updated_utc)+'。只有完整官方范围通过验证才显示组均分。</p>';
+    for(const name of [...new Set(rows.map(r=>r.benchmark))]){
+      const selected=rows.filter(r=>r.benchmark===name);
+      body+='<h3>'+esc(name)+'</h3><div class="scroll"><table><tr><th>模型</th><th>Track</th><th>生成</th><th>评测阶段</th><th>指标</th><th>说明</th></tr>';
+      for(const r of selected){const score=r.full_scope_scored?r.score:null;
+        const values=score?Object.entries(score.metrics).map(([k,v])=>esc(k)+': <strong>'+Number(v).toFixed(2)+'</strong>').join('<br>'):'—';
+        const note=score?`${score.units} · 完整 ${score.scope} 条${score.table8_comparability_verified===false?' · 论文 Table 8 可比性尚未确认':''}`:r.blocker;
+        body+=`<tr><td>${esc(label(r.model_key))}</td><td>${r.track==='text'?'Text':'Vision'}</td><td>${r.accepted}/${r.expected}</td><td>${esc(phases[r.phase]||r.phase)}</td><td>${values}</td><td>${esc(note)}</td></tr>`;
+      }
+      body+='</table></div>';
+    }
+    if(context?.case){const row=rows.find(r=>r.full_scope_scored&&r.score?.case_scores?.[context.case]);if(row){const scores=row.score.case_scores[context.case];body+=`<h3>此样本的原版判分</h3><p>${Object.entries(scores).map(([k,v])=>esc(k)+': <strong>'+Number(v).toFixed(2)+'</strong>').join(' · ')}（1–5）</p>`;}}
+    if(box.innerHTML!==body)box.innerHTML=body;
+  }
   async function poll() {
     try {
       if(context){const group=await get(`${context.suite}/${context.model}/${context.track}/index.json`);if(context.case){const attempt=(group.cases[context.case] || []).find(a=>String(a.attempt)===String(context.attempt));if(attempt){const detail=await get(attempt.detail);if(attempt.status==='stale')detail.delivery_status='stale';renderCase(detail);}}else renderGroup(group);}
       else {const catalogue=await get('catalogue.json');summary(catalogue);if(phygenGallery)await renderPhygenGallery(catalogue);}
+      if(!phygenGallery&&!location.pathname.endsWith('/phygen_pixelspace.html')){
+        try{renderEvaluation(await get('evaluation.json'));}catch(_){/* Preserve the last verified score snapshot. */}
+      }
       let stamp=document.querySelector('#live-poll-time');if(!stamp){stamp=document.createElement('p');stamp.id='live-poll-time';stamp.className='note';document.querySelector('main').append(stamp);}stamp.textContent='最近读取实时记录：'+new Date().toLocaleString()+' · 每 10 秒自动检查';
     } catch(e) {const node=document.querySelector('#live-poll-time');if(node)node.textContent='实时记录暂未读到：'+e.message+'；保留已显示内容并自动重试。';}
     setTimeout(poll,10000);
