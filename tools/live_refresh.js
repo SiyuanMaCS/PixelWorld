@@ -106,9 +106,9 @@
     initializePlayers();
   }
   function renderGroup(d) {
-    const heading=document.querySelector('main .hero h1');if(heading)heading.textContent=label(d.model_key)+' · '+(d.track==='text'?'Text':'Vision');
+    const heading=document.querySelector('main .hero h1') || document.querySelector('main h1');if(heading)heading.textContent=label(d.model_key)+' · '+(d.track==='text'?'Text':'Vision');
     let box=document.querySelector('#live-group-status');
-    if(!box){box=document.createElement('div');box.id='live-group-status';box.className='card';document.querySelector('main .hero')?.after(box);}
+    if(!box){box=document.createElement('div');box.id='live-group-status';box.className='card';const hero=document.querySelector('main .hero');if(hero)hero.after(box);else document.querySelector('main').prepend(box);}
     const c=d.counts;
     box.innerHTML=`<span class="badge">实时进度</span> ${c.complete || 0}/${d.cases_total || 0} 有效交付 · ${c.running || 0} 运行中 · ${c.pending || 0} 待生成 · ${c.exhausted || 0} 未交付<p class="note">状态：${esc(d.updated_utc)}。保存候选可以直接播放，无需等待 agent 结束。</p>`;
     box.innerHTML+=`<p class="note">平均耗时 ${d.mean_duration_seconds!=null?(d.mean_duration_seconds/60).toFixed(1)+' 分钟':'—'} · 已加载 ${d.token_mean_cases || 0} 条成功记录，平均输出 ${d.mean_output_tokens_cached!=null?Math.round(d.mean_output_tokens_cached).toLocaleString()+' token':'—'}</p>`;
