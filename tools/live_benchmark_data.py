@@ -22,6 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.build_bench_review import export_pixels
 from pixelworld.smoke_web import clean
 
+PUBLIC_SCHEMA = 2
+
 
 def read(path):
     try:
@@ -88,7 +90,8 @@ def case_data(run, destination, previous=None):
     media_stamp = ([pixels.stat().st_mtime_ns, pixels.stat().st_size] if pixels.exists() else []) + [
         [p.parent.name, p.stat().st_mtime_ns] for p in snapshots]
     versions = []
-    reused = previous is not None and previous.get('media_stamp') == media_stamp
+    reused = (previous is not None and previous.get('schema_version') == PUBLIC_SCHEMA
+              and previous.get('media_stamp') == media_stamp)
     if reused:
         versions = previous.get('candidates', [])
     for path in ([] if reused else snapshots):
@@ -156,7 +159,8 @@ def case_data(run, destination, previous=None):
             'spec': spec, 'prompt': clean(prompt.read_text()) if prompt.exists() else '',
             'first_frame': image_asset(run / 'input_snapshot/first_frame.png', destination),
             'source_video': image_asset(run / 'input_snapshot/source_video.mp4', destination),
-            'candidates': versions, 'events': events, 'media_stamp': media_stamp}
+            'candidates': versions, 'events': events, 'media_stamp': media_stamp,
+            'schema_version': PUBLIC_SCHEMA}
 
 
 def sources(run_root):
@@ -204,7 +208,7 @@ def update(run_root, destination, cache, initial_limit=2, suites=None):
                 if not path.is_file():
                     continue
                 token = run / 'logs/token_budget.json'
-                stamp = [path.stat().st_mtime_ns,
+                stamp = [PUBLIC_SCHEMA, path.stat().st_mtime_ns,
                          token.stat().st_mtime_ns if token.exists() else 0,
                          [(p.name, p.stat().st_mtime_ns) for p in (run / 'trace').glob('round_*/snapshot.json')],
                          (run / 'logs/events.jsonl').stat().st_mtime_ns if (run / 'logs/events.jsonl').exists() else 0]
