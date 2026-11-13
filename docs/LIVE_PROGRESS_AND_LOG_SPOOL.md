@@ -52,6 +52,12 @@ GitHub Pages deployment or the historical rich-page rendering backlog. End-to-en
 freshness also depends on GitHub/network caching; this is live polling, not a
 guaranteed instantaneous stream.
 
+Case reads and RGB exports run in four background workers. The publisher keeps
+refreshing cohort progress while a slow case read is pending. Workers render to
+a private local cache; only completed files move into the public checkout before
+one serialized Git push. This also prevents incomplete candidate files from
+being staged by a concurrent export.
+
 The static Pages branch contains the viewer and navigation. The live branch
 contains sanitized case metadata, input images, immutable candidate pixels,
 inspection images and observable tool records. It excludes API payloads,

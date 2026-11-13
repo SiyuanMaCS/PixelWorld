@@ -16,6 +16,7 @@ import subprocess
 import time
 import fcntl
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -250,6 +251,104 @@ def update(run_root, destination, cache, initial_limit=2, suites=None):
     save(destination / 'catalogue.json', catalogue)
 
 
+def render_case_set(folder, case, identity, render_root, saved):
+    """All potentially slow case I/O stays off the publication thread."""
+    rows = []
+    paths = list(folder.glob(f'case_{case}_attempt_*')) if case else list(folder.glob('case_*_attempt_*'))
+    for run in paths:
+        manifest = run / 'run_manifest.json'
+        if not manifest.is_file():
+            continue
+        relative = identity + '/' + run.name + '.json'
+        token = run / 'logs/token_budget.json'
+        events = run / 'logs/events.jsonl'
+        stamp = [PUBLIC_SCHEMA, manifest.stat().st_mtime_ns,
+                 token.stat().st_mtime_ns if token.exists() else 0,
+                 events.stat().st_mtime_ns if events.exists() else 0,
+                 [(p.parent.name,p.stat().st_mtime_ns) for p in (run/'trace').glob('round_*/snapshot.json')]]
+        if saved.get(run.name,{}).get('stamp') == stamp:
+            continue
+        try:
+            detail = case_data(run, render_root, previous=read(render_root/relative))
+        except (OSError,ValueError,KeyError,EOFError,BadZipFile):
+            continue
+        save(render_root/relative,detail)
+        rows.append((run.name,relative,stamp,detail))
+    return rows
+
+
+def referenced_assets(detail):
+    values = [detail.get('first_frame'), detail.get('source_video')]
+    for video in detail.get('candidates',[]):
+        values += [video.get(k) for k in ('pixels','poster','inspection','transition_check')]
+    for event in detail.get('events',[]):
+        values += event.get('images',[])
+    return set(path for path in values if path)
+
+
+def async_update(run_root,destination,cache,pool,pending,render_root):
+    for key,future in list(pending.items()):
+        if not future.done():
+            continue
+        identity,_ = key
+        try:
+            rows = future.result()
+        except Exception:
+            rows = []
+        for name,relative,stamp,detail in rows:
+            for asset in referenced_assets(detail):
+                target=destination/asset
+                if not target.exists():
+                    target.parent.mkdir(parents=True,exist_ok=True)
+                    temp=target.with_name(target.name+'.tmp')
+                    shutil.copyfile(render_root/asset,temp)
+                    temp.replace(target)
+            save(destination/relative,detail)
+            cache.setdefault(identity,{})[name]={'stamp':stamp,'detail':relative,
+                'case':detail['case_id'],'attempt':detail['attempt'],
+                'status':detail['delivery_status'],'raw_status':detail['status'],
+                'output_tokens':detail['output_tokens'],'candidate_count':len(detail['candidates']),
+                'poster':detail['candidates'][-1]['poster'] if detail['candidates'] else detail['first_frame']}
+        del pending[key]
+    catalogue={'groups':[],'updated_utc':datetime.now(timezone.utc).isoformat()}
+    for suite,source in sources(run_root):
+        status=read(source/'status.json')
+        for key,group in status.get('groups',{}).items():
+            model,track=key.split('/',1)
+            if model=='gemini38-flash':
+                continue
+            identity=suite+'/'+key;stored=cache.setdefault(identity,{})
+            desired=list(group.get('running_cases') or [])
+            if group.get('latest_completion'):
+                desired.append(group['latest_completion'][1])
+            if suite.startswith('phygen_'):
+                # Four-case smoke discovery also runs in the I/O worker.
+                desired=[None]
+            for case in desired:
+                job=(identity,case)
+                if job not in pending and len(pending)<48:
+                    pending[job]=pool.submit(render_case_set,source/model/track,case,identity,render_root,dict(stored))
+            cases={}
+            for value in stored.values():
+                cases.setdefault(value['case'],[]).append({k:v for k,v in value.items() if k!='stamp'})
+            for history in cases.values():
+                newest=max(a['attempt'] for a in history)
+                for attempt in history:
+                    if attempt['status']=='running' and attempt['attempt']<newest:attempt['status']='stale'
+            completed=[min([a for a in h if a['status']=='complete'],key=lambda a:a['attempt'])
+                       for h in cases.values() if any(a['status']=='complete' for a in h)]
+            measured=[a['output_tokens'] for a in completed if a.get('output_tokens') is not None]
+            payload={'suite':suite,'model_key':model,'track':track,'counts':group.get('counts') or {},
+                'cases_total':status.get('cases'),'updated_utc':status.get('updated_utc'),'cases':cases,
+                'mean_duration_seconds':group.get('mean_duration_seconds'),
+                'mean_output_tokens_cached':sum(measured)/len(measured) if measured else None,
+                'token_mean_cases':len(measured)}
+            relative=identity+'/index.json';save(destination/relative,payload)
+            catalogue['groups'].append({k:v for k,v in payload.items() if k not in ('cases','updated_utc')})
+            catalogue['groups'][-1]['path']=relative
+    save(destination/'catalogue.json',catalogue)
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--run-root', type=Path, required=True)
@@ -267,21 +366,23 @@ def main():
     destination = root / 'pixelworld'
     cache_path = root / '.publisher_cache.json'
     cache = read(cache_path)
+    pool=ThreadPoolExecutor(max_workers=4)
+    pending={}
+    render_root=root/'.render-cache'
+    render_root.mkdir(exist_ok=True)
     while True:
         start = time.monotonic()
         try:
-            first = not (destination / 'catalogue.json').exists()
-            priority = {'physics_iq_512w24fps_gpt_native', 'phygen_t2v',
-                        'phygen_i2v_qweninit', 'phygen_t2v_deepseek', 'phygen_i2v_qweninit_deepseek'}
-            update(args.run_root.resolve(), destination, cache, suites=priority if first else None)
+            async_update(args.run_root.resolve(),destination,cache,pool,pending,render_root)
             save(cache_path, cache)
-            subprocess.run(['git', 'add', 'pixelworld'], cwd=root, check=True)
+            subprocess.run(['git', 'add', '--', 'pixelworld', ':(exclude)pixelworld/**/*.tmp'], cwd=root, check=True)
             if subprocess.run(['git', 'diff', '--cached', '--quiet'], cwd=root).returncode:
                 subprocess.run(['git', 'commit', '-m', 'Refresh live PixelWorld progress and saved candidates'], cwd=root, check=True,
                                stdout=subprocess.DEVNULL)
             subprocess.run(['git', 'push', 'origin', 'pixelworld-live'], cwd=root, check=True, timeout=60)
             save(root / '.publisher_status.json', {'pid': __import__('os').getpid(), 'updated_unix': time.time(),
-                 'duration_seconds': time.monotonic() - start, 'groups': len(cache), 'status': 'ok'})
+                 'duration_seconds': time.monotonic() - start, 'groups': len(cache), 'status': 'ok',
+                 'pending_case_reads':len(pending)})
         except Exception as exc:
             save(root / '.publisher_status.json', {'pid': __import__('os').getpid(), 'updated_unix': time.time(),
                  'status': 'error', 'error': str(exc)})

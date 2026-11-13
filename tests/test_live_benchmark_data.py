@@ -81,3 +81,19 @@ def test_visual_returns_are_published_from_frozen_logs_only(tmp_path):
     data=case_data(run,output)
     assert len(data['events'][0]['images'])==1
     assert (output/data['events'][0]['images'][0]).is_file()
+
+
+def test_slow_case_read_does_not_block_live_counts(tmp_path):
+    from tools.live_benchmark_data import async_update
+    run=make_run(tmp_path)
+    (run.parents[2]/'status.json').write_text(json.dumps({'cases':198,'groups':{
+        'm/text':{'counts':{'running':1,'pending':197},'running_cases':['0001']}}}))
+    class Pending:
+        def done(self): return False
+    class Pool:
+        def submit(self,*_): return Pending()
+    pending={};output=tmp_path/'public'
+    async_update(tmp_path,output,{},Pool(),pending,tmp_path/'render')
+    data=json.loads((output/'catalogue.json').read_text())
+    assert data['groups'][0]['counts']=={'running':1,'pending':197}
+    assert pending
