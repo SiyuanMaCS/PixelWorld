@@ -14,7 +14,7 @@ from tools.build_bench_review import document, player, export_pixels, build_case
 
 MODELS={'gpt61-sol':'GPT-6.1-Sol','gpt56-sol':'GPT-5.6-Sol',
         'gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash',
-        'seed21-pro':'Seed-2.1-Pro-0915','gemini38-flash':'Gemini-3.8-Flash'}
+        'seed21-pro':'Seed-2.1-Pro-0915'}
 TRACKS=('text','vision-agent')
 STUDY='bench_smoke_codex_20261109'
 

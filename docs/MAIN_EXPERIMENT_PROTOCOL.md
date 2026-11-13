@@ -16,7 +16,9 @@ The current cohort is:
 | `gpt6-astra` | GPT-6-Astra | `traex/GPT-6-Astra` |
 | `deepseek-v41` | DeepSeek-V4.1-Flash | `traex/DeepSeek-V4.1-Flash` |
 | `seed21-pro` | Seed-2.1-Pro-0915 | `traex/Seed-2.1-Pro-0915` |
-| `gemini38-flash` | Gemini-3.8-Flash | `gemini-3.8-flash` |
+
+Gemini-3.8-Flash was an experimental add-on and is no longer part of the active
+full-run cohort or public monitoring pages.
 
 All runs request `reasoning_effort="high"` through Codex. This is a requested
 harness setting, not a claim that every provider spends equivalent compute.

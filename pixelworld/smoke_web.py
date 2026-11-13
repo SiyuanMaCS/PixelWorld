@@ -19,6 +19,8 @@ from .util import atomic_json, utc_now
 
 CSS = """*{box-sizing:border-box}:root{color-scheme:dark}body{margin:0;background:#10141c;color:#edf1f7;font:15px/1.65 system-ui}main{max-width:1180px;padding:24px 18px 70px;margin:auto}h1{font-size:36px;margin:8px 0}h2{margin-top:30px}a{color:#9ad0ff;text-decoration:none}.muted{color:#a6b3c5}.card,article,.box{background:#19212d;border:1px solid #344257;border-radius:12px;padding:16px;margin:14px 0}.table{overflow:auto}table{border-collapse:collapse;width:100%}th,td{border:1px solid #344257;padding:10px;text-align:left;vertical-align:top}.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}.grid>.card{margin:0}.screen{position:relative;background:#080c12;aspect-ratio:var(--aspect)}canvas,.poster{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;image-rendering:pixelated}.controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:12px 0}button{font:inherit;background:#b9eb92;color:#19250f;border:0;border-radius:7px;padding:8px 12px;cursor:pointer}.seek{flex:1;min-width:100px}.clock{font-size:12px;color:#adbed4}.inspection{width:100%;height:auto;image-rendering:pixelated}pre{background:#0a1018;padding:12px;border-radius:8px;white-space:pre-wrap;word-break:break-word;font:12px/1.6 monospace}details{margin:10px 0}summary{cursor:pointer}.badge{display:inline-block;border:1px solid #56704b;padding:2px 9px;border-radius:20px;color:#c4efa9}.wave{width:100%;max-height:120px}@media(max-width:760px){.grid{grid-template-columns:1fr}h1{font-size:28px}}"""
 
+HIDDEN_MODELS = {"gemini38-flash"}
+
 
 def clean(value: str) -> str:
     # Public exports never expose private host paths or credentials.
@@ -181,11 +183,15 @@ def build(root: Path, site: Path, asset_base: str | None = None) -> dict:
     viewer_version=hashlib.sha256((ASSET_ROOT/'smoke_player.js').read_bytes()+Path(__file__).read_bytes()).hexdigest()[:12]
     cards=[];table=[];published=[]
     for bench in inventory:
+        if any(hidden in bench.get('id', '') for hidden in HIDDEN_MODELS) or 'gemini' in bench.get('id', '').lower():
+            continue
         name=bench['id'];runs=sorted((root/'runs'/name).glob('*/*/case_*/run_manifest.json'))
         repeated={p.parent.name for p in runs if sum(q.parent.name==p.parent.name for q in runs)>1}
         done=0;running=0;failed=0;tokens=0
         for path in runs:
             manifest=json.loads(path.read_text());state=manifest['status']
+            if manifest.get('model_key') in HIDDEN_MODELS:
+                continue
             if state=='running':running+=1;continue
             if state!='complete':failed+=1;continue
             done+=1;tokens+=manifest.get('token_usage',{}).get('output_tokens') or 0
@@ -216,7 +222,8 @@ def build(root: Path, site: Path, asset_base: str | None = None) -> dict:
                 action_text=' → '.join(turn['action'] for turn in completed)
                 cards.append(f'<div class="card"><h3>{html.escape(bench["name"])} · 多轮连续播放</h3><p>{html.escape(action_text)} · {len(completed)} 轮已完成</p>{player(rec,relative+"/")}<p>每轮使用上一轮末帧作输入；下方单轮页面提供对应候选和工具过程。</p></div>')
         table.append(f'<tr><td><a href="{html.escape(bench["source"])}">{html.escape(bench["name"])}</a></td><td>{html.escape(str(bench["size"]))}</td><td>{html.escape(bench["task"])}</td><td>{phase}</td><td>{tokens:,}</td><td>{html.escape(bench["adaptation"])}</td></tr>')
-    labels=sorted({json.loads(p.read_text()).get('model','') for p in (root/'runs').glob('*/*/*/case_*/run_manifest.json')})
+    labels=sorted({json.loads(p.read_text()).get('model','') for p in (root/'runs').glob('*/*/*/case_*/run_manifest.json')
+                   if json.loads(p.read_text()).get('model_key') not in HIDDEN_MODELS})
     model_label=' / '.join(labels) or 'Queued model smoke'
     body=f'<p><a href="../index.html">← PixelWorld 主入口</a></p><h1>PixelWorld · Benchmark Smoke</h1><p class="muted">{html.escape(model_label)} · Text / Vision · 更新时间 {utc_now()}。现有 Physics-IQ 全量独立继续运行。</p><p>先检查真实生成效果与各任务接口，再选择全量评测。这里展示 smoke 产物，不报告官方全量分数。<button onclick="location.reload()">刷新进度</button></p><div class="table"><table><thead><tr><th>Benchmark</th><th>集合规模</th><th>能力与任务</th><th>当前状态</th><th>Output tokens</th><th>协议适配</th></tr></thead><tbody>{"".join(table)}</tbody></table></div><h2>可播放的生成结果</h2><div class="grid">{"".join(cards)}</div>'
     (site/'index.html').write_text(page('PixelWorld benchmark smoke',body,(ASSET_ROOT/'smoke_player.js').read_text()))

@@ -62,10 +62,10 @@ MODEL_LABELS = {
     "gpt6-astra": "GPT-6-Astra",
     "deepseek-v41": "DeepSeek-V4.1-Flash",
     "seed21-pro": "Seed-2.1-Pro-0915",
-    "gemini38-flash": "Gemini-3.8-Flash",
 }
 
-MODEL_ORDER = ["gpt61-sol", "gpt56-sol", "gpt6-astra", "deepseek-v41", "gemini38-flash", "seed21-pro"]
+HIDDEN_MODELS = {"gemini38-flash"}
+MODEL_ORDER = ["gpt61-sol", "gpt56-sol", "gpt6-astra", "deepseek-v41", "seed21-pro"]
 TRACK_ORDER = ["text", "vision-agent"]
 TRACK_LABELS = {"text": "Text", "vision-agent": "Vision"}
 
@@ -390,7 +390,7 @@ def model_track_matrix(run_root: Path, benchmark: str, status: dict, slug: str) 
     manifest_stats = group_manifest_stats(run_root, benchmark)
     infra_stats = quarantine_stats(run_root, [benchmark])
     groups = status.get("groups", {})
-    seen_models = {key.split("/")[0] for key in groups}
+    seen_models = {key.split("/")[0] for key in groups} - HIDDEN_MODELS
     model_order = [m for m in MODEL_ORDER if m in seen_models] + sorted(seen_models - set(MODEL_ORDER))
     if not model_order:
         return '<p class="note">尚未创建 model/track 状态；等待 supervisor 首次刷新。</p>'
@@ -528,11 +528,14 @@ def model_overview_table(run_root: Path) -> str:
 
     all_models = set(MODEL_ORDER)
     for group in (physics + robojudge + pcve + phygen):
-        all_models.update(key.split("/")[0] for key in group.get("groups", {}))
+        all_models.update(key.split("/")[0] for key in group.get("groups", {})
+                          if key.split("/")[0] not in HIDDEN_MODELS)
     order = [m for m in MODEL_ORDER if m in all_models] + sorted(all_models - set(MODEL_ORDER))
 
     rows = []
     for model in order:
+        if model in HIDDEN_MODELS:
+            continue
         if model not in MODEL_LABELS and all(not _model_counts(group, model)[1] for group in (physics, robojudge, pcve, phygen)):
             continue
         rows.append(
@@ -875,8 +878,6 @@ def write_phygen_pixelspace_page(run_root: Path, destination: Path) -> None:
         "i2v_qweninit": "I2V-QwenInit extension · direct RGB",
         "t2v_deepseek": "T2V official prompt · direct RGB",
         "i2v_qweninit_deepseek": "I2V-QwenInit extension · direct RGB",
-        "t2v_gemini38": "T2V official prompt · direct RGB",
-        "i2v_qweninit_gemini38": "I2V-QwenInit extension · direct RGB",
     }
     statuses = {name: read_json(paired / "generations" / name / "status.json")
                 for name in condition_names}
@@ -886,6 +887,8 @@ def write_phygen_pixelspace_page(run_root: Path, destination: Path) -> None:
         status = statuses[name]
         for key, group in sorted(status.get("groups", {}).items()):
             model_key, track = key.split("/", 1)
+            if model_key in HIDDEN_MODELS:
+                continue
             counts = group.get("counts", {})
             valid = counts.get("complete", 0)
             total_valid += valid
