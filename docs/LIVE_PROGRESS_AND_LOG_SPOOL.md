@@ -66,6 +66,13 @@ a private local cache; only completed files move into the public checkout before
 one serialized Git push. This also prevents incomplete candidate files from
 being staged by a concurrent export.
 
+Two separate workers backfill historical cases in bounded batches of four.
+They do not occupy the four workers reserved for current cases. Both paths
+produce files in the private render cache; the publication thread alone moves
+completed assets into the Git checkout. Model pages show historical detail
+coverage so a complete generation count cannot be mistaken for complete trace
+export coverage.
+
 The static Pages branch contains the viewer and navigation. The live branch
 contains sanitized case metadata, input images, immutable candidate pixels,
 inspection images and observable tool records. It excludes API payloads,

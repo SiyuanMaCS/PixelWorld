@@ -114,6 +114,7 @@
     const c=d.counts;
     box.innerHTML=`<span class="badge">实时进度</span> ${c.complete || 0}/${d.cases_total || 0} 有效交付 · ${c.running || 0} 运行中 · ${c.pending || 0} 待生成 · ${c.exhausted || 0} 未交付<p class="note">状态：${esc(d.updated_utc)}。保存候选可以直接播放，无需等待 agent 结束。</p>`;
     box.innerHTML+=`<p class="note">平均耗时 ${d.mean_duration_seconds!=null?(d.mean_duration_seconds/60).toFixed(1)+' 分钟':'—'} · 已加载 ${d.token_mean_cases || 0} 条成功记录，平均输出 ${d.mean_output_tokens_cached!=null?Math.round(d.mean_output_tokens_cached).toLocaleString()+' token':'—'}</p>`;
+    box.innerHTML+=`<p class="note">历史详情覆盖：${Object.keys(d.cases || {}).length}/${d.cases_total || 0}。后台持续补齐已完成样本；当前候选使用独立更新通道。</p>`;
     const old=document.querySelector('main > p');
     if(old?.textContent.includes('详情已同步')) old.textContent=`${c.complete || 0} 个有效交付 · 当前候选和工具记录自动更新。`;
     let grid=document.querySelector('.video-grid');

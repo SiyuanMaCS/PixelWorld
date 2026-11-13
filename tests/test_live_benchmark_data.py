@@ -107,3 +107,31 @@ def test_slow_case_read_does_not_block_live_counts(tmp_path):
     data=json.loads((output/'catalogue.json').read_text())
     assert data['groups'][0]['counts']=={'running':1,'pending':197}
     assert pending
+
+
+def test_historical_backfill_is_bounded_and_excludes_current_cases(tmp_path):
+    import shutil
+    from tools.live_benchmark_data import render_backfill_set
+    first=make_run(tmp_path)
+    second=first.with_name('case_0002_attempt_01');shutil.copytree(first,second)
+    p=second/'run_manifest.json';m=json.loads(p.read_text());m['case_id']='0002';p.write_text(json.dumps(m))
+    rows=render_backfill_set(first.parent,'suite/m/text',tmp_path/'render',{},excluded={'0001'},limit=1)
+    assert len(rows)==1 and rows[0][3]['case_id']=='0002'
+    saved={rows[0][0]:{'stamp':rows[0][2]}}
+    assert render_backfill_set(first.parent,'suite/m/text',tmp_path/'render',saved,excluded={'0001'},limit=1)==[]
+
+
+def test_historical_work_has_separate_slots_from_live_candidates(tmp_path):
+    from tools.live_benchmark_data import async_update,render_backfill_set,render_case_set
+    run=make_run(tmp_path)
+    (run.parents[2]/'status.json').write_text(json.dumps({'cases':198,'groups':{
+        'm/text':{'counts':{'running':1,'pending':197},'running_cases':['0001']}}}))
+    class Pending:
+        def done(self):return False
+    class Pool:
+        def __init__(self):self.calls=[]
+        def submit(self,fn,*args):self.calls.append(fn);return Pending()
+    live,history=Pool(),Pool();pending={};backfill={}
+    async_update(tmp_path,tmp_path/'public',{},live,pending,tmp_path/'render',history,backfill,[0])
+    assert live.calls==[render_case_set] and history.calls==[render_backfill_set]
+    assert len(pending)==1 and len(backfill)==1

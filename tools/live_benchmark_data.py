@@ -16,6 +16,7 @@ import subprocess
 import time
 import fcntl
 import sys
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -64,7 +65,9 @@ def image_asset(source, destination):
     target = destination / name
     if not target.exists():
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
+        temporary=target.with_name(target.name+'.'+uuid.uuid4().hex+'.tmp')
+        temporary.write_bytes(data)
+        temporary.replace(target)
     return name
 
 
@@ -75,7 +78,10 @@ def export_candidate(source, destination, spec, label, utc):
     digest = hashlib.sha256(pixels.read_bytes()).hexdigest()[:20]
     prefix = 'assets/' + digest
     target = destination / prefix
-    video = export_pixels(source, target, spec)
+    locks=destination/'.asset-locks';locks.mkdir(parents=True,exist_ok=True)
+    with (locks/(digest+'.lock')).open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        video = export_pixels(source, target, spec)
     if not video:
         return None
     value = {**video, 'label': label, 'utc': utc,
@@ -264,6 +270,14 @@ def update(run_root, destination, cache, initial_limit=2, suites=None):
 
 def render_case_set(folder, case, identity, render_root, saved):
     """All potentially slow case I/O stays off the publication thread."""
+    locks=render_root/'.case-locks';locks.mkdir(parents=True,exist_ok=True)
+    key=hashlib.sha256((identity+'/'+str(case)).encode()).hexdigest()
+    with (locks/(key+'.lock')).open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_EX)
+        return _render_case_set(folder,case,identity,render_root,saved)
+
+
+def _render_case_set(folder, case, identity, render_root, saved):
     rows = []
     paths = list(folder.glob(f'case_{case}_attempt_*')) if case else list(folder.glob('case_*_attempt_*'))
     for run in paths:
@@ -297,7 +311,26 @@ def referenced_assets(detail):
     return set(path for path in values if path)
 
 
-def async_update(run_root,destination,cache,pool,pending,render_root):
+def render_backfill_set(folder,identity,render_root,saved,excluded=(),limit=4):
+    """Export a bounded historical batch in workers reserved for old cases."""
+    cases=set()
+    for run in folder.glob('case_*_attempt_*'):
+        case=run.name[5:].rsplit('_attempt_',1)[0]
+        if case in excluded:continue
+        manifest=run/'run_manifest.json'
+        try:
+            stamp=manifest.stat().st_mtime_ns
+        except OSError:continue
+        cached=saved.get(run.name,{}).get('stamp') or []
+        if len(cached)<2 or cached[0]!=PUBLIC_SCHEMA or cached[1]!=stamp:
+            cases.add(case)
+    rows=[]
+    for case in sorted(cases)[:limit]:
+        rows.extend(render_case_set(folder,case,identity,render_root,saved))
+    return rows
+
+
+def merge_render_jobs(destination,cache,pending,render_root):
     for key,future in list(pending.items()):
         if not future.done():
             continue
@@ -321,7 +354,15 @@ def async_update(run_root,destination,cache,pool,pending,render_root):
                 'output_tokens':detail['output_tokens'],'candidate_count':len(detail['candidates']),
                 'poster':detail['candidates'][-1]['poster'] if detail['candidates'] else detail['first_frame']}
         del pending[key]
+
+
+def async_update(run_root,destination,cache,pool,pending,render_root,
+                 history_pool=None,history_pending=None,history_cursor=None):
+    merge_render_jobs(destination,cache,pending,render_root)
+    if history_pending is not None:
+        merge_render_jobs(destination,cache,history_pending,render_root)
     catalogue={'groups':[],'updated_utc':datetime.now(timezone.utc).isoformat()}
+    historical=[]
     for suite,source in sources(run_root):
         status=read(source/'status.json')
         for key,group in status.get('groups',{}).items():
@@ -337,8 +378,10 @@ def async_update(run_root,destination,cache,pool,pending,render_root):
                 desired=[None]
             for case in desired:
                 job=(identity,case)
-                if job not in pending and len(pending)<48:
+                if job not in pending and (history_pending is None or job not in history_pending) and len(pending)<48:
                     pending[job]=pool.submit(render_case_set,source/model/track,case,identity,render_root,dict(stored))
+            if (history_pool is not None and status.get('cases',0)>4):
+                historical.append((identity,source/model/track,dict(stored),desired))
             cases={}
             for value in stored.values():
                 cases.setdefault(value['case'],[]).append({k:v for k,v in value.items() if k!='stamp'})
@@ -358,6 +401,16 @@ def async_update(run_root,destination,cache,pool,pending,render_root):
             catalogue['groups'].append({k:v for k,v in payload.items() if k not in ('cases','updated_utc')})
             catalogue['groups'][-1]['path']=relative
     save(destination/'catalogue.json',catalogue)
+    if history_pool is not None and history_pending is not None and historical:
+        start=history_cursor[0] % len(historical) if history_cursor is not None else 0
+        ordered=historical[start:]+historical[:start]
+        for index,(identity,folder,saved,desired) in enumerate(ordered):
+            if len(history_pending)>=2:break
+            job=(identity,'_history')
+            if job in history_pending:continue
+            excluded=set(desired)|{case for (name,case) in pending if name==identity}
+            history_pending[job]=history_pool.submit(render_backfill_set,folder,identity,render_root,saved,excluded)
+            if history_cursor is not None:history_cursor[0]=(start+index+1)%len(historical)
 
 
 def main():
@@ -379,6 +432,9 @@ def main():
     cache = read(cache_path)
     pool=ThreadPoolExecutor(max_workers=4)
     evaluation_pool=ThreadPoolExecutor(max_workers=1)
+    history_pool=ThreadPoolExecutor(max_workers=2)
+    history_pending={}
+    history_cursor=[0]
     evaluation_future=None
     evaluation_error=None
     pending={}
@@ -388,7 +444,8 @@ def main():
         start = time.monotonic()
         try:
             published_revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
-            async_update(args.run_root.resolve(),destination,cache,pool,pending,render_root)
+            async_update(args.run_root.resolve(),destination,cache,pool,pending,render_root,
+                         history_pool,history_pending,history_cursor)
             if evaluation_future is not None and evaluation_future.done():
                 try:
                     save(destination/'evaluation.json',evaluation_future.result())
@@ -407,7 +464,8 @@ def main():
             subprocess.run(['git', 'push', 'origin', 'pixelworld-live'], cwd=root, check=True, timeout=60)
             save(root / '.publisher_status.json', {'pid': __import__('os').getpid(), 'updated_unix': time.time(),
                  'duration_seconds': time.monotonic() - start, 'groups': len(cache), 'status': 'ok',
-                 'pending_case_reads':len(pending),'evaluation_reader_error':evaluation_error})
+                 'pending_case_reads':len(pending),'pending_history_batches':len(history_pending),
+                 'evaluation_reader_error':evaluation_error})
         except Exception as exc:
             save(root / '.publisher_status.json', {'pid': __import__('os').getpid(), 'updated_unix': time.time(),
                  'status': 'error', 'error': str(exc)})
