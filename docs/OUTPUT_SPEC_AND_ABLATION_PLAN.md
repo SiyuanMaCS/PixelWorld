@@ -18,6 +18,19 @@ The shorthand is 4+1: four official benchmark axes plus a PhyGenBench I2V
 extension. VBench-2.0, WorldArena, WBench, WorldScore, OpenVE and older smokes
 are archived/candidate studies, not current main-table benchmarks.
 
+## Launched high-resolution/FPS Physics-IQ analysis
+
+The first full high-resolution/high-FPS analysis condition is documented in
+[HIGH_RES_FPS_ABLATION.md](HIGH_RES_FPS_ABLATION.md):
+
+| Benchmark | Models | Tracks | Resolution | FPS | Frames | Scope |
+|---|---|---|---:|---:|---:|---:|
+| Physics-IQ 512w24fps | GPT-6.1-Sol, GPT-5.6-Sol | Text, Vision | 512x288 | 24 | 120 | 198 x 2 x 2 = 792 videos |
+
+It is an analysis run for resolution/FPS sensitivity. Do not merge it into the
+main Physics-IQ Verified leaderboard unless the complete cohort is delivered
+and an explicit evaluation protocol is declared.
+
 ## Main benchmark runs
 
 | Benchmark | Proposed primary output | Complete official workload | Boundary |

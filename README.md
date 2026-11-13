@@ -52,6 +52,10 @@ official T2V benchmark and adds an I2V extension over the same prompts. Qwen is
 used only to construct the pre-action initial frame; all video frames remain
 direct RGB output from the coding agent.
 
+[Physics-IQ high-resolution/FPS](docs/HIGH_RES_FPS_ABLATION.md) records the
+analysis setting for `512x288 / 24 FPS / 120 frames`, currently launched for
+GPT-6.1-Sol and GPT-5.6-Sol across Text/Vision.
+
 VBench-2.0, OpenVE, WorldArena, WorldScore, WBench and older multi-benchmark
 smokes remain historical/exploratory pages rather than the main portfolio.
 

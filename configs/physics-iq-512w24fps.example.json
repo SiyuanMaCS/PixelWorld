@@ -1,0 +1,44 @@
+{
+  "protocol": "pixelworld-physics-iq-highres-512w24fps-v1",
+  "inputs_root": "data/physics_iq_512w24fps/inputs",
+  "runs_root": "runs/physics_iq_512w24fps_gpt_native",
+  "max_concurrency": 4,
+  "max_per_config": 1,
+  "max_attempts": 2,
+  "max_total_attempts": 5,
+  "output_token_budget": 100000,
+  "models": [
+    {
+      "key": "gpt61-sol",
+      "model": "traex/GPT-6.1-Sol",
+      "reasoning_effort": "high",
+      "cli_backend": "codex",
+      "tracks": ["text", "vision-agent"],
+      "provider": {
+        "type": "responses",
+        "id": "pixelworld_proxy",
+        "name": "Responses-compatible gateway",
+        "base_url": "http://127.0.0.1:9587/v1",
+        "env_key": "PIXELWORLD_API_KEY",
+        "model_catalog_json": "common_model_catalog.json",
+        "stream_idle_timeout_ms": 3600000
+      }
+    },
+    {
+      "key": "gpt56-sol",
+      "model": "traex/GPT-5.6-Sol",
+      "reasoning_effort": "high",
+      "cli_backend": "codex",
+      "tracks": ["text", "vision-agent"],
+      "provider": {
+        "type": "responses",
+        "id": "pixelworld_proxy",
+        "name": "Responses-compatible gateway",
+        "base_url": "http://127.0.0.1:9587/v1",
+        "env_key": "PIXELWORLD_API_KEY",
+        "model_catalog_json": "common_model_catalog.json",
+        "stream_idle_timeout_ms": 3600000
+      }
+    }
+  ]
+}
