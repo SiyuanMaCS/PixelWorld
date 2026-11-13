@@ -847,8 +847,10 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         total = sum(s.get("total_runs", 0) for s in statuses)
         pending = sum(s.get("totals", {}).get("pending", 0) for s in statuses)
         exhausted = sum(s.get("totals", {}).get("exhausted", 0) for s in statuses)
-        active = sum(w.get("kind") == "run-case" and w.get("bench") in suites[route]
-                     and not w.get("stat", "").startswith("Z") for w in workers)
+        process_active = sum(w.get("kind") == "run-case" and w.get("bench") in suites[route]
+                             and not w.get("stat", "").startswith("Z") for w in workers)
+        status_active = sum(s.get("totals", {}).get("running", 0) for s in statuses)
+        active = max(process_active, status_active) if route == "physics_iq_512w24fps.html" else process_active
         explicitly_stopped = all((run_root / "generations" / name / "STOP").exists() for name in suites[route])
         stopped_label = "已停止 · T2V 历史实验" if route in {"vbench2_subset.html", "phygenbench.html"} else "已停止"
         label = stopped_label if explicitly_stopped else ("running" if active else ("待调度" if pending else ("模型未交付 · 等待重试" if exhausted else ("生成完成" if total and complete == total else "等待任务状态更新"))))
