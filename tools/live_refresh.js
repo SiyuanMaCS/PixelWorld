@@ -98,7 +98,17 @@
     let body=`<a class="back" href="/pixelworld/index.html">← PixelWorld 总览</a><section class="hero"><p class="eyebrow">CODING AGENTS AS PIXEL WORLD MODELS</p><h1>${esc(label(d.model_key))} · ${esc(d.case_id)}</h1></section><div id="live-status" class="card">${banner}<p class="note">${esc(d.track==='text'?'Text':'Vision')} · Attempt ${d.attempt} · ${spec.width}×${spec.height} · ${spec.fps} FPS · ${spec.frames} 帧。保存候选与最终有效提交分别记录。</p></div>`;
     body+=`<div class="case-layout" id="video"><div>${latest?video(latest):'<div class="box">尚未保存候选视频；下方展示当前工具记录。</div>'}</div><aside class="card"><h3>任务输入</h3><p>${esc(d.prompt)}</p>${d.first_frame?`<img class="inspection" src="${asset(d.first_frame)}" alt="实际输入首帧">`:''}</aside></div>`;
     if(d.source_video)body+=`<section class="card"><h3>任务输入视频</h3><video controls preload="metadata" src="${asset(d.source_video)}" style="width:100%;max-height:480px"></video></section>`;
-    if(d.status==='failed') body+=`<div class="card"><h3>终止记录</h3><p>${d.budget_exhausted?'输出 token 预算耗尽':'查看下方实际终止事件与工具输出'}</p><pre>${esc(JSON.stringify(d.validation,null,2))}</pre></div>`;
+    if(d.status==='failed'){
+      const diag=d.diagnostics, labels={infra_failure:'接口 / 系统中断 · stale',token_budget_exhausted:'输出 token 预算耗尽',ended_without_submission:'结束但未提交视频',submitted_but_unrecognized:'已保存输出，但最终验证未通过'};
+      body+=`<section class="card" id="failure"><h3>${esc(labels[diag?.kind]||(d.budget_exhausted?'输出 token 预算耗尽':'终止记录'))}</h3>`;
+      if(diag){body+=`<p>${esc(diag.reason)}</p><p>exit ${esc(diag.exit_status??'—')} · ${esc(diag.generate_runs??'—')} 次生成程序执行 · ${esc(diag.frames??'—')} 帧 · ${esc(diag.terminal_events.join(', ')||'未记录终止事件')}</p>`;
+        if(diag.last_agent_message)body+=`<details open><summary>模型最后一条实际消息</summary><pre>${esc(diag.last_agent_message)}</pre></details>`;
+        if(diag.terminal_messages.length)body+=`<details open><summary>实际错误消息</summary><pre>${esc(diag.terminal_messages.join('\n'))}</pre></details>`;
+        if(diag.stderr_excerpt)body+=`<details><summary>CLI stderr（末尾记录）</summary><pre>${esc(diag.stderr_excerpt)}</pre></details>`;
+        body+=`<details><summary>终止与验证字段</summary><pre>${esc(JSON.stringify(diag,null,2))}</pre></details>`;
+      }else body+=`<pre>${esc(JSON.stringify(d.validation,null,2))}</pre>`;
+      body+='</section>';
+    }
     body+='<section id="candidates"><h2>每轮保存的候选</h2>';
     for (const [i,v] of d.candidates.entries()) body+=`<details class="candidate" ${i===0?'open':''}><summary>${esc(v.label)} · ${esc(v.utc || '')}</summary><div class="candidate-content">${video(v)}${v.inspection?`<img class="inspection" src="${asset(v.inspection)}" alt="本轮时间采样检查图">`:''}${v.transition_check?`<img class="inspection" src="${asset(v.transition_check)}" alt="首帧到后续帧的过渡">`:''}<details><summary>本轮生成代码</summary><pre>${esc(v.code || '')}</pre></details></div></details>`;
     body+='</section><section id="trace"><h2>实际工具与返回记录</h2>';

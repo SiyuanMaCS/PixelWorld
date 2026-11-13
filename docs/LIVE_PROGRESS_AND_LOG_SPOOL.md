@@ -120,3 +120,11 @@ incomplete cohort, mismatched scorer revision, duplicate task identity or
 disagreement with current generation coverage prevents a full score claim.
 Evaluator activity is checked against live process commands; a leftover execution
 file alone does not establish that scoring is running.
+
+Failed case pages include a structured termination report: budget exhaustion,
+ending without a submission, saved output rejected by validation, or recorded
+infrastructure interruption. The report preserves observed exit status, terminal
+events, generation executions, saved frame count, the last model message and a
+bounded CLI stderr excerpt. It reports evidence rather than inferring the model's
+intent. Credentials and private filesystem paths are removed from public text;
+original records remain private and unchanged.

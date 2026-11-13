@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.build_bench_review import export_pixels
 from pixelworld.smoke_web import clean
 from tools.live_evaluation_data import collect as collect_evaluation
+from tools.live_case_diagnostics import diagnostics as case_diagnostics, VERSION as DIAGNOSTICS_VERSION
 
 PUBLIC_SCHEMA = 2
 
@@ -172,6 +173,7 @@ def case_data(run, destination, previous=None):
             'completed_utc': manifest.get('completed_utc'),
             'output_tokens': budget.get('reported_output_tokens', usage.get('output_tokens')),
             'budget_exhausted': budget.get('exhausted', False),
+            'diagnostics':case_diagnostics(run,manifest,budget,events),
             'validation': {k: v for k, v in (manifest.get('validation') or {}).items()
                            if k in ('pass', 'missing_required', 'generate_runs', 'frames')},
             'spec': spec, 'prompt': clean(prompt.read_text()) if prompt.exists() else '',
@@ -290,7 +292,8 @@ def _render_case_set(folder, case, identity, render_root, saved):
         stamp = [PUBLIC_SCHEMA, manifest.stat().st_mtime_ns,
                  token.stat().st_mtime_ns if token.exists() else 0,
                  events.stat().st_mtime_ns if events.exists() else 0,
-                 [(p.parent.name,p.stat().st_mtime_ns) for p in (run/'trace').glob('round_*/snapshot.json')]]
+                 [(p.parent.name,p.stat().st_mtime_ns) for p in (run/'trace').glob('round_*/snapshot.json')],
+                 DIAGNOSTICS_VERSION]
         if saved.get(run.name,{}).get('stamp') == stamp:
             continue
         try:
@@ -322,7 +325,7 @@ def render_backfill_set(folder,identity,render_root,saved,excluded=(),limit=4):
             stamp=manifest.stat().st_mtime_ns
         except OSError:continue
         cached=saved.get(run.name,{}).get('stamp') or []
-        if len(cached)<2 or cached[0]!=PUBLIC_SCHEMA or cached[1]!=stamp:
+        if len(cached)<2 or cached[0]!=PUBLIC_SCHEMA or cached[1]!=stamp or cached[-1]!=DIAGNOSTICS_VERSION:
             cases.add(case)
     rows=[]
     for case in sorted(cases)[:limit]:
