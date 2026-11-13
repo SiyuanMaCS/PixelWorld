@@ -22,7 +22,7 @@ def is_media(path: str) -> bool:
     return path.startswith('pixelworld/') and path.lower().endswith(MEDIA)
 
 
-def rewrite(text: str, relative: str, known: set[str], repository: str, revision: str) -> str:
+def rewrite(text: str, relative: str, known: set[str], repository: str, revision: str, live_version: str = 'live') -> str:
     base = 'https://raw.githubusercontent.com/' + repository + '/' + revision + '/'
     def asset(value):
         if not isinstance(value,str):return value
@@ -71,6 +71,13 @@ def rewrite(text: str, relative: str, known: set[str], repository: str, revision
                 edits.append((start,start+len(data),updated))
     parser=Parser();parser.feed(text);parser.close()
     for start,end,value in reversed(edits):text=text[:start]+value+text[end:]
+    if relative.startswith('pixelworld/') and relative.endswith('.html'):
+        url = '/pixelworld/live_refresh.js?v=' + live_version
+        if '/pixelworld/live_refresh.js' in text:
+            text = re.sub(r'/pixelworld/live_refresh\.js(?:\?[^\s\"\x27<>]*)?', url, text)
+        else:
+            script = '<script defer src="' + url + '"></script>'
+            text = text.replace('</body>', script + '</body>') if '</body>' in text else text + script
     return text
 
 
@@ -136,7 +143,8 @@ def build(source: Path, destination: Path, repository: str, revision: str) -> di
     for relative, payload in contents():
             target=destination/relative;target.parent.mkdir(parents=True,exist_ok=True)
             if relative.startswith('pixelworld/') and relative.endswith('.html'):
-                before=payload.decode('utf-8');after=rewrite(before,relative,known,repository,revision)
+                version = blobs.get('pixelworld/live_refresh.js', revision)[:12].decode() if isinstance(blobs.get('pixelworld/live_refresh.js'), bytes) else revision[:12]
+                before=payload.decode('utf-8');after=rewrite(before,relative,known,repository,revision,version)
                 target.write_text(after);rewritten+=before!=after
             else:target.write_bytes(payload)
             count+=1;size+=target.stat().st_size

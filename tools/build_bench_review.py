@@ -20,6 +20,7 @@ from PIL import Image
 
 
 CSS = Path(__file__).with_name('bench_theme.css').read_text()
+LIVE_VERSION = hashlib.sha256(Path(__file__).with_name('live_refresh.js').read_bytes()).hexdigest()[:12]
 
 PLAYER = """
 class PixelPlayer{
@@ -56,7 +57,7 @@ def document(title, body, depth=0, case_page=False):
             "<meta name=viewport content='width=device-width,initial-scale=1'>"
             f"<title>{html.escape(title)}</title><style>{CSS}</style><body>{header}<main>{body}"
             '<footer><span>PixelWorld · 研究预览</span><span>视频 · 候选版本 · 可观测生成过程</span></footer></main>'
-            f"<script>{PLAYER}</script></body></html>")
+            f"<script>{PLAYER}</script><script defer src='/pixelworld/live_refresh.js?v={LIVE_VERSION}'></script></body></html>")
 
 
 def player(data):

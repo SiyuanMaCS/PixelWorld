@@ -24,7 +24,7 @@ from pathlib import Path
 
 HEAVY_BASE = "https://siyuanmacs.github.io/physics-iq-pixel-preview/"
 AUTO_REFRESH = (
-    '<script>setTimeout(()=>{if(!document.querySelector("[data-state=playing]")){'
+    '<script>setTimeout(()=>{if(!window.__pixelworldLiveRefreshActive&&!document.querySelector("[data-state=playing]")){'
     'const next=new URL(location.href);next.searchParams.set("refresh",String(Date.now()));'
     'location.replace(next.href)}},60000)</script>'
 )
@@ -33,6 +33,8 @@ CORE_TARGETS = (
     "pixelworld/pixelworld-index.html",
     "pixelworld/physics_iq_baseline.html",
     "pixelworld/physics_iq_512w24fps.html",
+    "pixelworld/live.html",
+    "pixelworld/live_refresh.js",
     "pixelworld/robojudge.html",
     "pixelworld/matrix_full.html",
     "pixelworld/vbench2_subset.html",
@@ -1063,6 +1065,13 @@ def write_pcve_page(run_root: Path, destination: Path) -> None:
 
 
 def publish_delivery(stable_repo: Path, delivery_repo: Path, branch: str = 'pixelworld-pages') -> dict:
+    delivery_repo.parent.mkdir(parents=True, exist_ok=True)
+    with delivery_repo.with_name(delivery_repo.name + '.publish.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return _publish_delivery(stable_repo, delivery_repo, branch)
+
+
+def _publish_delivery(stable_repo: Path, delivery_repo: Path, branch: str = 'pixelworld-pages') -> dict:
     from tools.prepare_pages_site import build
     origin = run(['git','remote','get-url','origin'],stable_repo).stdout.strip()
     match = re.search(r'github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$',origin)
@@ -1162,6 +1171,16 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
     pixelworld = stable_repo / "pixelworld"
     pixelworld.mkdir(parents=True, exist_ok=True)
     write_index_page(pixelworld / "index.html", run_root)
+    shutil.copy2(repo_root / 'tools/live_refresh.js', pixelworld / 'live_refresh.js')
+    from tools.build_bench_review import document as live_document
+    (pixelworld / 'live.html').write_text(live_document('PixelWorld 实时生成记录',
+        '<h1>实时生成记录</h1><p id="live-poll-time">正在读取最新的工具与候选记录…</p>'))
+    (pixelworld / 'phygen_pixelspace_smoke').mkdir(exist_ok=True)
+    (pixelworld / 'phygen_pixelspace_smoke/index.html').write_text(live_document('PhyGenBench T2V / I2V Smoke',
+        '<h1>PhyGenBench T2V / I2V Smoke</h1><p>相同物理 prompt，分别测试 T2V、I2V 与 Text、Vision。'
+        'I2V 首帧来自 Qwen-Image-2.1；后续帧均由 coding agent 生成。</p>'
+        '<p><a href="/pixelworld/phygen_qwen_init/index.html">查看 Qwen 初始帧 →</a> · '
+        '<a href="/pixelworld/phygen_pixelspace.html">协议与进度 →</a></p>'))
     write_index_page(pixelworld / "pixelworld-index.html", run_root)
     rewrite_monitor_html(heavy_web / "physics_iq_baseline.html", pixelworld / "physics_iq_baseline.html")
     write_physics_highres_page(run_root, pixelworld / "physics_iq_512w24fps.html")
@@ -1173,7 +1192,7 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
         write_phygen_page(run_root, pixelworld / "phygenbench.html")
     write_phygen_pixelspace_page(run_root, pixelworld / "phygen_pixelspace.html")
     paired_source = repo_root / "runs/phygen_pixelspace_v2_20261112/web_source"
-    if (paired_source / "inventory.json").is_file():
+    if (paired_source / "inventory.json").is_file() and not core_only:
         from pixelworld.smoke_web import build as build_smoke_web
         build_smoke_web(paired_source, pixelworld / "phygen_pixelspace_smoke")
     write_phygen_qwen_init_page(run_root, pixelworld / "phygen_qwen_init/index.html")

@@ -65,6 +65,9 @@ tracked in [docs/LIVE_RUNS_20261109.md](docs/LIVE_RUNS_20261109.md).
 The stable site's small Pages branch and exact, versioned media delivery are
 documented in [docs/PREVIEW_DELIVERY.md](docs/PREVIEW_DELIVERY.md).
 
+[Live progress and log storage](docs/LIVE_PROGRESS_AND_LOG_SPOOL.md) describes
+the independent live candidate viewer and local API spool with background archival.
+
 ## Included
 
 - Two default capability Tracks: Text and Vision-Agent; historical Vision-Input runs remain supported.
@@ -83,7 +86,9 @@ The repository does **not** contain Physics-IQ reference videos/masks, generated
 
 ## Quick start
 
-Requirements: Linux, Python 3.11+, [Codex CLI](https://github.com/openai/codex) (current validation0.167.0; legacy0.166.0 preserved), `git`, `ffmpeg`, and `uv` for official evaluation.
+Requirements: Linux, Python 3.11+, [Codex CLI](https://github.com/openai/codex)
+(live tooling validated with 0.169.0; frozen 0.167.0 and legacy 0.166.0 runs
+preserved), `git`, `ffmpeg`, and `uv` for official evaluation.
 
 ```bash
 git clone https://github.com/SiyuanMaCS/PixelWorld.git
