@@ -72,6 +72,17 @@ inspection images and observable tool records. It excludes API payloads,
 credentials, provider-internal reasoning and local absolute paths. Full raw
 experiment traces stay private for analysis and later training exports.
 
+Viewer code can be updated separately from the historical media upload:
+
+```bash
+python tools/publish_live_viewer.py --checkout "$LOCAL_CACHE/pixelworld-pages-delivery"
+```
+
+This uses the same publication lock as full Pages delivery and updates only the
+live script and its HTML cache versions. A delayed large media push therefore
+does not prevent deploying a viewer fix. It requires a clean dedicated Pages
+checkout and preserves all existing media links.
+
 ```bash
 python tools/live_benchmark_data.py \
   --run-root "$EXPERIMENT" \
