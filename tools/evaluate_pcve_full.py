@@ -63,7 +63,14 @@ def main():
     # These files remain evaluator-side; they are never copied into a workspace.
     for row in rows:
         for key in ['source_video','edited_video','ground_truth']:
-            pcve.fetch(args.data_root, row[key])
+            try:
+                pcve.fetch(args.data_root, row[key])
+            except OSError as exc:
+                atomic_json(output/'prerequisites.json', {
+                    'phase':'blocked_reference_download', 'missing_relative_path':row[key],
+                    'detail':str(exc)[:800], 'dataset_revision':pcve.DATASET_REVISION,
+                    'scores_computed':False, 'updated_utc':utc_now()})
+                raise
     baseline = f'pixelworld_{args.model}_{args.track}'
     prediction_root = output/'predictions'
     exported = pcve.export(args.config,args.model,args.track,args.data_root,baseline,prediction_root)

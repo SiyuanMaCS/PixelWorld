@@ -121,6 +121,7 @@ def step(config_path: Path, output: Path, benchmark: str, evaluator_command: str
                 states[key] = entry
                 continue
             try:
+                evaluation_started = time.time()
                 cmd = render_command(evaluator_command, config=config_path, output=cohort, model=model.key, track=track)
                 entry.update(phase="adapter_evaluation", result_dir=str(cohort), command=cmd)
                 states[key] = entry
@@ -136,6 +137,12 @@ def step(config_path: Path, output: Path, benchmark: str, evaluator_command: str
             except Exception as exc:
                 entry.update(phase="failed", error_type=type(exc).__name__, error=str(exc),
                              official_or_adapter_score=False)
+                prerequisites = cohort / 'prerequisites.json'
+                if prerequisites.is_file() and prerequisites.stat().st_mtime >= evaluation_started:
+                    detail = json.loads(prerequisites.read_text())
+                    if str(detail.get('phase','')).startswith('blocked_'):
+                        entry.update(phase='blocked_evaluation_prerequisites',
+                                     blocker=detail, retryable=True)
             states[key] = entry
     atomic_json(output / "scheduler.json", {"updated_utc": utc_now(), "cohorts": states, "pid": os.getpid()})
     return states
