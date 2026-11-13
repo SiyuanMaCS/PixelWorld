@@ -22,6 +22,7 @@ def main():
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--data-root', type=Path, default=ROOT/'data/pcve-rigid')
     parser.add_argument('--evaluator-python', default=os.environ.get('PCVE_EVAL_PYTHON', sys.executable))
+    parser.add_argument('--evaluator-source', type=Path, default=Path(os.environ.get('PCVE_EVALUATOR_SOURCE', str(ROOT/'vendor/pcve-rigid-source'))))
     parser.add_argument('--sam2-checkpoint', type=Path, default=Path(os.environ.get('PCVE_SAM2_CHECKPOINT', str(ROOT/'vendor/pcve-eval-models/sam2.1_hiera_large.pt'))))
     parser.add_argument('--i3d-checkpoint', type=Path, default=Path(os.environ.get('PCVE_I3D_CHECKPOINT', str(ROOT/'vendor/pcve-eval-models/i3d_torchscript.pt'))))
     parser.add_argument('--device', default='cuda')
@@ -37,7 +38,9 @@ def main():
     model = config.model(args.model)
     if any(inspect(config, model, args.track, case)['state'] != 'complete' for case in expected):
         raise ValueError('Wait for a complete 129-case cohort; no partial-score imputation')
-    source = ROOT/'vendor/pcve-rigid-source'
+    source = args.evaluator_source.resolve()
+    if source.is_relative_to(config.runs_root.resolve()) or source.is_relative_to(config.inputs_root.resolve()):
+        raise ValueError('Official evaluator source must remain outside generation inputs and workspaces')
     revision = subprocess.check_output(['git','-C',str(source),'rev-parse','HEAD'],text=True).strip()
     if revision != pcve.EVALUATOR_REVISION:
         raise ValueError('Official evaluator revision mismatch')

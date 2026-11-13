@@ -60,11 +60,9 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
     failed = 0
     grant = latest_window(config, model, track, case_id)
     limit = max(config.max_attempts, grant["end_attempt"] if grant else 0)
-    # A benchmark may impose an externally visible cap on all attempts.  Old
-    # retry authorizations stay on disk as provenance, but cannot revive work
-    # above this cap after a policy change.
-    if config.max_total_attempts is not None:
-        limit = min(limit, config.max_total_attempts)
+    # A new cap limits future launches. Completed or live submissions under a
+    # preserved earlier authorization must not disappear from the inventory.
+    launch_limit = min(limit, config.max_total_attempts) if config.max_total_attempts is not None else limit
     floor = grant["start_attempt"] if grant else 1
     pending = None
     budget_terminal = None
@@ -72,7 +70,7 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
         run = run_path(config, model, track, case_id, attempt)
         manifest_path = run / "run_manifest.json"
         if not run.exists():
-            if attempt >= floor and pending is None:
+            if floor <= attempt <= launch_limit and pending is None:
                 pending = {"state": "pending", "attempt": attempt, "run": str(run)}
             continue
         try:
@@ -88,6 +86,8 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
                     "completed_utc": manifest.get("completed_utc")}
         if manifest.get("status") == "running" and _pid_alive(run / "logs" / "supervisor.pid"):
             return {"state": "running", "attempt": attempt, "run": str(run)}
+        if attempt > launch_limit:
+            continue
         if not manifest.get('retryable', True) and manifest.get('stop_reason') in (
                 'output_token_budget_exhausted', 'token_usage_unavailable', 'prior_token_usage_unavailable'):
             if attempt >= floor:
@@ -101,7 +101,8 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
         return budget_terminal
     if pending:
         return pending
-    return {"state": "exhausted", "attempt": limit, "run": str(run),
+    return {"state": "exhausted", "attempt": launch_limit,
+            "run": str(run_path(config, model, track, case_id, launch_limit)),
             "failed_attempts": failed, "stale_attempts": stale}
 
 

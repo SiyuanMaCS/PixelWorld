@@ -46,6 +46,22 @@ def test_retry_preserves_failure_history_and_does_not_redo_success(tmp_path):
     assert authorize_failed(config, apply=True)["authorized_cases"] == 0
 
 
+def test_lowered_cap_preserves_authorized_success_but_never_launches_above_cap(tmp_path):
+    from dataclasses import replace
+    config,model=fixture(tmp_path)
+    for attempt in (1,2):manifest(config,model,'bad',attempt,{'status':'failed'})
+    authorize_failed(config,extra_attempts=4,max_rounds=None,apply=True)
+    success=manifest(config,model,'bad',6,{'status':'complete','validation':{'pass':True}})
+    capped=replace(config,max_total_attempts=5)
+    assert inspect(capped,model,'text','bad')['state']=='complete'
+    assert inspect(capped,model,'text','bad')['attempt']==6
+    (success/'run_manifest.json').write_text('{"status":"failed"}')
+    for attempt in (3,4,5):manifest(config,model,'bad',attempt,{'status':'failed'})
+    state=inspect(capped,model,'text','bad')
+    assert state['state']=='exhausted' and state['attempt']==5
+    assert not (run_path(capped,model,'text','bad',7)).exists()
+
+
 def test_pending_authorization_recovers_manager_without_another_grant(tmp_path):
     from tools.watch_failed_retries import needs_manager
     config,model=fixture(tmp_path)
