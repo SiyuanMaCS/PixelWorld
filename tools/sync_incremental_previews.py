@@ -11,6 +11,7 @@ from tools.build_bench_review import build_case, case_page_is_current, document,
 
 SUITES = {"physics_iq": "bench_smoke_codex_20261109/physics_iq",
           "physics_iq_gpt_native_v2": "bench_smoke_codex_20261109/physics_iq_gpt_native_v2",
+          "physics_iq_512w24fps_gpt_native": "physics_iq_512w24fps_gpt_native",
           "physics_iq_seed21_native_v2": "bench_smoke_codex_20261109/physics_iq_seed21_native_v2",
           "robojudge": "bench_smoke_codex_20261109/robojudge",
           "robojudge_seed21_native_v2": "bench_smoke_codex_20261109/robojudge",

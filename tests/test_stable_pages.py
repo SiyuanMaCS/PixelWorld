@@ -124,3 +124,35 @@ def test_pcve_full_page_and_home_report_129_case_scope(tmp_path, monkeypatch):
     text = (tmp_path / 'index.html').read_text()
     assert '8 / 1,290' in text
     assert '当前主线是 4+1' in text
+
+
+def test_highres_monitor_uses_actual_worker_and_marks_stopped_worker(tmp_path, monkeypatch):
+    root = tmp_path / 'generations/physics_iq_512w24fps_gpt_native'
+    event = root / 'gpt61-sol/text/case_0001_attempt_01/logs/events.jsonl'
+    event.parent.mkdir(parents=True)
+    event.write_text(json.dumps({'type': 'item.completed', 'item': {'type': 'command_execution'}}) + '\n')
+    (root / 'status.json').write_text(json.dumps({
+        'total_runs': 792, 'totals': {'running': 4, 'pending': 788}, 'groups': {},
+    }))
+    rows = [(123, 1, 'S', '00:20',
+             'python3 -m pixelworld.cli run-case --config '
+             '/runs/physics_iq_512w24fps_gpt_native_full.json '
+             '--model gpt61-sol --track text --case 0001 --attempt 1')]
+    monkeypatch.setattr(inspect_live_workers, '_ps_rows', lambda: rows)
+    workers = inspect_live_workers.inspect_workers(tmp_path)
+    assert workers[0]['bench'] == 'physics_iq_512w24fps_gpt_native'
+    assert workers[0]['reason'] == ''
+    output = tmp_path / 'index.html'
+    pages.write_index_page(output, tmp_path)
+    card = next(part.split('</article>', 1)[0] for part in
+                output.read_text().split('<article class="card feature">')
+                if '<h3>Physics-IQ 512w24fps' in part)
+    assert 'running · 1 active' in card
+    assert '0 / 792' in card
+    rows.clear()
+    pages.write_index_page(output, tmp_path)
+    card = next(part.split('</article>', 1)[0] for part in
+                output.read_text().split('<article class="card feature">')
+                if '<h3>Physics-IQ 512w24fps' in part)
+    assert '待调度 · 0 active' in card
+    assert 'running · 4 active' not in card

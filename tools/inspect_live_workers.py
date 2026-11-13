@@ -22,6 +22,7 @@ import time
 CONFIG_TO_GENERATION = {
     "physics_missing_full.json": "physics_iq",
     "physics_gpt_native_v2_full.json": "physics_iq_gpt_native_v2",
+    "physics_iq_512w24fps_gpt_native_full.json": "physics_iq_512w24fps_gpt_native",
     "physics_seed21_native_v2_full.json": "physics_iq_seed21_native_v2",
     "robojudge_full_baseline100k.json": "robojudge",
     "robojudge_seed21_native_v2_full.json": "robojudge_seed21_native_v2",

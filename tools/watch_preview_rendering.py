@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from tools.build_bench_review import case_page_is_current
 from tools.sync_incremental_previews import SUITES
 
-SCOPE = ('physics_iq', 'physics_iq_gpt_native_v2', 'physics_iq_seed21_native_v2',
+SCOPE = ('physics_iq', 'physics_iq_gpt_native_v2', 'physics_iq_512w24fps_gpt_native', 'physics_iq_seed21_native_v2',
          'robojudge', 'robojudge_seed21_native_v2', 'pcve_smoke')
 
 
