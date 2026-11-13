@@ -13,7 +13,7 @@ import time
 from .config import Benchmark, Model
 from .runner import run_path
 from .util import atomic_json, utc_now
-from .retries import latest_window
+from .retries import latest_window, infrastructure_failure
 from .scheduling import launch_guard
 
 
@@ -70,11 +70,13 @@ def _pid_alive(path: Path, expected_arguments: tuple[str, ...] = ()) -> bool:
 def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
     stale = 0
     failed = 0
+    model_attempts = 0
+    infra_attempts = 0
     grant = latest_window(config, model, track, case_id)
     limit = max(config.max_attempts, grant["end_attempt"] if grant else 0)
     # A new cap limits future launches. Completed or live submissions under a
     # preserved earlier authorization must not disappear from the inventory.
-    launch_limit = min(limit, config.max_total_attempts) if config.max_total_attempts is not None else limit
+    launch_limit = limit
     floor = grant["start_attempt"] if grant else 1
     pending = None
     running = None
@@ -96,6 +98,7 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
                 running = running or {"state": "running", "attempt": attempt, "run": str(run)}
                 continue
             stale += 1
+            model_attempts += 1
             continue
         if manifest.get("status") == "complete" and manifest.get("validation", {}).get("pass"):
             return {"state": "complete", "attempt": attempt, "run": str(run),
@@ -104,8 +107,10 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
         if manifest.get("status") == "running" and _pid_alive(run / "logs" / "supervisor.pid", runner_arguments):
             running = running or {"state": "running", "attempt": attempt, "run": str(run)}
             continue
-        if attempt > launch_limit:
+        if infrastructure_failure(manifest):
+            infra_attempts += 1
             continue
+        model_attempts += 1
         if not manifest.get('retryable', True) and manifest.get('stop_reason') in (
                 'output_token_budget_exhausted', 'token_usage_unavailable', 'prior_token_usage_unavailable'):
             if attempt >= floor:
@@ -116,14 +121,18 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
         else:
             stale += 1
     if running:
-        return running
+        return {**running,'model_attempts':model_attempts,'infra_attempts':infra_attempts}
+    counters={'model_attempts':model_attempts,'infra_attempts':infra_attempts}
+    if config.max_total_attempts is not None and model_attempts >= config.max_total_attempts:
+        return {'state':'exhausted','attempt':limit,'run':str(run_path(config,model,track,case_id,limit)),
+                'reason':'model_attempt_limit','failed_attempts':failed,'stale_attempts':stale,**counters}
     if budget_terminal:
-        return budget_terminal
+        return {**budget_terminal,**counters}
     if pending:
-        return pending
+        return {**pending,**counters}
     return {"state": "exhausted", "attempt": launch_limit,
             "run": str(run_path(config, model, track, case_id, launch_limit)),
-            "failed_attempts": failed, "stale_attempts": stale}
+            "failed_attempts": failed, "stale_attempts": stale,**counters}
 
 
 def snapshot(config: Benchmark, supervisor_pid: int | None = None) -> tuple[dict, dict]:

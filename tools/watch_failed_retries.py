@@ -8,7 +8,6 @@ import json
 import sys
 import time
 import os
-import math
 import subprocess
 import fcntl
 from dataclasses import replace
@@ -53,18 +52,6 @@ def _ensure_manager(config, entry):
 
 def needs_manager(result):
     return any(result.get(key,0) for key in ('authorized_cases','pending_cases','running_cases'))
-
-
-def retry_rounds_for_total_cap(config, extra_attempts: int, max_total_attempts: int | None) -> int | None:
-    """Translate the public total-attempt cap into internal authorization rounds."""
-    if max_total_attempts is None:
-        return None
-    if max_total_attempts < 1:
-        raise ValueError("max_total_attempts must be positive")
-    remaining = max_total_attempts - config.max_attempts
-    if remaining <= 0:
-        return 0
-    return math.ceil(remaining / extra_attempts)
 
 
 def unfinished_retry_scope(config):
@@ -118,15 +105,17 @@ def main():
                                      f"but watcher was launched with --max-total-attempts {max_total_attempts}")
                 if config.max_total_attempts is None:
                     config = replace(config, max_total_attempts=max_total_attempts)
-            max_rounds = (args.max_rounds if args.max_rounds is not None
-                          else retry_rounds_for_total_cap(config, args.extra_attempts, max_total_attempts))
+            # Infrastructure records can raise directory ordinals without
+            # spending a model attempt. The model cap itself bounds grants;
+            # a derived ordinal-based round cap would stop these retries early.
+            max_rounds = args.max_rounds
             if (config.runs_root / "STOP").exists():
                 reports.append({"config": str(path), "phase": "explicitly_stopped"})
                 continue
             # Continuous monitoring is not permission for unbounded retries.
             # The externally visible policy is the total model-attempt cap.
-            # retry_rounds_for_total_cap only translates that cap into the
-            # small internal ledger windows needed by the supervisor.
+            # Ledger windows identify new run directories; their ordinals do
+            # not measure the number of model attempts.
             result = authorize_failed(unfinished_retry_scope(config), args.extra_attempts, max_rounds,
                                       args.apply, args.cooldown if args.continuous else 0)
             if args.max_rounds is None and max_total_attempts is not None:

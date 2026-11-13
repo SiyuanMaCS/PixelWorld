@@ -58,8 +58,43 @@ def test_lowered_cap_preserves_authorized_success_but_never_launches_above_cap(t
     (success/'run_manifest.json').write_text('{"status":"failed"}')
     for attempt in (3,4,5):manifest(config,model,'bad',attempt,{'status':'failed'})
     state=inspect(capped,model,'text','bad')
-    assert state['state']=='exhausted' and state['attempt']==5
+    assert state['state']=='exhausted' and state['model_attempts']==6
     assert not (run_path(capped,model,'text','bad',7)).exists()
+
+
+def test_infrastructure_records_do_not_spend_the_five_model_attempt_cap(tmp_path):
+    from dataclasses import replace
+    config,model=fixture(tmp_path);config=replace(config,max_total_attempts=5)
+    for attempt in (1,2):
+        manifest(config,model,'bad',attempt,{'status':'failed','validation':{'infra_error':'429'}})
+    for expected in (3,4,5,6,7):
+        report=authorize_failed(config,extra_attempts=1,max_rounds=None,apply=True)
+        assert report['items'][0]['start_attempt']==expected
+        assert inspect(config,model,'text','bad')['state']=='pending'
+        manifest(config,model,'bad',expected,{'status':'failed'})
+    state=inspect(config,model,'text','bad')
+    assert state['model_attempts']==5 and state['infra_attempts']==2
+    assert state['state']=='exhausted'
+    assert authorize_failed(config,extra_attempts=1,max_rounds=None,apply=True)['authorized_cases']==0
+
+
+def test_budget_exhaustion_counts_even_if_an_infra_flag_is_present(tmp_path):
+    from dataclasses import replace
+    config,model=fixture(tmp_path);config=replace(config,max_total_attempts=2)
+    for attempt in (1,2):
+        manifest(config,model,'bad',attempt,{'status':'failed','stop_reason':'output_token_budget_exhausted',
+                 'retryable':False,'validation':{'infra_error':'mislabelled'}})
+    state=inspect(config,model,'text','bad')
+    assert state['model_attempts']==2 and state['infra_attempts']==0
+    assert authorize_failed(config,max_rounds=None,apply=True)['authorized_cases']==0
+
+
+def test_unknown_failures_remain_bounded_without_positive_infra_evidence(tmp_path):
+    from dataclasses import replace
+    config,model=fixture(tmp_path);config=replace(config,max_total_attempts=2)
+    for attempt in (1,2):manifest(config,model,'bad',attempt,{'status':'failed'})
+    assert inspect(config,model,'text','bad')['model_attempts']==2
+    assert authorize_failed(config,max_rounds=None,apply=True)['authorized_cases']==0
 
 
 def test_pending_authorization_recovers_manager_without_another_grant(tmp_path):

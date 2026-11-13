@@ -12,6 +12,14 @@ from .util import atomic_json, utc_now
 _CACHE: dict[Path, tuple[tuple[int, int], dict]] = {}
 
 
+def infrastructure_failure(manifest: dict) -> bool:
+    """Only positively identified system failures are exempt from model caps."""
+    if manifest.get('stop_reason') == 'output_token_budget_exhausted':
+        return False
+    return bool((manifest.get('validation') or {}).get('infra_error')
+                or manifest.get('stop_reason') in ('provider_queue_exceeded','provider_connection_failed'))
+
+
 def ledger_path(config: Benchmark) -> Path:
     return config.runs_root / "retry_authorizations.json"
 
@@ -79,7 +87,8 @@ def authorize_failed(config: Benchmark, extra_attempts: int = 2, max_rounds: int
             for case in case_ids(config):
                 key = f"{model.key}/{track}/{case}"
                 history = data["cases"].get(key, [])
-                state = inspect(config, model, track, case)["state"]
+                inspected = inspect(config, model, track, case)
+                state = inspected['state']
                 pending_cases += state == "pending"
                 running_cases += state == "running"
                 if ((max_rounds is not None and len(history) >= max_rounds)
@@ -91,12 +100,16 @@ def authorize_failed(config: Benchmark, extra_attempts: int = 2, max_rounds: int
                     if (dt.datetime.now(dt.timezone.utc)-last).total_seconds() < cooldown_seconds:
                         continue
                 start = max(config.max_attempts, existing.get(case, 0)) + 1
-                if config.max_total_attempts is not None and start > config.max_total_attempts:
+                consumed = inspected.get('model_attempts',0)
+                if config.max_total_attempts is not None and consumed >= config.max_total_attempts:
                     continue
+                available = (min(extra_attempts,config.max_total_attempts-consumed)
+                             if config.max_total_attempts is not None else extra_attempts)
                 item = {"round": len(history) + 1, "start_attempt": start,
-                        "end_attempt": min(start + extra_attempts - 1,
-                                           config.max_total_attempts or start + extra_attempts - 1),
+                        "end_attempt": start + available - 1,
                         "authorized_utc": utc_now(), "output_token_budget": config.output_token_budget,
+                        "model_attempts_before":consumed,
+                        "infra_attempts_before":inspected.get('infra_attempts',0),
                         "reason": "User authorized retry of failed samples; old artifacts and usage retained."}
                 granted.append({"key": key, **item})
                 if apply:
