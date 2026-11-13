@@ -19,6 +19,7 @@ GENERATION_ROOTS = (
     "physics_iq_seed21_native_v2",
     "robojudge",
     "robojudge_seed21_native_v2",
+    "pcve_smoke",
     "vbench2_subset_full",
     "phygenbench_full",
 )
@@ -49,7 +50,13 @@ def is_provider_infra_failure(case_dir: Path, manifest: dict) -> bool:
         "request queue size is exceed" in text
         or "Code 4050" in text
         or '"code": 4050' in text
+        or "429 Too Many Requests" in text
+        or "exceeded retry limit, last status: 429" in text
         or "Connection failed: error sending request" in text
+        or "Missing environment variable: `PIXELWORLD_MUX_KEY`" in text
+        or "Missing environment variable: `PIXELWORLD_API_KEY`" in text
+        or "Invalid value at 'contents" in text
+        or "Invalid JSON payload received" in text
     )
 
 
@@ -72,6 +79,8 @@ def iter_case_dirs(generations: Path):
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-root", type=Path, default=Path("runs/bench_codex_20261109"))
+    parser.add_argument("--root-name", action="append",
+                        help="Limit to one generation root; may be passed multiple times.")
     parser.add_argument("--since-utc")
     parser.add_argument("--until-utc")
     parser.add_argument("--tag", default=None)
@@ -80,9 +89,12 @@ def main() -> None:
 
     run_root = args.run_root.resolve()
     generations = run_root / "generations"
+    allowed_roots = set(args.root_name or GENERATION_ROOTS)
     since, until = parse_utc(args.since_utc), parse_utc(args.until_utc)
     matches = []
     for root_name, case_dir in iter_case_dirs(generations):
+        if root_name not in allowed_roots:
+            continue
         manifest_path = case_dir / "run_manifest.json"
         if not manifest_path.exists():
             continue

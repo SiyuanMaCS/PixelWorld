@@ -73,9 +73,9 @@ def test_home_uses_live_workers_instead_of_stale_running_counts(tmp_path, monkey
     output = tmp_path / "index.html"
     pages.write_index_page(output, tmp_path)
     text = output.read_text()
-    assert "running · 1 active" in text
-    assert "900 / 2,910" in text
-    assert "case_1" in text
+    assert "VBench archive" in text
+    assert "900 / 2,910" not in text
+    assert "case_1" not in text
     assert "configured" not in text
     assert 'name="pixelworld-built-utc"' in text
     for route in ("robojudge.html", "physics_iq_baseline.html", "vbench2_subset.html", "phygenbench.html"):
@@ -90,8 +90,8 @@ def test_home_marks_incomplete_terminal_cohort_without_claiming_running(tmp_path
     output = tmp_path / "index.html"
     pages.write_index_page(output, tmp_path)
     text = output.read_text()
-    assert "本轮失败 · 等待重试 · 0 active" in text
-    assert "1,590 / 1,600" in text
+    assert "PhyGen pre-v2" in text
+    assert "1,590 / 1,600" not in text
 
 
 def test_home_does_not_claim_completion_during_retry_transition(tmp_path, monkeypatch):
@@ -123,4 +123,4 @@ def test_pcve_full_page_and_home_report_129_case_scope(tmp_path, monkeypatch):
     pages.write_index_page(tmp_path / 'index.html', tmp_path)
     text = (tmp_path / 'index.html').read_text()
     assert '8 / 1,290' in text
-    assert '主实验固定为五个 benchmark' in text
+    assert '当前主线是 4+1' in text

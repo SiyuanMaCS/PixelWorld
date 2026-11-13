@@ -132,6 +132,60 @@ def case_page_is_current(run, output):
         return False
 
 
+def failure_summary(run, manifest):
+    validation = manifest.get("validation") or {}
+    usage = manifest.get("token_usage") or {}
+    budget = manifest.get("token_budget") or {}
+    events_path = run / "logs/events.jsonl"
+    terminal = []
+    messages = []
+    if events_path.is_file():
+        for line in events_path.read_text(errors="replace").splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            typ = event.get("type")
+            if typ in ("turn.failed", "turn.cancelled", "turn.completed", "error"):
+                terminal.append(typ)
+            err = event.get("error") or {}
+            message = event.get("message") or err.get("message")
+            if message:
+                messages.append(str(message))
+    missing = validation.get("missing_required") or []
+    reasons = []
+    if messages:
+        reasons.append(messages[-1])
+    if missing:
+        reasons.append("missing required artifacts: " + ", ".join(map(str, missing[:8])))
+    if validation.get("infra_error"):
+        reasons.append("infra error: " + str(validation["infra_error"]))
+    if validation.get("budget_error"):
+        reasons.append(str(validation["budget_error"]))
+    if manifest.get("stop_reason"):
+        reasons.append("stop reason: " + str(manifest["stop_reason"]))
+    if budget.get("exhausted"):
+        reasons.append("output token budget exhausted")
+    if not reasons:
+        reasons.append("validation did not pass")
+    fields = [
+        ("exit status", manifest.get("exit_status")),
+        ("terminal events", ", ".join(terminal[-4:]) if terminal else None),
+        ("duration", f'{manifest.get("duration_seconds", 0):.0f}s' if manifest.get("duration_seconds") is not None else None),
+        ("output tokens", usage.get("output_tokens") or usage.get("reported_completed_request_output_tokens")),
+        ("usage status", usage.get("status")),
+        ("generate runs", validation.get("generate_runs")),
+        ("saved frames", validation.get("frames")),
+        ("candidate snapshots", len(list((run / "trace").glob("round_*")))),
+    ]
+    return {
+        "reason": "；".join(str(x) for x in reasons if x),
+        "fields": [(name, value) for name, value in fields if value not in (None, "")],
+        "missing": missing,
+        "messages": messages[-5:],
+    }
+
+
 def build_case(run, output):
     fingerprint = case_render_fingerprint(run)
     manifest = json.loads((run / "run_manifest.json").read_text())
@@ -148,6 +202,21 @@ def build_case(run, output):
     body += (f'<div class=case-meta><span class=badge>{manifest["track"]}</span>'
              f'<span class=pill>{spec["width"]}×{spec["height"]}</span><span class=pill>{spec["fps"]} FPS · {spec["frames"]} 帧</span>'
              f'<span class=pill>{html.escape(manifest["status"])}</span></div>')
+    failure = None
+    if manifest.get("status") != "complete" or manifest.get("validation", {}).get("pass") is not True:
+        failure = failure_summary(run, manifest)
+        body += '<section class="card" id="failure"><h2>失败诊断</h2>'
+        body += f'<p class=desc>{html.escape(failure["reason"])}</p>'
+        if failure["fields"]:
+            body += '<div class=facts>' + ''.join(
+                f'<div><strong>{html.escape(str(value))}</strong>{html.escape(name)}</div>'
+                for name, value in failure["fields"]
+            ) + '</div>'
+        if failure["missing"]:
+            body += '<p class=note>缺失产物：' + html.escape(", ".join(map(str, failure["missing"]))) + '</p>'
+        if failure["messages"]:
+            body += '<details open><summary>终止/错误消息</summary><pre>' + html.escape("\n".join(failure["messages"])) + '</pre></details>'
+        body += '</section>'
     video = export_pixels(ws, output / "final", spec)
     if video:
         body += '<div class=case-layout id=video><div>'+player({**video, "pixels": "final/" + video["pixels_file"], "poster": "final/poster.png"})+'</div>'
@@ -196,6 +265,7 @@ def build_case(run, output):
     files = [run / "logs/events.jsonl"]+[recovery/'logs/events.jsonl' for recovery in sorted(run.glob('recovery_*'))]
     commands = images = 0
     seen_calls = set()
+    terminal_events = []
     for path in files:
         if not path.is_file():
             continue
@@ -205,6 +275,13 @@ def build_case(run, output):
             except ValueError:
                 continue
             item = event.get("item", {})
+            if event.get("type") in ("thread.started", "turn.started", "turn.failed", "turn.completed", "turn.cancelled", "error"):
+                message = event.get("message") or (event.get("error") or {}).get("message") or ""
+                terminal_events.append({
+                    "type": event.get("type"),
+                    "utc": (event.get("_harness_received") or {}).get("utc"),
+                    "message": message,
+                })
             if event.get("type") != "item.completed":
                 continue
             stamp = event.get("_harness_received", {}).get("utc", "")
@@ -228,6 +305,13 @@ def build_case(run, output):
                     body += (f'<details class=tool-image><summary>视觉工具实际返回图片 {images}</summary>'
                              f'<img loading=lazy src="{target.name}"></details>')
     body += f'<p class=muted>保存候选 {valid_rounds} 份；完成命令 {commands} 次；可验证图片返回 {images} 张。原始 API 响应与完整日志保留在本地。</p>'
+    if terminal_events:
+        body += '<details open><summary>运行生命周期事件</summary><pre>' + html.escape(
+            "\n".join(
+                f'{x.get("utc") or ""} · {x.get("type")} · {x.get("message") or ""}'
+                for x in terminal_events[-20:]
+            )
+        ) + '</pre></details>'
     page = document(title, body, depth=4, case_page=True)
     (output / "index.html").write_text(page)
     row = {"model": manifest["model"], "model_key": manifest["model_key"], "track": manifest["track"],

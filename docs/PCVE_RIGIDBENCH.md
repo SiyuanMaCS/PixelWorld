@@ -1,6 +1,9 @@
 # PCVE-RigidBench: physical counterfactual video editing
 
-PCVE is a required benchmark. OpenVE remains an optional, completed smoke and is not being launched at full scale. Physics-IQ, RoboJudge, VBench-2.0 five dimensions and PhyGenBench continue under their existing generation protocols.
+PCVE is one of the four official benchmark axes in the current PixelWorld
+4+1 protocol. OpenVE remains an optional completed smoke and is not being
+launched at full scale. The other main axes are Physics-IQ, RoboJudge and
+PhyGenBench official T2V, plus the paired PhyGenBench I2V extension.
 
 ## Official sources
 

@@ -1,10 +1,14 @@
-"""Authorize one bounded extra retry round for terminal failed cases."""
+"""Authorize bounded retries for terminal failed cases.
+
+Public policy is expressed as a total per-case model-attempt cap.
+"""
 from pathlib import Path
 import argparse
 import json
 import sys
 import time
 import os
+import math
 import subprocess
 import fcntl
 from dataclasses import replace
@@ -51,6 +55,18 @@ def needs_manager(result):
     return any(result.get(key,0) for key in ('authorized_cases','pending_cases','running_cases'))
 
 
+def retry_rounds_for_total_cap(config, extra_attempts: int, max_total_attempts: int | None) -> int | None:
+    """Translate the public total-attempt cap into internal authorization rounds."""
+    if max_total_attempts is None:
+        return None
+    if max_total_attempts < 1:
+        raise ValueError("max_total_attempts must be positive")
+    remaining = max_total_attempts - config.max_attempts
+    if remaining <= 0:
+        return 0
+    return math.ceil(remaining / extra_attempts)
+
+
 def unfinished_retry_scope(config):
     """Skip cohorts already reported complete; retain the original manager config."""
     from pixelworld.supervisor import case_ids
@@ -71,9 +87,13 @@ def unfinished_retry_scope(config):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, action="append", required=True)
-    parser.add_argument("--extra-attempts", type=int, default=2)
-    parser.add_argument("--max-rounds", type=int, default=1)
-    parser.add_argument('--continuous',action='store_true',help='Keep requeueing exhausted cases; each round retains its own fixed token budget')
+    parser.add_argument("--extra-attempts", type=int, default=1,
+                        help='Attempts granted per retry authorization window.')
+    parser.add_argument("--max-total-attempts", type=int, default=5,
+                        help='Maximum total model attempts per case, including the original attempt window.')
+    parser.add_argument("--max-rounds", type=int, default=None, help=argparse.SUPPRESS)
+    parser.add_argument('--continuous',action='store_true',
+                        help='Continue monitoring newly exhausted cases while enforcing the total attempt cap.')
     parser.add_argument('--cooldown',type=float,default=300,help='Minimum seconds between retry grants for a case in continuous mode')
     parser.add_argument('--manager-map',type=Path,help='Runtime config-path to original manager/code checkout map')
     parser.add_argument("--apply", action="store_true")
@@ -91,11 +111,32 @@ def main():
                 atomic_json(args.status, {'updated_utc':utc_now(), 'phase':'checking_config',
                                           'current_config':str(path), 'reports':reports})
             config = load_config(path)
+            max_total_attempts = args.max_total_attempts
+            if max_total_attempts is not None:
+                if config.max_total_attempts is not None and config.max_total_attempts != max_total_attempts:
+                    raise ValueError(f"{path} sets max_total_attempts={config.max_total_attempts}, "
+                                     f"but watcher was launched with --max-total-attempts {max_total_attempts}")
+                if config.max_total_attempts is None:
+                    config = replace(config, max_total_attempts=max_total_attempts)
+            max_rounds = (args.max_rounds if args.max_rounds is not None
+                          else retry_rounds_for_total_cap(config, args.extra_attempts, max_total_attempts))
             if (config.runs_root / "STOP").exists():
                 reports.append({"config": str(path), "phase": "explicitly_stopped"})
                 continue
-            result = authorize_failed(unfinished_retry_scope(config), args.extra_attempts, None if args.continuous else args.max_rounds,
+            # Continuous monitoring is not permission for unbounded retries.
+            # The externally visible policy is the total model-attempt cap.
+            # retry_rounds_for_total_cap only translates that cap into the
+            # small internal ledger windows needed by the supervisor.
+            result = authorize_failed(unfinished_retry_scope(config), args.extra_attempts, max_rounds,
                                       args.apply, args.cooldown if args.continuous else 0)
+            if args.max_rounds is None and max_total_attempts is not None:
+                result.pop('max_retry_rounds', None)
+            result['attempt_policy'] = {
+                'max_total_attempts': max_total_attempts,
+                'extra_attempts_per_retry_window': args.extra_attempts,
+                'token_budget_exhausted_counts_as_failed_attempt': True,
+                'infra_failures_count_as_model_attempt': False,
+            }
             entry=managers.get(str(config.source))
             if needs_manager(result) and args.apply and entry:
                 result['manager']=ensure_manager(config,entry)

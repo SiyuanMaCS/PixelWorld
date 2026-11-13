@@ -1,18 +1,19 @@
 # PixelWorld main benchmark set
 
-The main PixelWorld portfolio is fixed at five benchmarks:
+The main PixelWorld portfolio is fixed as **4+1**: four official benchmark
+axes, plus one paired I2V extension for PhyGenBench.
 
 | Benchmark | Role | Scope |
 |---|---|---|
 | RoboJudge shared-50 | Embodied I2V manipulation | 50 shared tasks, Text and Vision-Agent. |
 | Physics-IQ Verified | Physical continuation anchor | 198 official BPP/I2V tasks, Text and Vision-Agent. |
-| VBench-2.0 subset | Dynamic world consistency | Mechanics, Material, Motion Rationality, Dynamic Spatial Relationship, Instance Preservation. |
-| PhyGenBench | Compact physical concept coverage | 160 text prompts mapped to Mechanics, Optics, Thermal and Material. |
 | PCVE-RigidBench | Physical counterfactual video editing | 129 official quantitative English edits, Text and Vision-Agent; native 96 frames at 24 FPS. |
+| PhyGenBench official T2V | Compact physical concept coverage | 160 official text prompts mapped to Mechanics, Optics, Thermal and Material. |
+| + PhyGenBench I2V extension | Paired initialization analysis | Same 160 prompts, with Qwen-Image-2.1 pre-action initial frames. |
 
-WorldArena, WorldScore, WBench and older smoke experiments are no longer part
-of the main portfolio. They remain available as exploratory or historical
-links only.
+VBench-2.0, WorldArena, WorldScore, WBench, OpenVE and older smoke experiments
+are no longer part of the main portfolio. They remain available as exploratory
+or historical links only.
 
 OpenVE remains an optional completed smoke. No additional full benchmark is
 being launched. [PCVE setup and evaluation](PCVE_RIGIDBENCH.md) documents the
@@ -25,7 +26,7 @@ providers use equal reasoning compute or that every model uses its highest
 available native setting. Report actual output/reasoning token usage separately
 from the external100k output-token limit per bounded retry round.
 
-## VBench-2.0 subset
+## Archived VBench-2.0 subset
 
 The selected five dimensions are not the same as the Video-Coder paper's
 three-dimension VBench-2.0 table. The local official metadata currently exposes:
@@ -39,13 +40,15 @@ three-dimension VBench-2.0 table. The local official metadata currently exposes:
 | Instance_Preservation | 57 |
 
 This totals 291 dimension rows before any cross-file prompt de-duplication.
-Report selected-dimension scores only, never a full VBench-2.0 score.
+This adapter remains useful as a candidate diagnostic, but it is archived for
+the current 4+1 main protocol. If revived, report selected-dimension scores
+only, never a full VBench-2.0 score.
 
 The official standard input validator requires three independent videos per
 prompt for these dimensions; the current one-video-per-row generation does not
 complete that sampling setting. See [the source-code audit](VBENCH2_OFFICIAL_PROTOCOL_AUDIT.md).
 
-## PhyGenBench
+## PhyGenBench T2V and I2V extension
 
 The local PhyGenBench prompt file contains 160 prompts:
 
@@ -57,9 +60,15 @@ The local PhyGenBench prompt file contains 160 prompts:
 | Physical Properties | 25 | Material |
 | Chemical Properties | 15 | Material |
 
-PhyGenBench is useful because it is compact and concept-targeted. Its score is
-a final-video physical plausibility score, not a direct measure of whether the
-agent built or maintained an internal dynamic world model.
+PhyGenBench is useful because it is compact and concept-targeted. Its official
+condition is T2V and should be scored with the official benchmark protocol after
+the complete 160-prompt cohort is generated.
+
+PixelWorld additionally constructs an I2V condition by pairing each original
+prompt with a selected pre-action Qwen-Image-2.1 initial frame. This I2V
+condition is an extension for analyzing how much high-quality initial visual
+state changes a coding agent's direct RGB video generation. It must be reported
+separately from the official T2V leaderboard.
 
 ## Reference scores to display
 
@@ -74,7 +83,7 @@ PhyGenBench:
 | Wan2.2-TI2V-5B | 0.55 | 0.58 | 0.53 | 0.50 | 0.54 |
 | Video-Coder + MiniMax-H3 | 0.68 | 0.79 | 0.60 | 0.61 | 0.67 |
 
-VBench-2.0 three-dimension paper reference:
+Archived VBench-2.0 three-dimension paper reference:
 
 | Model | Mechanics | Thermotics | Material | Average |
 |---|---:|---:|---:|---:|

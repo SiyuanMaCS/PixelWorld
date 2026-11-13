@@ -6,6 +6,7 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from tools.build_bench_review import document,player,build_case,export_pixels
 
 def quality(run,label):
+    if label=='unscored_initial_attempt':return '未评分（保留原始审计失败）'
     root=run/'evaluation/rsi_pair_original9B'
     folders=[root/label]+sorted(root.glob(label+'_eval_retry_*'))
     for folder in folders:
@@ -33,15 +34,17 @@ def build(run,web):
            'baseline_success':run/'generations/robojudge/gpt61-sol/vision-agent/case_common50_0000_attempt_02',
            'rsi':run/'rsi/prototype_first/gpt61-sol/vision-agent/case_common50_0000_attempt_01'}
     labels={'baseline_first':'Baseline · 初次执行','baseline_success':'Baseline · 审计通过的重试','rsi':'RSI v1 · 候选优先'}
+    scored=quality(run,'native')!='待原版9B评分' and quality(run,'rsi_v1')!='待原版9B评分'
+    conclusion=('本例原版9B评分：Baseline PA/IA 3/3，RSI v1 4/3。首个候选更早，但接受的单次执行耗时与tokens增加；一个开发样本不能证明通用改善。' if scored else 'RSI更早保存首个候选，但最终耗时与tokens增加。质量评分尚未完成；不据此宣布整体改善。')
     body=('<a class=back href="index.html">← 实验导航</a><h1>RSI探索 · 同输入对照</h1>'
           '<p class=muted>GPT-6.1-Sol / Vision-Agent · RoboJudge common50_0000 · 相同输入、工具、100k预算与媒体参数。</p>'
-          '<div class=box><h3>当前结论</h3><p>RSI更早保存首个候选，但最终耗时与tokens增加。质量评分尚未完成；不据此宣布整体改善。</p>'
+          '<div class=box><h3>当前结论</h3><p>'+conclusion+'</p>'
           '<p class=desc>初次baseline被冻结审计判为relative-parent-traversal。实际命令中该字符串只是分支标签，Image.open读取的是工作目录内frames/03.png。原有状态保留，这个审计问题独立记录，不修改冻结baseline。</p></div>'
           '<div class=scroll><table><tr><th>执行</th><th>首个保存候选</th><th>最终墙钟</th><th>输出tokens</th><th>不同RGB候选</th><th>PA / IA (1–5)</th></tr>')
     for key,row in report['runs'].items():
         q=quality(run,{'baseline_success':'native','rsi':'rsi_v1'}.get(key,'unscored_initial_attempt'))
         body+=f'<tr><td>{labels[key]}</td><td>{row["first_saved_seconds"]/60:.2f}分钟</td><td>{row["wall_seconds"]/60:.2f}分钟</td><td>{row["output_tokens"]}</td><td>{row["distinct_rgb_candidates"]}</td><td>{q}</td></tr>'
-    body+='</table></div><p class=note>单例探索。首个格式正确候选、完整审计交付和重试成本分别报告；API等待会影响墙钟。正式PA/IA与视觉质量比较仍待完成。</p><div class=video-grid>'
+    body+='</table></div><p class=note>Baseline两次执行共35,276输出tokens：接受的重试单次17,489，初次17,787被审计拦下。RSI单次22,795。单次执行成本与整个case交付成本不能混用。API等待影响墙钟；PA/IA不是独立摄影质量指标。</p><div class=video-grid>'
     for key,path in paths.items():
         out=web/'rsi_assets'/key;build_case(path,out);page=out/'index.html';page.write_text(page.read_text().replace('../../../../../index.html','../../index.html').replace('../../../../index.html','../../index.html'));spec=json.loads((path/'media_contract.json').read_text());video=export_pixels(path/'workspace',out/'final',spec)
         body+=f'<article class=card><h3>{labels[key]}</h3>'
@@ -53,7 +56,8 @@ def build(run,web):
         labels2={'baseline':'Baseline · 原生自主生成','rsi_v2':'RSI v2 · 场景结构提示'}
         paths2={'baseline':run/'generations/robojudge/gpt61-sol/vision-agent/case_common50_0002_attempt_01',
                 'rsi_v2':run/'rsi/structure_first/gpt61-sol/vision-agent/case_common50_0002_attempt_01'}
-        body+='<h2>RSI v2 · 场景结构提示</h2><p class=muted>GPT-6.1-Sol / Vision-Agent · RoboJudge common50_0002 · 独立干净上下文，baseline保持冻结。</p><div class=box><p>本例首个候选与最终提交均更慢，输出tokens也增加。提示显式强调锚点、关节连接和接触，但是否改善质量仍由同一原版9B评分与逐轮视频共同检查。两个开发样本不能代表全量效果。</p></div>'
+        conclusion2=('本例原版9B评分从Baseline的4/4降到RSI v2的2/3，成本也增加。判分理由提到面包转移与夹持接触不清楚；显式结构提示未在本例带来改善。' if quality(run,'rsi_v2')!='待原版9B评分' else '本例首个候选与最终提交均更慢，输出tokens增加；是否改善质量仍待原版9B配对评分。')
+        body+='<h2>RSI v2 · 场景结构提示</h2><p class=muted>GPT-6.1-Sol / Vision-Agent · RoboJudge common50_0002 · 独立干净上下文，baseline保持冻结。</p><div class=box><p>'+conclusion2+'开发样本不能代表全量效果。</p></div>'
         body+='<div class=scroll><table><tr><th>执行</th><th>首个保存候选</th><th>最终墙钟</th><th>输出tokens</th><th>不同RGB候选</th><th>PA / IA (1–5)</th></tr>'
         for key,row in report2['runs'].items():
             q=quality(run,'native_v2' if key=='baseline' else key)
@@ -72,6 +76,7 @@ def build(run,web):
         state=json.loads(probe.read_text());path=Path(state['run']);m=json.loads((path/'run_manifest.json').read_text()) if (path/'run_manifest.json').exists() else {}
         body+='<h2>RSI v3 · 从首帧可见姿态继续</h2><p class=muted>GPT-6.1-Sol / Vision-Agent · RoboJudge common50_0003 · 第三个独立开发样本。</p>'
         body+=f'<div class=box><p>当前状态：{m.get("status","initializing")}。减少未观测几何假设，同时保留自主生成、检查和修订。首次候选和最终结果均保留。</p></div>'
+        if quality(run,'rsi_v3')!='待原版9B评分':body+='<p class=note>本例原版9B评分：Baseline 4/3，RSI v3 3/3。输出tokens约少9%，最终墙钟约多8%；判分理由提到拖影与接触不清楚。不能据此称为更好的harness。</p>'
         control=run/'generations/robojudge/gpt61-sol/vision-agent/case_common50_0003_attempt_01'
         body+='<div class=video-grid>'
         for key,source,label in [('native_v3',control,'Baseline · 原生自主生成'),('rsi_v3',path,'RSI v3 · 首帧姿态提示')]:

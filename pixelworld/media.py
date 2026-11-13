@@ -17,8 +17,8 @@ def contract(source: Path) -> dict:
         raise ValueError(f"Unsupported task fields: {set(raw) - allowed}")
     if result["task_type"] not in ("i2v", "v2v", "t2v", "video_edit"):
         raise ValueError("task_type must be i2v, v2v, t2v or video_edit")
-    if 'visual_target' in raw and (raw['visual_target'] != 'photoreal' or result['task_type'] != 't2v'):
-        raise ValueError('visual_target=photoreal is an opt-in target for a separately versioned T2V run')
+    if 'visual_target' in raw and (raw['visual_target'] != 'photoreal' or result['task_type'] not in ('t2v', 'i2v')):
+        raise ValueError('visual_target=photoreal is an opt-in target for separately versioned T2V/I2V runs')
     for key in ("width", "height", "frames"):
         value = result[key]
         if not isinstance(value, int) or isinstance(value, bool) or value < 1:

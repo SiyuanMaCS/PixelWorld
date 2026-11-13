@@ -1,6 +1,10 @@
 # OpenVE-Bench video editing
 
-OpenVE remains an optional completed editing smoke; its full benchmark is not launched. PCVE-RigidBench is the required physical counterfactual editing benchmark. PVIR is excluded. Existing Physics-IQ, RoboJudge, VBench-2.0 five-dimension and PhyGenBench experiments retain their inputs, prompts, budgets and evaluator pins.
+OpenVE remains an optional completed editing smoke; its full benchmark is not
+launched. PCVE-RigidBench is the required physical counterfactual editing
+benchmark in the current PixelWorld 4+1 protocol. PVIR is excluded. Existing
+Physics-IQ, RoboJudge, PCVE and PhyGenBench T2V/I2V experiments retain their
+inputs, prompts, budgets and evaluator pins.
 
 ## Official sources and pins
 

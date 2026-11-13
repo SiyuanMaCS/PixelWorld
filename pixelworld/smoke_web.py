@@ -143,7 +143,8 @@ def trace(run: Path, target: Path, back: str, site: Path | None = None, asset_ba
         final['asset']=asset_base.rstrip('/')+'/'+(target/'final'/final['asset']).relative_to(site).as_posix()
     usage=manifest.get('token_usage',{})
     prompt=html.escape((workspace/'prompt.txt').read_text())
-    body=f'<p><a href="{back}">← Smoke 总览</a></p><h1>{html.escape(manifest["case_id"])}</h1><p class="muted">{html.escape(manifest["model"])} · {html.escape(manifest["track"])} · {spec["width"]}×{spec["height"]} · {spec["frames"]} frames / {spec["fps"]:g} fps</p><div class="box"><strong>当前任务输入</strong><p>{prompt}</p></div><h2>最终视频</h2>{player(final,"final/")}<p><a href="final/generate.py">生成代码</a> · <a href="contract.json">输入与输出契约</a></p>'
+    track_label = {"text": "Text", "vision-agent": "Vision"}.get(manifest["track"], manifest["track"])
+    body=f'<p><a href="{back}">← Smoke 总览</a></p><h1>{html.escape(manifest["case_id"])}</h1><p class="muted">{html.escape(manifest["model"])} · {html.escape(track_label)} · {spec["width"]}×{spec["height"]} · {spec["frames"]} frames / {spec["fps"]:g} fps</p><div class="box"><strong>当前任务输入</strong><p>{prompt}</p></div><h2>最终视频</h2>{player(final,"final/")}<p><a href="final/generate.py">生成代码</a> · <a href="contract.json">输入与输出契约</a></p>'
     if final['audio']:
         waveform(target/'final/audio.wav',target/'waveform.png')
         body+='<p>音频与 RGB 使用同一播放器时钟；点击播放会同时播放 WAV。</p><img class="wave" src="waveform.png">'
@@ -217,7 +218,7 @@ def build(root: Path, site: Path, asset_base: str | None = None) -> dict:
         table.append(f'<tr><td><a href="{html.escape(bench["source"])}">{html.escape(bench["name"])}</a></td><td>{html.escape(str(bench["size"]))}</td><td>{html.escape(bench["task"])}</td><td>{phase}</td><td>{tokens:,}</td><td>{html.escape(bench["adaptation"])}</td></tr>')
     labels=sorted({json.loads(p.read_text()).get('model','') for p in (root/'runs').glob('*/*/*/case_*/run_manifest.json')})
     model_label=' / '.join(labels) or 'Queued model smoke'
-    body=f'<p><a href="../index.html">← PixelWorld 主入口</a></p><h1>PixelWorld · Benchmark Smoke</h1><p class="muted">{html.escape(model_label)} · Vision-Agent · 更新时间 {utc_now()}。现有 Physics-IQ 全量独立继续运行。</p><p>先检查真实生成效果与各任务接口，再选择全量评测。这里展示 smoke 产物，不报告官方全量分数。<button onclick="location.reload()">刷新进度</button></p><div class="table"><table><thead><tr><th>Benchmark</th><th>集合规模</th><th>能力与任务</th><th>当前状态</th><th>Output tokens</th><th>协议适配</th></tr></thead><tbody>{"".join(table)}</tbody></table></div><h2>可播放的生成结果</h2><div class="grid">{"".join(cards)}</div>'
+    body=f'<p><a href="../index.html">← PixelWorld 主入口</a></p><h1>PixelWorld · Benchmark Smoke</h1><p class="muted">{html.escape(model_label)} · Text / Vision · 更新时间 {utc_now()}。现有 Physics-IQ 全量独立继续运行。</p><p>先检查真实生成效果与各任务接口，再选择全量评测。这里展示 smoke 产物，不报告官方全量分数。<button onclick="location.reload()">刷新进度</button></p><div class="table"><table><thead><tr><th>Benchmark</th><th>集合规模</th><th>能力与任务</th><th>当前状态</th><th>Output tokens</th><th>协议适配</th></tr></thead><tbody>{"".join(table)}</tbody></table></div><h2>可播放的生成结果</h2><div class="grid">{"".join(cards)}</div>'
     (site/'index.html').write_text(page('PixelWorld benchmark smoke',body,(ASSET_ROOT/'smoke_player.js').read_text()))
     atomic_json(site/'status.json',{'updated_utc':utc_now(),'cases':published})
     return {'site':str(site),'cases':len(published)}

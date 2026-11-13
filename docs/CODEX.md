@@ -7,6 +7,10 @@ PixelWorld never installs Codex. The executable is resolved from
 version, authentication, and model access; `pixelworld doctor` reports the
 resolved binary and version before a run.
 
+For a complete collaborator-facing checklist, including where outputs should be
+stored and how monitoring pages are published, see
+[ADD_MODEL_RUNBOOK.md](ADD_MODEL_RUNBOOK.md).
+
 ## Model routing
 
 `provider.type = builtin` selects the CLI's built-in provider with `--model MODEL`.

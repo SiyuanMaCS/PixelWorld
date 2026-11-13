@@ -2,6 +2,22 @@
 
 Plan 2026-11-09. This document separates official-score experiments from capability diagnostics. No FPS/resolution sweep has been run by this plan. Published comparison rows and protocol evidence are in [FRONTIER_BASELINE_AUDIT.md](FRONTIER_BASELINE_AUDIT.md).
 
+## Current 4+1 main protocol, 2026-11-13
+
+These are the declared generation specs for the current main study:
+
+| Benchmark | Role | Output resolution | FPS | Frames | Duration convention |
+|---|---|---:|---:|---:|---|
+| Physics-IQ Verified | Official I2V continuation | 256x144 | 4 | 20 | 20 held frames occupy 5 s; last sample is at 4.75 s. |
+| RoboJudge shared-50 | Official embodied I2V | width 256, aspect preserved; current shared50 inputs are 256x192 | 4 | 20 | 20 held frames occupy 5 s. |
+| PCVE-RigidBench | Official physical video editing | 256x144 | 24 | 96 | Native 4 s official source-video timeline. |
+| PhyGenBench official T2V | Official physical concept T2V | 256x144 | 4 | 20 | PixelWorld T2V submission setting; score only complete 160-prompt cohorts. |
+| PhyGenBench I2V extension | Paired initialization analysis | 256x144 | 4 | 20 | Same prompt and timing as T2V; frame 0 exactly matches the selected initial image. |
+
+The shorthand is 4+1: four official benchmark axes plus a PhyGenBench I2V
+extension. VBench-2.0, WorldArena, WBench, WorldScore, OpenVE and older smokes
+are archived/candidate studies, not current main-table benchmarks.
+
 ## Main benchmark runs
 
 | Benchmark | Proposed primary output | Complete official workload | Boundary |

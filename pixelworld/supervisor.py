@@ -60,6 +60,11 @@ def inspect(config: Benchmark, model: Model, track: str, case_id: str) -> dict:
     failed = 0
     grant = latest_window(config, model, track, case_id)
     limit = max(config.max_attempts, grant["end_attempt"] if grant else 0)
+    # A benchmark may impose an externally visible cap on all attempts.  Old
+    # retry authorizations stay on disk as provenance, but cannot revive work
+    # above this cap after a policy change.
+    if config.max_total_attempts is not None:
+        limit = min(limit, config.max_total_attempts)
     floor = grant["start_attempt"] if grant else 1
     pending = None
     budget_terminal = None

@@ -15,6 +15,11 @@ Codex authentication, available models, and API access remain owned by the
 user's installation. Codex is intentionally not a Python dependency of this
 repository.
 
+To add another API model, follow
+[docs/ADD_MODEL_RUNBOOK.md](docs/ADD_MODEL_RUNBOOK.md): it covers the required
+Codex version, provider JSON, smoke/full commands, run-root layout, page sync
+and what should or should not be uploaded to GitHub.
+
 > Status: research preview. Generated quality remains the measured model outcome. No human selects or repairs individual cases.
 
 The current frozen native baseline is documented at
@@ -24,30 +29,31 @@ Text/Vision-Agent and autonomous review. Start another RoboJudge model from
 [the sanitized config](configs/robojudge.baseline.example.json). RSI variants
 must use separate code checkouts and output directories.
 
-The current main benchmark portfolio is fixed in
+The current main benchmark portfolio is fixed as **4+1** in
+[docs/MAIN_EXPERIMENT_PROTOCOL.md](docs/MAIN_EXPERIMENT_PROTOCOL.md),
 [docs/MAIN_BENCHMARKS_20261109.md](docs/MAIN_BENCHMARKS_20261109.md) and
 [configs/benchmark_portfolio_20261109.json](configs/benchmark_portfolio_20261109.json):
 
 - RoboJudge shared-50;
 - Physics-IQ Verified;
-- VBench-2.0 five-dimension subset;
-- PhyGenBench 160 prompts;
-- PCVE-RigidBench 129 physical counterfactual video-editing tasks.
-
-The added video-editing benchmark is [OpenVE-Bench](docs/OPENVE_BENCH.md):
-431 original-video/instruction tasks. A separate smoke adapter preserves the
-complete source duration, outputs edited RGB pixels, and exports the official
-submission CSV. The previously requested PVIR removal benchmark is excluded.
+- PCVE-RigidBench 129 physical counterfactual video-editing tasks;
+- PhyGenBench 160-prompt official T2V;
+- PhyGenBench paired I2V extension using Qwen-Image-2.1 pre-action initial
+  frames.
 
 [PCVE-RigidBench](docs/PCVE_RIGIDBENCH.md) is required for physical counterfactual
 editing: 129 official tasks, quantitative English prompts, a native 96-frame /
 24-FPS / four-second timeline, and strict separation of target/physics ground
 truth from generation. Full generation uses five models across both native
 Tracks, with byte-identical successful smoke submissions reused.
-OpenVE remains optional and is not launched at full scale.
 
-WorldArena, WorldScore, WBench and older multi-benchmark smokes remain
-historical/exploratory pages rather than the main portfolio.
+[PhyGenBench paired](docs/PHYGENBENCH_PIXELSPACE_PAIRED_V2.md) keeps the
+official T2V benchmark and adds an I2V extension over the same prompts. Qwen is
+used only to construct the pre-action initial frame; all video frames remain
+direct RGB output from the coding agent.
+
+VBench-2.0, OpenVE, WorldArena, WorldScore, WBench and older multi-benchmark
+smokes remain historical/exploratory pages rather than the main portfolio.
 
 Live run entry points, background supervisors, and score-readiness rules are
 tracked in [docs/LIVE_RUNS_20261109.md](docs/LIVE_RUNS_20261109.md).
@@ -60,6 +66,8 @@ documented in [docs/PREVIEW_DELIVERY.md](docs/PREVIEW_DELIVERY.md).
 - Two default capability Tracks: Text and Vision-Agent; historical Vision-Input runs remain supported.
 - One clean Codex session per case; empty output workspace; no memory, network tools, subagents, other cases, references, masks, or scores.
 - Direct `256×144 × 20` RGB output at 4 fps / 5 seconds.
+- Benchmark-specific output specs when required: RoboJudge preserves input
+  aspect at width 256, and PCVE uses 256×144 × 96 frames at 24 fps / 4 seconds.
 - Exact PNG ↔ `uint32 0xRRGGBB` tensor validation and frame-00 equality.
 - Unlimited autonomous revision with every stable candidate frozen into an observable Trace.
 - Fair, restartable matrix scheduling with bounded concurrency and independent retries.

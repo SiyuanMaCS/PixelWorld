@@ -91,8 +91,11 @@ def authorize_failed(config: Benchmark, extra_attempts: int = 2, max_rounds: int
                     if (dt.datetime.now(dt.timezone.utc)-last).total_seconds() < cooldown_seconds:
                         continue
                 start = max(config.max_attempts, existing.get(case, 0)) + 1
+                if config.max_total_attempts is not None and start > config.max_total_attempts:
+                    continue
                 item = {"round": len(history) + 1, "start_attempt": start,
-                        "end_attempt": start + extra_attempts - 1,
+                        "end_attempt": min(start + extra_attempts - 1,
+                                           config.max_total_attempts or start + extra_attempts - 1),
                         "authorized_utc": utc_now(), "output_token_budget": config.output_token_budget,
                         "reason": "User authorized retry of failed samples; old artifacts and usage retained."}
                 granted.append({"key": key, **item})

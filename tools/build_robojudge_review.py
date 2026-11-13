@@ -14,7 +14,7 @@ from tools.build_bench_review import document, player, export_pixels, build_case
 
 MODELS={'gpt61-sol':'GPT-6.1-Sol','gpt56-sol':'GPT-5.6-Sol',
         'gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash',
-        'seed21-pro':'Seed-2.1-Pro-0915'}
+        'seed21-pro':'Seed-2.1-Pro-0915','gemini38-flash':'Gemini-3.8-Flash'}
 TRACKS=('text','vision-agent')
 STUDY='bench_smoke_codex_20261109'
 
@@ -186,7 +186,7 @@ def build(run,web,case_budget=8):
           '<article class=card><span class=pill>原始 RoboJudge-9B</span><h3 style="margin-top:14px">两项评分</h3>'
           '<p class=desc>PA：物理合理性。IA：指令遵循。评分范围1–5。只有实际有效视频才显示已有评分。</p>'
           '<p class=tiny>新预算为累计100k输出token；已有50k阶段记录保留。Table8的prompt与聚合口径仍在核对。</p></article></div>'
-          '<h2 id=models>模型 × Track</h2><div class=scroll><table class=matrix><tr><th>模型</th><th>Text</th><th>Vision-Agent</th></tr>')
+          '<h2 id=models>模型 × Track</h2><div class=scroll><table class=matrix><tr><th>模型</th><th>Text</th><th>Vision</th></tr>')
     for model,label in MODELS.items():
         body+=f'<tr><th>{label}</th>'
         for track in TRACKS:
@@ -213,7 +213,7 @@ def build(run,web,case_budget=8):
         body+='</tr>'
     body+='</table></div><p class=note>当前这些单例分数不是shared50均分。正式对榜需要完整任务和一致的prompt、采样及聚合口径。</p>'
     body+='<h2 id=performance>耗时与 token 统计</h2><p class=note>仅统计已完成且通过validation的有效视频；running和失败case不进入均值。output tokens包含provider报告的reasoning输出，不另加一次。</p>'
-    body+='<div class=scroll><table><tr><th>模型</th><th>Text</th><th>Vision-Agent</th></tr>'
+    body+='<div class=scroll><table><tr><th>模型</th><th>Text</th><th>Vision</th></tr>'
     for model,label in MODELS.items():
         body+=f'<tr><th>{label}</th>'
         for track in TRACKS:

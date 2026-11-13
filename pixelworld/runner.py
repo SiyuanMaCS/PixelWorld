@@ -28,6 +28,28 @@ def _toml(value: str) -> str:
     return json.dumps(value)
 
 
+def _seed_provider_env(environment: dict[str, str], config: Benchmark, model: Model) -> None:
+    key = model.provider.env_key
+    if not key or environment.get(key):
+        return
+    filenames = {
+        "PIXELWORLD_API_KEY": "local.key",
+        "PIXELWORLD_MUX_KEY": "mux.key",
+    }
+    filename = filenames.get(key)
+    if not filename:
+        return
+    roots = [config.runs_root, config.source.parent]
+    for root in roots:
+        for parent in (root, *root.parents):
+            candidate = parent / "queue_proxy_logs" / filename
+            if candidate.is_file():
+                value = candidate.read_text().strip()
+                if value:
+                    environment[key] = value
+                    return
+
+
 def codex_command(model: Model, track: str, workspace: Path,
                   codex_binary: str = "codex", has_image: bool = True) -> list[str]:
     if track not in TRACKS or track not in model.tracks:
@@ -438,6 +460,7 @@ def run_case(config: Benchmark, model_key: str, track: str, case_id: str, attemp
         environment["TMPDIR"] = str(workspace / ".tmp")
         environment["PIXELWORLD_CLEANROOM"] = "1"
         environment["CODEX_HOME"] = str(codex_home)
+        _seed_provider_env(environment, config, model)
         if model.cli_backend == 'trae':
             environment.pop('CODEX_HOME',None)
             environment['TRAE_HOME'] = str(codex_home)

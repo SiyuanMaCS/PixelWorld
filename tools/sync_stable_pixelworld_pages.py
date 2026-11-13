@@ -36,6 +36,9 @@ CORE_TARGETS = (
     "pixelworld/matrix_full.html",
     "pixelworld/vbench2_subset.html",
     "pixelworld/phygenbench.html",
+    "pixelworld/phygen_pixelspace.html",
+    "pixelworld/phygen_pixelspace_smoke",
+    "pixelworld/phygen_qwen_init",
     "pixelworld/openve.html",
     "pixelworld/openve_smoke",
     "pixelworld/pcve_rigid.html",
@@ -59,10 +62,12 @@ MODEL_LABELS = {
     "gpt6-astra": "GPT-6-Astra",
     "deepseek-v41": "DeepSeek-V4.1-Flash",
     "seed21-pro": "Seed-2.1-Pro-0915",
+    "gemini38-flash": "Gemini-3.8-Flash",
 }
 
-MODEL_ORDER = ["gpt61-sol", "gpt56-sol", "gpt6-astra", "deepseek-v41", "seed21-pro"]
+MODEL_ORDER = ["gpt61-sol", "gpt56-sol", "gpt6-astra", "deepseek-v41", "gemini38-flash", "seed21-pro"]
 TRACK_ORDER = ["text", "vision-agent"]
+TRACK_LABELS = {"text": "Text", "vision-agent": "Vision"}
 
 
 def run(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
@@ -144,6 +149,63 @@ def read_json(path: Path) -> dict:
         return json.loads(path.read_text())
     except (OSError, ValueError):
         return {}
+
+
+def _quarantine_item_path(item: dict) -> str:
+    for key in ("from", "path", "original", "source"):
+        value = item.get(key)
+        if value:
+            return str(value)
+    return ""
+
+
+def _quarantine_root(item: dict) -> str | None:
+    if item.get("root"):
+        return str(item["root"])
+    value = _quarantine_item_path(item)
+    if not value:
+        return None
+    if "generations/" in value:
+        value = value.split("generations/", 1)[1]
+    value = value.lstrip("/")
+    return value.split("/", 1)[0] if value else None
+
+
+def _quarantine_model_track(item: dict) -> tuple[str | None, str | None]:
+    model, track = item.get("model"), item.get("track")
+    if model and track:
+        return str(model), str(track)
+    value = _quarantine_item_path(item)
+    if "generations/" in value:
+        value = value.split("generations/", 1)[1]
+    parts = value.strip("/").split("/")
+    if len(parts) >= 3:
+        return parts[1], parts[2]
+    return (str(model) if model else None, str(track) if track else None)
+
+
+def quarantine_stats(run_root: Path, roots: set[str] | tuple[str, ...] | list[str]) -> dict:
+    wanted = set(roots)
+    total = 0
+    by_group: dict[tuple[str, str], int] = {}
+    reasons: dict[str, int] = {}
+    for audit_path in (run_root / "_quarantine").glob("*/audit.json"):
+        audit = read_json(audit_path)
+        items = audit.get("items") or []
+        if not isinstance(items, list):
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if _quarantine_root(item) not in wanted:
+                continue
+            total += 1
+            reason = str(item.get("reason") or audit.get("classification") or "infra_or_recovery")
+            reasons[reason] = reasons.get(reason, 0) + 1
+            model, track = _quarantine_model_track(item)
+            if model and track:
+                by_group[(model, track)] = by_group.get((model, track), 0) + 1
+    return {"total": total, "by_group": by_group, "reasons": reasons}
 
 
 def fmt_number(value, digits: int = 0) -> str:
@@ -311,7 +373,7 @@ def group_rows(status: dict, heavy_slug: str) -> str:
         link = f'{heavy_slug}/{group.get("model_key", key.split("/")[0])}/{track}/index.html'
         rows.append(
             "<tr>"
-            f"<td>{html.escape(str(model))}<br><span class=status>{html.escape(track)}</span></td>"
+            f"<td>{html.escape(str(model))}<br><span class=status>{html.escape(TRACK_LABELS.get(track, track))}</span></td>"
             f"<td>{counts.get('complete', 0)} / {total}</td>"
             f"<td>{counts.get('running', 0)}</td>"
             f"<td>{counts.get('exhausted', 0)}</td>"
@@ -326,6 +388,7 @@ def group_rows(status: dict, heavy_slug: str) -> str:
 def model_track_matrix(run_root: Path, benchmark: str, status: dict, slug: str) -> str:
     source = run_root / "generations" / benchmark
     manifest_stats = group_manifest_stats(run_root, benchmark)
+    infra_stats = quarantine_stats(run_root, [benchmark])
     groups = status.get("groups", {})
     seen_models = {key.split("/")[0] for key in groups}
     model_order = [m for m in MODEL_ORDER if m in seen_models] + sorted(seen_models - set(MODEL_ORDER))
@@ -342,6 +405,7 @@ def model_track_matrix(run_root: Path, benchmark: str, status: dict, slug: str) 
             complete = counts.get("complete", 0)
             running = counts.get("running", 0)
             exhausted = counts.get("exhausted", 0) + counts.get("failed", 0)
+            infra_count = infra_stats["by_group"].get((model_key, track), 0)
             pending = counts.get("pending", max(total - complete - running - exhausted, 0))
             latest = group.get("latest_completion")
             if isinstance(latest, list) and len(latest) >= 2:
@@ -368,25 +432,26 @@ def model_track_matrix(run_root: Path, benchmark: str, status: dict, slug: str) 
             cells.append(
                 '<td class="run-cell">'
                 '<div class="run-top">'
-                f'<span><span class="{activity_class}">{activity}</span> <span class="run-name">{html.escape(track)}</span></span>'
+                f'<span><span class="{activity_class}">{activity}</span> <span class="run-name">{html.escape(TRACK_LABELS.get(track, track))}</span></span>'
                 f'<span class="run-num">{complete}/{total}</span>'
                 '</div>'
                 f'<div class="run-meta"><span class="live">{running} running</span> · {pending} pending · '
-                f'<span class="bad">{exhausted} 本轮失败/待重试</span></div>'
-                f'<div class="run-meta">latest: {html.escape(str(latest_case))}<br>{html.escape(str(latest_time))}</div>'
-                f'<div class="run-meta">avg time {fmt_seconds(stats.get("avg_duration"))} · '
-                f'avg output {fmt_number(stats.get("avg_output_tokens"))} tok · '
-                f'avg reasoning {fmt_number(stats.get("avg_reasoning_tokens"))} tok</div>'
+                f'<span class="bad">{exhausted} 模型未交付/待重试</span></div>'
+                + (f'<div class="run-meta warn">{infra_count} infra/recovery attempts quarantined</div>' if infra_count else "")
+                + f'<div class="run-meta">latest: {html.escape(str(latest_case))}<br>{html.escape(str(latest_time))}</div>'
+                + f'<div class="run-meta">avg time {fmt_seconds(stats.get("avg_duration"))} · '
+                + f'avg output {fmt_number(stats.get("avg_output_tokens"))} tok · '
+                + f'avg reasoning {fmt_number(stats.get("avg_reasoning_tokens"))} tok</div>'
                 + (f'<div class="run-meta">running case: {html.escape(running_cases)}</div>' if running_cases else "")
                 + (f'<div class="run-meta">activity: {running_activity}</div>' if running_activity else "")
                 + (f'<div class="run-meta warn">recent exhausted: {html.escape(exhausted_cases)}</div>' if exhausted_cases else "")
                 + f'<div class="run-links"><a class="link" href="{gallery}">视频与逐轮候选 →</a></div>'
-                '</td>'
+                + '</td>'
             )
         rows.append("<tr>" + "".join(cells) + "</tr>")
     return (
         '<div class=scroll><table class=matrix><tr><th>Model</th>'
-        '<th>Text</th><th>Vision-Agent</th></tr>'
+        '<th>Text</th><th>Vision</th></tr>'
         + "".join(rows)
         + "</table></div>"
     )
@@ -418,6 +483,71 @@ def evaluation_scheduler_table(path: Path) -> str:
         + "".join(rows)
         + "</table></div>"
     )
+
+
+def _model_counts(statuses: list[dict], model: str) -> tuple[int, int, int, int]:
+    complete = running = exhausted = total = 0
+    seen = False
+    for status in statuses:
+        for key, group in status.get("groups", {}).items():
+            if key.split("/")[0] != model:
+                continue
+            seen = True
+            counts = group.get("counts", {})
+            complete += counts.get("complete", 0)
+            running += counts.get("running", 0)
+            exhausted += counts.get("exhausted", 0) + counts.get("failed", 0)
+            total += sum(counts.values()) or status.get("cases", 0)
+    return (complete, total, running, exhausted) if seen else (0, 0, 0, 0)
+
+
+def _model_cell(values: tuple[int, int, int, int]) -> str:
+    complete, total, running, exhausted = values
+    if not total:
+        return '<td class="status">—</td>'
+    state = "ACTIVE" if running else ("DONE" if complete == total else ("RETRY" if exhausted else "QUEUED"))
+    return (f'<td><span class="{"badge" if running else "pill"}">{state}</span> '
+            f'<strong>{complete}/{total}</strong>'
+            f'<span class=status>{running} running · {exhausted} failed</span></td>')
+
+
+def model_overview_table(run_root: Path) -> str:
+    """One row per model on the main page; model additions should appear here."""
+    physics = [
+        read_json(run_root / "generations/physics_iq/status.json"),
+        read_json(run_root / "generations/physics_iq_gpt_native_v2/status.json"),
+        read_json(run_root / "generations/physics_iq_seed21_native_v2/status.json"),
+    ]
+    robojudge = [
+        read_json(run_root / "generations/robojudge/status.json"),
+        read_json(run_root / "generations/robojudge_seed21_native_v2/status.json"),
+    ]
+    pcve = [read_json(run_root / "generations/pcve_smoke/status.json")]
+    paired = run_root.parent / "phygen_pixelspace_v2_20261112" / "generations"
+    phygen = [read_json(path) for path in paired.glob("*/status.json")]
+
+    all_models = set(MODEL_ORDER)
+    for group in (physics + robojudge + pcve + phygen):
+        all_models.update(key.split("/")[0] for key in group.get("groups", {}))
+    order = [m for m in MODEL_ORDER if m in all_models] + sorted(all_models - set(MODEL_ORDER))
+
+    rows = []
+    for model in order:
+        if model not in MODEL_LABELS and all(not _model_counts(group, model)[1] for group in (physics, robojudge, pcve, phygen)):
+            continue
+        rows.append(
+            '<tr>'
+            f'<td><strong>{html.escape(MODEL_LABELS.get(model, model))}</strong><br><span class=status>{html.escape(model)}</span></td>'
+            + _model_cell(_model_counts(physics, model))
+            + _model_cell(_model_counts(robojudge, model))
+            + _model_cell(_model_counts(pcve, model))
+            + _model_cell(_model_counts(phygen, model))
+            + '</tr>'
+        )
+    return ('<section><h2>模型 × Benchmark 总览</h2>'
+            '<p class=note>主页监控表直接读取各 benchmark 的 status.json；新增模型进入 config 后会自动出现在这里。</p>'
+            '<div class=scroll><table><tr><th>Model</th><th>Physics-IQ</th><th>RoboJudge</th><th>PCVE</th><th>PhyGen smoke</th></tr>'
+            + ''.join(rows) + '</table></div></section>')
 
 
 def case_page_is_current(run: Path, case_dir: Path) -> bool:
@@ -542,6 +672,16 @@ def protocol_audit_notice(run_root: Path, benchmark: str) -> str:
 
 
 def write_vbench_page(run_root: Path, destination: Path) -> None:
+    legacy = run_root / "legacy/t2v_pre_pixelspace_v2_20261112/vbench2_subset_full"
+    if legacy.exists():
+        destination.write_text(page("VBench-2.0 · legacy", (
+            '<section class=hero><p class=eyebrow>LEGACY · VBENCH-2.0</p><h1>VBench-2.0 历史实验</h1>'
+            '<p class=muted>此前的 T2V 五维子集已经归档，不再属于当前 PixelWorld 实验。</p></section>'
+            '<div class=card><p>归档原因：旧 T2V 条件无法清楚地区分直接 RGB 像素生成与场景/渲染式生成。'
+            '保留全部旧产物供审计，但不继续生成、评测或报告分数。</p>'
+            '<p><a class="button" href="index.html">返回当前实验 →</a></p></div>'
+        )))
+        return
     status = read_json(run_root / "generations/vbench2_subset_full/status.json")
     smoke = read_json(run_root / "generations/vbench2_subset_smoke/status.json")
     provenance = read_json(run_root / "infrastructure/other_bench_protocols/vbench2_subset_full/provenance.json")
@@ -585,6 +725,15 @@ def write_vbench_page(run_root: Path, destination: Path) -> None:
 
 
 def write_phygen_page(run_root: Path, destination: Path) -> None:
+    legacy = run_root / "legacy/t2v_pre_pixelspace_v2_20261112/phygenbench_full"
+    if legacy.exists():
+        destination.write_text(page("PhyGenBench · legacy", (
+            '<section class=hero><p class=eyebrow>LEGACY · PHYGENBENCH</p><h1>PhyGenBench 历史 T2V 实验</h1>'
+            '<p class=muted>此前纯文本 T2V 运行已归档。当前只使用新的直接 RGB 像素空间 paired T2V/I2V 协议。</p></section>'
+            '<div class=card><p>旧视频和轨迹完整保留作历史证据，但不再纳入当前结果或继续调度。</p>'
+            '<p><a class="button primary" href="phygen_pixelspace.html">打开当前 paired protocol →</a></p></div>'
+        )))
+        return
     status = read_json(run_root / "generations/phygenbench_full/status.json")
     smoke = read_json(run_root / "generations/phygenbench_smoke/status.json")
     provenance = read_json(run_root / "infrastructure/other_bench_protocols/phygenbench_full/provenance.json")
@@ -643,36 +792,35 @@ def write_index_page(destination: Path, run_root: Path) -> None:
     }
     body = (
         '<section class="hero"><p class="eyebrow">PIXELWORLD MAIN BENCHMARKS</p><h1>PixelWorld Index</h1>'
-        '<p class="muted">主实验固定为五个 benchmark：RoboJudge、Physics-IQ、VBench-2.0 五维 subset、PhyGenBench 和 PCVE-RigidBench。PCVE 已获准五模型全量视频编辑；OpenVE 仅保留已有 smoke。'
+        '<p class="muted">当前主线是 4+1：Physics-IQ、RoboJudge、PCVE-RigidBench、PhyGenBench 官方 T2V，加上 PhyGenBench paired I2V 扩展。VBench-2.0 已归档。'
         "WorldArena、WBench、WorldScore 等保留为历史/探索入口，不再作为主线。</p></section>"
         '<section id="benchmarks"><h2>主 Benchmark 与进度</h2><div class="grid">'
         '<article class="card feature"><span class="badge">running</span><h3>RoboJudge shared-50</h3>'
-        '<p class="desc">50 shared embodied generation prompts x Text/Vision-Agent</p>'
+        '<p class="desc">50 shared embodied generation prompts x Text/Vision</p>'
         '<p class="note">Original RoboJudge-9B scoring; Table8 comparability remains explicitly gated.</p>'
         '<a class="button primary" href="robojudge.html">打开页面 →</a></article>'
         '<article class="card feature"><span class="badge">running</span><h3>Physics-IQ Verified</h3>'
-        '<p class="desc">198 official BPP/I2V prompts x Text/Vision-Agent</p>'
+        '<p class="desc">198 official BPP/I2V prompts x Text/Vision</p>'
         '<p class="note">Native v2 GPT rerun is separate from legacy-v1 reference results.</p>'
         '<a class="button primary" href="physics_iq_baseline.html">打开页面 →</a></article>'
-        '<article class="card feature"><span class="badge">running</span><h3>VBench-2.0 five-dimension subset</h3>'
-        '<p class="desc">291 selected VBench-2.0 dimension rows x Text/Vision-Agent.</p>'
-        '<p class="note">Not the Video-Coder three-dimension setup and not the full 18-dimension VBench-2.0 score.</p>'
-        '<a class="button primary" href="vbench2_subset.html">打开页面 →</a></article>'
-        '<article class="card feature"><span class="badge">running</span><h3>PhyGenBench</h3>'
-        '<p class="desc">160 prompts covering mechanics/optics/thermal/material physical concepts.</p>'
-        '<p class="note">Small physically interpretable supplement; model scores from Video-Coder paper are shown only as reference.</p>'
-        '<a class="button primary" href="phygenbench.html">打开页面 →</a></article>'
+        '<article class="card feature"><span class="badge">running</span><h3>PhyGenBench · T2V + I2V</h3>'
+        '<p class="desc">160 条官方物理 prompt 的 T2V 正式评测，并补充同 prompt + Qwen-Image-2.1 预动作首帧的 I2V 扩展。</p>'
+        '<p class="note">Qwen 仅用于 I2V 初始帧；所有视频帧仍由 coding agent 直接输出 RGB 像素。</p>'
+        '<a class="button primary" href="phygen_pixelspace.html">打开 PhyGen 协议与进度 →</a></article>'
         '<article class="card feature"><span class="badge">running</span><h3>PCVE-RigidBench · 必跑</h3>'
-        '<p class="desc">129 条官方物理反事实视频编辑 × 五模型 × Text/Vision-Agent，共 1,290 条视频；复用已有成功 smoke。</p>'
+        '<p class="desc">129 条官方物理反事实视频编辑 × 五模型 × Text/Vision，共 1,290 条视频；复用已有成功 smoke。</p>'
         '<p class="note">定量英语指令 · 96 帧 / 24 FPS / 4 秒 · 目标视频和物理真值仅用于评测。</p>'
         '<a class="button primary" href="pcve_rigid.html">打开 PCVE 进度 →</a></article>'
-        '</div><p><a class="button primary" href="smoke.html">打开 VBench2 / PhyGenBench smoke 输出 →</a></p></section>'
-        '<section><h2>视频编辑</h2><div class="grid"><article class="card feature"><span class="badge">running</span><h3>OpenVE-Bench</h3>'
+        '</div></section>'
+        + model_overview_table(run_root) +
+        '<section><h2>候选与历史</h2><div class="grid"><article class="card legacy"><span class="badge">optional smoke</span><h3>OpenVE-Bench</h3>'
         '<p class="desc">431 条原视频＋编辑指令，8 类编辑任务。保留已完成的单条 smoke，暂不启动全量。</p>'
-        '<a class="button primary" href="openve.html">查看 smoke 与编辑协议 →</a></article></div></section>'
+        '<a class="button" href="openve.html">查看 smoke 与编辑协议 →</a></article></div></section>'
         '<section><h2>Legacy 与探索入口</h2><div class="grid"><article class="card legacy"><h3>Legacy Physics-IQ full matrix</h3>'
         '<p class="desc">早期 legacy-v1 / 旧 Track 结果，只作历史参考，不计入 native_v2 主实验。</p>'
         '<a class="button" href="matrix_full.html">打开 legacy full matrix →</a></article>'
+        '<article class="card legacy"><h3>Archived T2V experiments</h3><p class="desc">VBench-2.0 subset 与 pre-v2 PhyGenBench T2V 完整保留，但不计入当前 4+1 协议。</p>'
+        '<a class="button" href="vbench2_subset.html">VBench archive →</a><a class="button" href="phygenbench.html">PhyGen pre-v2 →</a></article>'
         '<article class="card legacy"><h3>Older smoke gallery</h3><p class="desc">WorldArena、WBench、WorldScore、AVGen 等 smoke 保留在旧页中。</p>'
         f'<a class="button" href="{HEAVY_BASE}bench_smoke_20261106/index.html">打开旧导航 →</a></article></div></section>'
     )
@@ -683,6 +831,7 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         if not route:
             return card
         statuses = [read_json(run_root / "generations" / name / "status.json") for name in suites[route]]
+        infra = quarantine_stats(run_root, suites[route])["total"]
         complete = sum(s.get("totals", {}).get("complete", 0) for s in statuses)
         total = sum(s.get("total_runs", 0) for s in statuses)
         pending = sum(s.get("totals", {}).get("pending", 0) for s in statuses)
@@ -691,7 +840,7 @@ def write_index_page(destination: Path, run_root: Path) -> None:
                      and not w.get("stat", "").startswith("Z") for w in workers)
         explicitly_stopped = all((run_root / "generations" / name / "STOP").exists() for name in suites[route])
         stopped_label = "已停止 · T2V 历史实验" if route in {"vbench2_subset.html", "phygenbench.html"} else "已停止"
-        label = stopped_label if explicitly_stopped else ("running" if active else ("待调度" if pending else ("本轮失败 · 等待重试" if exhausted else ("生成完成" if total and complete == total else "等待任务状态更新"))))
+        label = stopped_label if explicitly_stopped else ("running" if active else ("待调度" if pending else ("模型未交付 · 等待重试" if exhausted else ("生成完成" if total and complete == total else "等待任务状态更新"))))
         if route == 'openve.html' or (route == 'pcve_rigid.html' and not any(s.get('cases', 0) == 129 for s in statuses)):
             label = 'smoke · ' + label
         card = card.replace('<span class="badge">running</span>', f'<span class="badge">{label} · {active} active</span>')
@@ -702,7 +851,8 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         last = max(latest) if latest else ("—", "—")
         facts = (f'<div class="facts"><div><strong>{complete:,} / {total:,}</strong>有效视频</div>'
                  f'<div><strong>{active}</strong>正在运行</div><div><strong>{pending:,}</strong>待生成</div>'
-                 f'<div><strong>{exhausted:,}</strong>未交付</div></div>'
+                 f'<div><strong>{exhausted:,}</strong>模型未交付</div>'
+                 f'<div><strong>{infra:,}</strong>infra/recovery</div></div>'
                  f'<p class="note">状态 UTC：<time>{html.escape(stamp)}</time><br>'
                  f'最近有效交付：{html.escape(str(last[1]))} · {html.escape(str(last[0]))}</p>')
         return card.replace('<a class="button primary"', facts + '<a class="button primary"', 1)
@@ -714,10 +864,107 @@ def write_index_page(destination: Path, run_root: Path) -> None:
                  f'仍有 {preview.get("remaining_video_details",0)} 条已生成视频的详情等待同步。</p>'
                  f'<p class=note>详情检查时间 UTC：{html.escape(str(preview.get("updated_utc","—")))}。'
                  '生成完成数量与网页详情同步数量分别统计；正在同步的案例保留原始产物和逐轮记录。</p></div></section>')
-    if all((run_root / "generations" / name / "STOP").exists() for name in ("vbench2_subset_full", "phygenbench_full")):
-        body = body.replace('四个主 Benchmark', 'I2V 主实验与历史实验')
-        body = re.sub(r'<p class="muted">主实验收敛为四个 benchmark：.*?</p>', '<p class="muted">当前 I2V 主实验为 Physics-IQ 与 RoboJudge。VBench-2.0 子集和 PhyGenBench 为已停止的 T2V 历史实验，已有产物保留。</p>', body, flags=re.DOTALL)
     destination.write_text(page("PixelWorld Index", body))
+
+
+def write_phygen_pixelspace_page(run_root: Path, destination: Path) -> None:
+    """Publish the current PhyGenBench T2V plus paired I2V protocol."""
+    paired = run_root.parent / "phygen_pixelspace_v2_20261112"
+    condition_names = {
+        "t2v": "T2V official prompt · direct RGB",
+        "i2v_qweninit": "I2V-QwenInit extension · direct RGB",
+        "t2v_deepseek": "T2V official prompt · direct RGB",
+        "i2v_qweninit_deepseek": "I2V-QwenInit extension · direct RGB",
+        "t2v_gemini38": "T2V official prompt · direct RGB",
+        "i2v_qweninit_gemini38": "I2V-QwenInit extension · direct RGB",
+    }
+    statuses = {name: read_json(paired / "generations" / name / "status.json")
+                for name in condition_names}
+    rows = []
+    total_valid = 0
+    for name, label in condition_names.items():
+        status = statuses[name]
+        for key, group in sorted(status.get("groups", {}).items()):
+            model_key, track = key.split("/", 1)
+            counts = group.get("counts", {})
+            valid = counts.get("complete", 0)
+            total_valid += valid
+            latest = group.get("latest_completion") or ["—", "—"]
+            rows.append(f'<tr><td>{label}</td><td>{html.escape(MODEL_LABELS.get(model_key, model_key))}</td><td>{TRACK_LABELS.get(track, track)}</td>'
+                        f'<td>{valid} / 4</td><td>{counts.get("running",0)}</td>'
+                        f'<td>{counts.get("pending",0)}</td><td>{counts.get("exhausted",0)}</td>'
+                        f'<td>{html.escape(str(latest[1]))}<br>{html.escape(str(latest[0]))}</td></tr>')
+    smoke = destination.parent / "phygen_pixelspace_smoke/index.html"
+    smoke_link = ('<a class="button primary" href="phygen_pixelspace_smoke/index.html">播放已完成 smoke 视频 →</a>'
+                  if total_valid and smoke.is_file() else
+                  '<span class="note">尚无格式有效视频；有效视频出现后才会开放播放入口。</span>')
+    body = ('<section class=hero><p class=eyebrow>PHYGENBENCH · PIXEL-SPACE T2V + I2V</p>'
+            '<h1>PhyGenBench 官方 T2V 与 I2V 扩展</h1>'
+            '<p class=muted>正式 T2V 使用 160 条官方物理 prompt；I2V 扩展在同一 prompt 上加入高质量预动作首帧，用来分析初始视觉状态如何改变 direct-RGB coding agent 的生成边界。</p></section>'
+            '<div class="card feature"><span class=badge>smoke running</span>'
+            '<p>T2V 从文本直接生成全部帧并进入官方 PhyGenBench 评测；I2V 使用 Qwen-Image-2.1 生成并人工核验的预动作首帧。'
+            'Qwen 从不参与视频后续帧生成，I2V 分数单独报告为 PixelWorld 扩展。</p><p>两种条件均禁止 3D renderer、物理引擎和外部图像/视频模型；'
+            '但允许 Python/NumPy/PIL 的局部像素、纹理、光照、warp 和运动计算。</p>' + smoke_link + '</div>'
+            '<h2>Smoke progress</h2><div class=scroll><table><tr><th>Condition</th><th>Model</th><th>Track</th><th>Valid video</th><th>Running</th><th>Pending</th><th>Terminal failure</th><th>Latest</th></tr>'
+            + ''.join(rows) + '</table></div>'
+            '<h2>已核验的 I2V 初态</h2><div class=card><p>四条 smoke 覆盖失重倒水、镜像、热相变、颜料混合。'
+            '首帧均来自 pinned Qwen-Image-2.1 revision，并且下采样后的实际输入已读图复核。</p>'
+            '<p><a class="button primary" href="phygen_qwen_init/index.html">查看 Qwen init frames →</a> '
+            '<a class="button" href="https://github.com/SiyuanMaCS/PixelWorld/blob/main/docs/PHYGENBENCH_PIXELSPACE_PAIRED_V2.md">完整协议 →</a></p></div>'
+            '<h2>旧实验</h2><div class=card><p>旧 PhyGenBench 与 VBench T2V 运行已转入 legacy；它们不参与此处结果。</p>'
+            '<a class="button" href="phygenbench.html">旧 PhyGen 说明 →</a> <a class="button" href="vbench2_subset.html">旧 VBench 说明 →</a></div>')
+    destination.write_text(page("PhyGenBench paired pixel-space protocol", body))
+
+
+def write_phygen_qwen_init_page(run_root: Path, destination: Path) -> None:
+    """Publish visually selected Qwen-Image initial frames for PhyGenBench I2V."""
+    from PIL import Image
+
+    repo_root = run_root.parent.parent
+    qwen_root = repo_root / "runs/phygen_i2v_qwen21_20261111"
+    paired_root = repo_root / "runs/phygen_pixelspace_v2_20261112"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    thumbs = destination.parent / "thumbs"
+    thumbs.mkdir(parents=True, exist_ok=True)
+    selected = sorted(qwen_root.glob("selected/phygen_*/selection.json"))
+    cards = []
+    smoke_ids = {"phygen_001", "phygen_061", "phygen_091", "phygen_121"}
+    for record_path in selected:
+        record = json.loads(record_path.read_text())
+        case_id = record["case_id"]
+        image_path = record_path.with_name("first_frame.png")
+        thumb_name = f"{case_id}.jpg"
+        thumb_path = thumbs / thumb_name
+        if (not thumb_path.exists()
+                or thumb_path.stat().st_mtime_ns < image_path.stat().st_mtime_ns):
+            Image.open(image_path).convert("RGB").resize((320, 180), Image.Resampling.LANCZOS).save(
+                thumb_path, quality=86, optimize=True)
+        badge = '<span class="badge">smoke</span>' if case_id in smoke_ids else ''
+        note = html.escape(record.get("review_notes", ""))
+        cards.append(
+            f'<article class="card"><img src="thumbs/{thumb_name}" '
+            'style="width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:8px;background:#080c12">'
+            f'<h3>{html.escape(case_id)} {badge}</h3>'
+            f'<p class="note">candidate {record.get("selected_candidate", "—")} · sha {html.escape(record.get("image_sha256", "")[:12])}</p>'
+            f'<p class="desc">{note}</p></article>')
+    contact = paired_root / "i2v_input_contact_sheet.png"
+    contact_html = ""
+    if contact.is_file():
+        shutil.copy2(contact, destination.parent / "smoke_contact_sheet.png")
+        contact_html = ('<h2>Smoke 4-frame contact sheet</h2><div class="card">'
+                        '<img src="smoke_contact_sheet.png" style="width:100%;height:auto;border-radius:8px"></div>')
+    summary = read_json(qwen_root / "selection_complete.json")
+    body = (
+        '<section class=hero><p class=eyebrow>QWEN-IMAGE INITIAL FRAMES</p>'
+        '<h1>PhyGenBench I2V · selected init frames</h1>'
+        '<p class=muted>Qwen-Image-2.1 只用于生成动作发生前的静态首帧；PixelWorld 视频后续帧仍由 coding agent 直接输出 RGB。</p></section>'
+        f'<div class="card feature"><span class=badge>{len(selected)} / 160 selected</span>'
+        f'<p>选择状态：{html.escape(str(summary.get("phase", "unknown")))}。每张图都有 selection.json 和实际读图证据；这里展示下采样缩略图用于快速审核。</p>'
+        '<p><a class="button primary" href="../phygen_pixelspace.html">返回 paired protocol →</a> '
+        '<a class="button" href="../phygen_pixelspace_smoke/index.html">查看 smoke 视频 →</a></p></div>'
+        + contact_html +
+        '<h2>All selected frames</h2><div class=grid>' + ''.join(cards) + '</div>')
+    destination.write_text(page("PhyGenBench Qwen init frames", body))
 
 
 def write_openve_page(run_root: Path, destination: Path) -> None:
@@ -734,7 +981,7 @@ def write_openve_page(run_root: Path, destination: Path) -> None:
             '<h2>Smoke Model × Track</h2>'
             + model_track_matrix(run_root,'openve_smoke',status,'openve_smoke')
             + '<h2>编辑任务与评测</h2><div class="card"><p>431 条任务：风格 58、背景 59、局部修改 65、添加 67、删除 59、字幕 50、镜头 43、创意 30。</p>'
-            '<p>Text 可用代码读取原视频与 RGB 数组，关闭图片检查工具；Vision-Agent 另附首帧和输入接触表，自主决定是否看图与修订。编辑首帧允许改变。每版候选、代码和工具轨迹由 harness 保存。</p>'
+            '<p>Text 可用代码读取原视频与 RGB 数组，关闭图片检查工具；Vision 另附首帧和输入接触表，自主决定是否看图与修订。编辑首帧允许改变。每版候选、代码和工具轨迹由 harness 保存。</p>'
             '<p>评测使用官方八类 rubric 与分数解析器。Seed-1.6-VL 按 2 FPS 读取编辑前后的视频；指令遵循、内容与细节保真、画面稳定性按原脚本计算。</p>'
             '<p class="warn">已配好 submission 导出与评测检查接口；Seed-1.6-VL 的评测 API 尚未配置，因此当前没有官方分数。其他 Seed 版本不会自动替代它。</p></div>'
             '<h2>论文参考分数</h2><div class="scroll"><table><tr><th>Model</th><th>Seed-1.6-VL Overall / 5</th></tr>'
@@ -750,7 +997,7 @@ def write_pcve_page(run_root: Path, destination: Path) -> None:
     status=read_json(run_root/'generations/pcve_smoke/status.json')
     full = status.get('cases') == 129
     scope_label = '全量 · 五模型 × 两个 Track' if full else '五模型 smoke · 全量输入准备中'
-    scope_text = ('129 条 × 5 个模型 × Text/Vision-Agent，共 1,290 条视频。已有成功 smoke 和逐轮历史原样保留。'
+    scope_text = ('129 条 × 5 个模型 × Text/Vision，共 1,290 条视频。已有成功 smoke 和逐轮历史原样保留。'
                   if full else '全量已获准，正在准备 129 条官方输入；现有单案例 smoke 结果原样保留。')
     baselines=[('VACE',-0.042,146.26,0.273),('Ditto',-0.120,149.94,0.264),
                ('MiniMax H3',-0.096,152.00,0.250),('Seedance 2.5',-0.087,144.99,0.231),
@@ -882,6 +1129,12 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
         write_vbench_page(run_root, pixelworld / "vbench2_subset.html")
     if not (run_root/'generations/phygenbench_full/STOP').exists() or not (pixelworld/'phygenbench.html').is_file():
         write_phygen_page(run_root, pixelworld / "phygenbench.html")
+    write_phygen_pixelspace_page(run_root, pixelworld / "phygen_pixelspace.html")
+    paired_source = repo_root / "runs/phygen_pixelspace_v2_20261112/web_source"
+    if (paired_source / "inventory.json").is_file():
+        from pixelworld.smoke_web import build as build_smoke_web
+        build_smoke_web(paired_source, pixelworld / "phygen_pixelspace_smoke")
+    write_phygen_qwen_init_page(run_root, pixelworld / "phygen_qwen_init/index.html")
     write_openve_page(run_root, pixelworld / "openve.html")
     write_pcve_page(run_root, pixelworld / "pcve_rigid.html")
 

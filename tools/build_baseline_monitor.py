@@ -5,8 +5,9 @@ import statistics
 import time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from tools.build_bench_review import document, physics_verified_display
+from tools.sync_stable_pixelworld_pages import quarantine_stats
 
-MODELS={'gpt61-sol':'GPT-6.1-Sol','gpt56-sol':'GPT-5.6-Sol','gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash','seed21-pro':'Seed-2.1-Pro-0915'}
+MODELS={'gpt61-sol':'GPT-6.1-Sol','gpt56-sol':'GPT-5.6-Sol','gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash','seed21-pro':'Seed-2.1-Pro-0915','gemini38-flash':'Gemini-3.8-Flash'}
 
 def read(p):
     try:return json.loads(p.read_text())
@@ -102,12 +103,12 @@ def build(run,web,legacy):
     seed_status=read(run/'generations/physics_iq_seed21_native_v2/status.json')
     old=read(legacy);groups={**status.get('groups',{}),**gpt_status.get('groups',{}),**seed_status.get('groups',{})};frozen=read(run/'BASELINE_FROZEN.json')
     body=('<a class=back href="index.html">← 实验导航</a><h1>Physics-IQ · Baseline 全量</h1>'
-          '<p class=muted>完整198个I2V/BPP输入，每模型Text与Vision-Agent。已完成的旧协议结果复用，不重复生成。</p>'
+          '<p class=muted>完整198个I2V/BPP输入，每模型Text与Vision。已完成的旧协议结果复用，不重复生成。</p>'
           '<div class="card feature"><span class=badge>冻结原生 harness · 100k</span>'
           f'<div class=facts><div><strong>198</strong>每组任务</div><div><strong>{len(MODELS)}</strong>模型</div><div><strong>2</strong>Tracks</div></div>'
           '<p class=desc>256×144 · 4FPS · 20帧／5秒。模型自主检查和修订。旧50k及legacy运行明确单列来源。</p>'
           '<a href="https://github.com/SiyuanMaCS/PixelWorld/tree/main/baselines/native_v2_100k">baseline代码与复现文档 →</a></div>'
-          '<h2 id=models>模型 × Track</h2><div class=scroll><table class=matrix><tr><th>模型</th><th>Text</th><th>Vision-Agent</th></tr>')
+          '<h2 id=models>模型 × Track</h2><div class=scroll><table class=matrix><tr><th>模型</th><th>Text</th><th>Vision</th></tr>')
     for model,label in MODELS.items():
         body+=f'<tr><th>{label}</th>'
         for track in ['text','vision-agent']:
@@ -122,6 +123,7 @@ def build(run,web,legacy):
                        f'<a href="#legacy">查看Legacy参考 →</a></td>')
             else:
                 bench_dir='physics_iq_gpt_native_v2' if model in ('gpt61-sol','gpt56-sol') else ('physics_iq_seed21_native_v2' if model=='seed21-pro' else 'physics_iq')
+                infra_count=quarantine_stats(run,[bench_dir])['by_group'].get((model,track),0)
                 running_cases=', '.join(entry.get('running_cases') or [])
                 activity=''
                 if entry.get('running_cases'):
@@ -130,7 +132,8 @@ def build(run,web,legacy):
                         f'{html.escape(case)}: {event_status(gen_root,model,track,case)}'
                         for case in (entry.get('running_cases') or [])[:3]
                     )
-                body+=(f'<td>{activity_badge(c)} <strong>{c.get("complete",0)}/198 有效视频</strong><span class=status>{c.get("running",0)}运行中 · {c.get("exhausted",0)}本轮失败/待重试 · {c.get("pending",198-c.get("complete",0)-c.get("running",0)-c.get("exhausted",0))}待调度</span>'
+                body+=(f'<td>{activity_badge(c)} <strong>{c.get("complete",0)}/198 有效视频</strong><span class=status>{c.get("running",0)}运行中 · {c.get("exhausted",0)}模型未交付/待重试 · {c.get("pending",198-c.get("complete",0)-c.get("running",0)-c.get("exhausted",0))}待调度</span>'
+                       + (f'<span class="status warn">{infra_count} infra/recovery attempts quarantined</span>' if infra_count else '')
                        + (f'<span class=status>正在跑：{html.escape(running_cases)}</span>' if running_cases else '')
                        + (f'<span class=status>最近事件：{activity}</span>' if activity else '')
                        + f'<span class=status>最新完成 UTC：{html.escape(str(last[0]))}<br>{html.escape(str(last[1]))}</span>'
@@ -147,7 +150,7 @@ def build(run,web,legacy):
             body+=f'<tr><td>{label}</td><td>{track}</td><td>{n}/198</td><td>{fmt(mean/60 if mean else None)}m</td><td><a href="matrix_{slug}-{track}.html">打开legacy全量视频 →</a></td></tr>'
     body+='</table></div>'
     body+='<h2 id=performance>耗时与 token 统计</h2><p class=note>仅统计已完成且通过validation的有效视频；running和失败case不进入均值。Legacy组只显示旧状态里的平均耗时，token均值缺失时不补0。</p>'
-    body+='<div class=scroll><table><tr><th>模型</th><th>Text</th><th>Vision-Agent</th></tr>'
+    body+='<div class=scroll><table><tr><th>模型</th><th>Text</th><th>Vision</th></tr>'
     for model,label in MODELS.items():
         body+=f'<tr><th>{label}</th>'
         for track in ['text','vision-agent']:
@@ -172,7 +175,7 @@ def build(run,web,legacy):
         phase=entry.get('phase','待运行')
         note=entry.get('blocker') or entry.get('error') or '—'
         if phase=='incomplete_official_scope':
-            note=f'{entry.get("exhausted_cases",0)} 条未交付；有效输出未达到198，不能计算完整官方分数'
+            note=f'{entry.get("exhausted_cases",0)} 条模型未交付；有效输出未达到198，不能计算完整官方分数'
         accepted=entry.get('accepted_cases',198 if entry.get('official_full_score') else '—')
         body+=f'<tr><td>{html.escape(key)}</td><td>{html.escape(phase)}</td><td>{accepted}/198</td><td>{html.escape(str(note))}</td><td>{physics_verified_display(score)}</td></tr>'
     body+='</table></div><p><a href="robojudge.html">RoboJudge全量实验 →</a></p>'

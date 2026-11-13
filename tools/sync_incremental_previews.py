@@ -50,6 +50,57 @@ def build_quick_case(run, output):
     (output/'quick_receipt.json').write_text(json.dumps({'source_stamp':quick_fingerprint(run)}))
 
 
+def failure_summary(run, manifest):
+    validation = manifest.get("validation") or {}
+    usage = manifest.get("token_usage") or {}
+    budget = manifest.get("token_budget") or {}
+    messages = []
+    events = run / "logs/events.jsonl"
+    if events.is_file():
+        for line in events.read_text(errors="replace").splitlines():
+            try:
+                event = json.loads(line)
+            except ValueError:
+                continue
+            message = event.get("message") or (event.get("error") or {}).get("message")
+            if message:
+                messages.append(str(message))
+    missing = validation.get("missing_required") or []
+    reasons = []
+    if messages:
+        reasons.append(messages[-1])
+    if missing:
+        reasons.append("缺失产物：" + ", ".join(map(str, missing[:6])))
+    if validation.get("infra_error"):
+        reasons.append("infra error: " + str(validation["infra_error"]))
+    if validation.get("budget_error"):
+        reasons.append(str(validation["budget_error"]))
+    if budget.get("exhausted"):
+        reasons.append("output token budget exhausted")
+    if not reasons:
+        reasons.append("validation did not pass")
+    fields = []
+    if usage.get("output_tokens") is not None:
+        fields.append(f'output {usage["output_tokens"]:,} tok')
+    elif usage.get("status"):
+        fields.append(f'usage {usage["status"]}')
+    if validation.get("generate_runs") is not None:
+        fields.append(f'generate runs {validation.get("generate_runs")}')
+    if validation.get("frames") is not None:
+        fields.append(f'frames {validation.get("frames")}')
+    if manifest.get("duration_seconds") is not None:
+        fields.append(f'{manifest.get("duration_seconds"):.0f}s')
+    return "；".join(reasons), " · ".join(fields)
+
+
+def failure_html(run, manifest):
+    reason, fields = failure_summary(run, manifest)
+    detail = f'<p class="note"><strong>失败原因：</strong>{html.escape(reason)}</p>'
+    if fields:
+        detail += f'<p class=status>{html.escape(fields)}</p>'
+    return detail
+
+
 def sync_previews(run_root, heavy_web, pixelworld, limit=8, quick_limit=64):
     import time
     def progress(phase, **fields):
@@ -253,6 +304,8 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=8, quick_limit=64):
                 cards.append(f'<p><a href="{quick_url}">▶ 播放已提交视频 · 完整轨迹同步中</a></p>')
             else:
                 cards.append('<p class=note>生成状态已更新，详情与视频资源正在同步。</p>')
+                if m.get('status') == 'failed':
+                    cards.append(failure_html(run, m))
             cards.append(f'<details><summary>全部 {len(history)} 次运行记录</summary>')
             for attempt_run, attempt in sorted(history, key=lambda row: row[1]["attempt"]):
                 label = f'Attempt {attempt["attempt"]}: {attempt["status"]}'
@@ -260,7 +313,7 @@ def sync_previews(run_root, heavy_web, pixelworld, limit=8, quick_limit=64):
                         and committed(relative / attempt_run.name / 'index.html')):
                     cards.append(f'<p><a href="{attempt_run.name}/index.html">{html.escape(label)}</a></p>')
                 else:
-                    cards.append(f'<p>{html.escape(label)} · 原始记录保留，预览待同步</p>')
+                    cards.append(f'<div class=box><p>{html.escape(label)} · 原始记录保留，预览待同步</p>{failure_html(attempt_run, attempt) if attempt.get("status")=="failed" else ""}</div>')
             cards.append('</details></article>')
         destination = pixelworld / relative
         destination.mkdir(parents=True, exist_ok=True)

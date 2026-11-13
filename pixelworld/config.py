@@ -37,6 +37,7 @@ class Benchmark:
     max_concurrency: int
     max_per_config: int
     max_attempts: int
+    max_total_attempts: int | None
     case_ids: tuple[str, ...] | None
     models: tuple[Model, ...]
     output_token_budget: int | None = None
@@ -101,10 +102,14 @@ def load_config(path: str | Path) -> Benchmark:
         max_concurrency=int(raw.get("max_concurrency", 4)),
         max_per_config=int(raw.get("max_per_config", 2)),
         max_attempts=int(raw.get("max_attempts", 2)),
+        max_total_attempts=(int(raw["max_total_attempts"])
+                            if raw.get("max_total_attempts") is not None else None),
         case_ids=tuple(raw["case_ids"]) if raw.get("case_ids") else None,
         models=tuple(models),
         output_token_budget=token_budget,
     )
     if min(result.max_concurrency, result.max_per_config, result.max_attempts) < 1:
         raise ValueError("Concurrency and attempt limits must be positive")
+    if result.max_total_attempts is not None and result.max_total_attempts < 1:
+        raise ValueError("max_total_attempts must be positive when set")
     return result
