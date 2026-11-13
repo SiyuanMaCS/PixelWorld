@@ -5,7 +5,7 @@ import statistics
 import time
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from tools.build_bench_review import document, physics_verified_display
-from tools.sync_stable_pixelworld_pages import quarantine_stats
+from tools.sync_stable_pixelworld_pages import HIDDEN_MODELS, quarantine_stats
 
 MODELS={'gpt61-sol':'GPT-6.1-Sol','gpt56-sol':'GPT-5.6-Sol','gpt6-astra':'GPT-6-Astra','deepseek-v41':'DeepSeek-V4.1-Flash','seed21-pro':'Seed-2.1-Pro-0915'}
 
@@ -171,6 +171,8 @@ def build(run,web,legacy):
         cohorts.update(read(run/'evaluation'/scheduler_name/'scheduler.json').get('cohorts',{}))
     body+='<div class=scroll><table><tr><th>组</th><th>阶段</th><th>有效输出</th><th>阻塞/说明</th><th>完整Verified /100</th></tr>'
     for key,entry in cohorts.items():
+        if key.split("/", 1)[0] in HIDDEN_MODELS:
+            continue
         score=entry.get('score',{}).get('verified_score') if entry.get('official_full_score') else None
         phase=entry.get('phase','待运行')
         note=entry.get('blocker') or entry.get('error') or '—'

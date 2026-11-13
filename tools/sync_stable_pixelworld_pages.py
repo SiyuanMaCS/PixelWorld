@@ -464,6 +464,8 @@ def evaluation_scheduler_table(path: Path) -> str:
         return '<p class="note">Evaluation watcher has not written a scheduler yet.</p>'
     rows = []
     for key, item in sorted(cohorts.items()):
+        if key.split("/", 1)[0] in HIDDEN_MODELS:
+            continue
         blocker = item.get("blocker") or item.get("error") or "—"
         rows.append(
             "<tr>"
