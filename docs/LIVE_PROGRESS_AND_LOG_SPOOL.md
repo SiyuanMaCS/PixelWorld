@@ -52,6 +52,13 @@ GitHub Pages deployment or the historical rich-page rendering backlog. End-to-en
 freshness also depends on GitHub/network caching; this is live polling, not a
 guaranteed instantaneous stream.
 
+The viewer resolves the public live branch to an exact commit once per minute
+and fetches data and assets from that immutable commit. This avoids a stale
+raw-branch CDN edge showing old counts after a successful push. The ref lookup
+is shared through browser storage across tabs. If the public GitHub API is
+unavailable or rate limited, the last usable root remains available. A data
+poll runs every ten seconds; discovery of a newer commit runs once per minute.
+
 Case reads and RGB exports run in four background workers. The publisher keeps
 refreshing cohort progress while a slow case read is pending. Workers render to
 a private local cache; only completed files move into the public checkout before
