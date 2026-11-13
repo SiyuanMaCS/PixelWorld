@@ -102,10 +102,11 @@ def failure_html(run, manifest):
 
 
 def sync_previews(run_root, heavy_web, pixelworld, limit=8, quick_limit=64):
+    import os
     import time
     def progress(phase, **fields):
         path=run_root/'preview_build_status.json'
-        temporary=path.with_suffix('.tmp')
+        temporary=path.with_name(f'{path.name}.tmp.{os.getpid()}')
         temporary.write_text(json.dumps({'phase':phase,'updated_at':time.time(),**fields}))
         temporary.replace(path)
     progress('scanning_active_suites')

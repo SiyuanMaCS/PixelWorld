@@ -32,6 +32,7 @@ CORE_TARGETS = (
     "pixelworld/index.html",
     "pixelworld/pixelworld-index.html",
     "pixelworld/physics_iq_baseline.html",
+    "pixelworld/physics_iq_512w24fps.html",
     "pixelworld/robojudge.html",
     "pixelworld/matrix_full.html",
     "pixelworld/vbench2_subset.html",
@@ -790,6 +791,7 @@ def write_index_page(destination: Path, run_root: Path) -> None:
     suites = {
         "robojudge.html": ("robojudge", "robojudge_seed21_native_v2"),
         "physics_iq_baseline.html": ("physics_iq", "physics_iq_gpt_native_v2", "physics_iq_seed21_native_v2"),
+        "physics_iq_512w24fps.html": ("physics_iq_512w24fps_gpt_native",),
         "vbench2_subset.html": ("vbench2_subset_full",),
         "phygenbench.html": ("phygenbench_full",),
         "openve.html": ("openve_smoke",),
@@ -808,6 +810,10 @@ def write_index_page(destination: Path, run_root: Path) -> None:
         '<p class="desc">198 official BPP/I2V prompts x Text/Vision</p>'
         '<p class="note">Native v2 GPT rerun is separate from legacy-v1 reference results.</p>'
         '<a class="button primary" href="physics_iq_baseline.html">打开页面 →</a></article>'
+        '<article class="card feature"><span class="badge">running</span><h3>Physics-IQ 512w24fps</h3>'
+        '<p class="desc">512×288 · 24 FPS · 120 frames · GPT-6.1-Sol / GPT-5.6-Sol × Text/Vision。</p>'
+        '<p class="note">分辨率/FPS敏感性分析 run，不替代主 Physics-IQ Verified 4FPS leaderboard。</p>'
+        '<a class="button primary" href="physics_iq_512w24fps.html">打开高质量 run →</a></article>'
         '<article class="card feature"><span class="badge">running</span><h3>PhyGenBench · T2V + I2V</h3>'
         '<p class="desc">160 条官方物理 prompt 的 T2V 正式评测，并补充同 prompt + Qwen-Image-2.1 预动作首帧的 I2V 扩展。</p>'
         '<p class="note">Qwen 仅用于 I2V 初始帧；所有视频帧仍由 coding agent 直接输出 RGB 像素。</p>'
@@ -998,6 +1004,36 @@ def write_openve_page(run_root: Path, destination: Path) -> None:
     destination.write_text(page('OpenVE-Bench · PixelWorld',body))
 
 
+def write_physics_highres_page(run_root: Path, destination: Path) -> None:
+    status = read_json(run_root / "generations/physics_iq_512w24fps_gpt_native/status.json")
+    config = read_json(run_root / "physics_iq_512w24fps_gpt_native_full.json")
+    manifest = read_json(run_root / "inputs/physics_iq_512w24fps_manifest.json")
+    body = (
+        '<section class=hero><p class=eyebrow>PHYSICS-IQ · 512W24FPS ANALYSIS</p>'
+        '<h1>Physics-IQ 512w24fps</h1>'
+        '<p class=muted>高分辨率 / 标准视频帧率分析 run：512×288，24 FPS，120 帧，5 秒。'
+        '模型为 GPT-6.1-Sol 与 GPT-5.6-Sol，Text/Vision 两个 Track。</p></section>'
+        '<div class="card feature"><span class=badge>analysis run · full 198</span>'
+        + status_facts(status) +
+        '<p>Scope：198 cases × 2 models × 2 tracks = 792 videos。'
+        '这是分辨率/FPS敏感性分析，不替代主 Physics-IQ Verified 4FPS leaderboard。</p>'
+        '<p class=note>输出契约：512×288 · 24 FPS · 120 frames。Frame 00 必须严格等于 512×288 的 prepared first_frame.png。</p>'
+        '<p><a class="button" href="https://github.com/SiyuanMaCS/PixelWorld/blob/main/docs/HIGH_RES_FPS_ABLATION.md">GitHub 协议说明 ↗</a> '
+        '<a class="button" href="https://github.com/SiyuanMaCS/PixelWorld/blob/main/configs/physics-iq-512w24fps.example.json">配置模板 ↗</a></p></div>'
+        '<h2>Model × Track Progress</h2>'
+        + model_track_matrix(run_root, "physics_iq_512w24fps_gpt_native", status, "physics_iq_512w24fps_gpt_native")
+        + '<h2>配置</h2><div class=scroll><table>'
+        + f'<tr><th>Protocol</th><td>{html.escape(str(config.get("protocol", "—")))}</td></tr>'
+        + f'<tr><th>Inputs</th><td>{html.escape(str(config.get("inputs_root", "—")))}</td></tr>'
+        + f'<tr><th>Runs</th><td>{html.escape(str(config.get("runs_root", "—")))}</td></tr>'
+        + f'<tr><th>Prepared cases</th><td>{len(manifest.get("cases", [])) or status.get("cases", "—")}</td></tr>'
+        + f'<tr><th>Output token budget</th><td>{html.escape(str(config.get("output_token_budget", "—")))}</td></tr>'
+        + f'<tr><th>Max total attempts</th><td>{html.escape(str(config.get("max_total_attempts", "—")))}</td></tr>'
+        + '</table></div>'
+    )
+    destination.write_text(page('Physics-IQ 512w24fps · PixelWorld', body))
+
+
 def write_pcve_page(run_root: Path, destination: Path) -> None:
     status=read_json(run_root/'generations/pcve_smoke/status.json')
     full = status.get('cases') == 129
@@ -1128,6 +1164,7 @@ def sync_once(run_root: Path, heavy_web: Path, stable_repo: Path, core_only: boo
     write_index_page(pixelworld / "index.html", run_root)
     write_index_page(pixelworld / "pixelworld-index.html", run_root)
     rewrite_monitor_html(heavy_web / "physics_iq_baseline.html", pixelworld / "physics_iq_baseline.html")
+    write_physics_highres_page(run_root, pixelworld / "physics_iq_512w24fps.html")
     rewrite_monitor_html(heavy_web / "robojudge.html", pixelworld / "robojudge.html")
     write_legacy_page(pixelworld / "matrix_full.html")
     if not (run_root/'generations/vbench2_subset_full/STOP').exists() or not (pixelworld/'vbench2_subset.html').is_file():
