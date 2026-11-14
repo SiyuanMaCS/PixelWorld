@@ -27,7 +27,7 @@ def publish(config_path,model,track,case,attempt,checkout):
         identity=config.runs_root.name+'/'+model+'/'+track;relative=identity+'/'+run.name+'.json'
         destination=checkout/'pixelworld';batch=[];size=0
         def push(paths):
-            subprocess.run(['git','add','--',*paths],cwd=checkout,check=True)
+            subprocess.run(['git','add','--sparse','--',*paths],cwd=checkout,check=True)
             if subprocess.run(['git','diff','--cached','--quiet'],cwd=checkout).returncode:
                 subprocess.run(['git','commit','-m','Publish native case assets'],cwd=checkout,check=True,stdout=subprocess.DEVNULL)
             for retry in range(3):

@@ -9,6 +9,8 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 import fcntl
+import gzip
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -75,25 +77,62 @@ def cutover(log_dir: Path, spool: Path, pid: int | None = None):
 
 def allowed(path):
     return (path.name == 'requests.jsonl' or
+            (path.name.startswith('requests_') and path.name.endswith('.jsonl')) or
             (path.name.startswith('resp_') and path.name.endswith(
                 ('.input.json', '.native.json', '.events.json', '.response.json', '.error.txt'))))
 
 
-def copy_record(path, archive):
+def copy_record(path, archive, compress=False):
     st = path.stat()
     day = datetime.fromtimestamp(st.st_mtime, timezone.utc).strftime('%Y-%m-%d')
     shard = path.name[5:7] if path.name.startswith('resp_') else 'summary'
-    destination = archive / day / shard / path.name
+    destination = archive / day / shard / (path.name + ('.gz' if compress else ''))
     destination.parent.mkdir(parents=True, exist_ok=True)
     tmp = destination.with_name(destination.name + '.tmp')
-    shutil.copyfile(path, tmp)
+    tmp.touch(mode=0o600, exist_ok=True)
+    tmp.chmod(0o600)
+    digest = hashlib.sha256()
+    with path.open('rb') as source:
+        output = gzip.open(tmp, 'wb', compresslevel=3) if compress else tmp.open('wb')
+        with output:
+            for block in iter(lambda: source.read(1024*1024), b''):
+                digest.update(block)
+                output.write(block)
+    verified = hashlib.sha256()
+    reader = gzip.open(tmp, 'rb') if compress else tmp.open('rb')
+    with reader:
+        for block in iter(lambda: reader.read(1024*1024), b''):
+            verified.update(block)
+    if verified.digest() != digest.digest():
+        raise OSError('BN archive readback checksum mismatch')
     tmp.chmod(0o600)
     tmp.replace(destination)
-    return {'stamp': [st.st_mtime_ns, st.st_size],
-            'archive': str(destination.relative_to(archive))}
+    result = {'stamp': [st.st_mtime_ns, st.st_size],
+              'archive': str(destination.relative_to(archive)),
+              'sha256': digest.hexdigest(), 'readback_verified': True}
+    atomic_json(destination.with_name(destination.name+'.receipt.json'), result)
+    return result
 
 
-def watch(spool, archive, interval=30, workers=4):
+def prune_record(path, receipt, min_age=30):
+    if path.name == 'requests.jsonl' or not receipt.get('readback_verified'):
+        return False
+    if path.name.startswith('resp_'):
+        request = path.name.split('.', 1)[0]
+        if (path.parent/(request+'.active.json')).exists():
+            return False
+    try:
+        st = path.stat()
+        if ([st.st_mtime_ns, st.st_size] != receipt['stamp']
+                or time.time()-st.st_mtime < min_age):
+            return False
+        path.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+
+
+def watch(spool, archive, interval=30, workers=4, prune=False, max_bytes=0):
     lock = (spool / '.archive.lock').open('a')
     try:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -116,18 +155,36 @@ def watch(spool, archive, interval=30, workers=4):
             for path in spool.iterdir():
                 if not allowed(path) or path.name in pending:
                     continue
-                st = path.stat()
+                try:
+                    st = path.stat()
+                except FileNotFoundError:
+                    continue
                 if path.name != 'requests.jsonl' and time.time() - st.st_mtime < 3:
                     continue
                 if receipts.get(path.name, {}).get('stamp') != [st.st_mtime_ns, st.st_size]:
                     changed.append(path)
             for path in changed[:max(0, workers * 16 - len(pending))]:
-                pending[path.name] = pool.submit(copy_record, path, archive)
+                pending[path.name] = pool.submit(copy_record, path, archive, prune)
             atomic_json(receipt_path, receipts)
+            pruned = 0
+            if prune:
+                for name, receipt in list(receipts.items()):
+                    if name not in pending and prune_record(spool/name, receipt):
+                        pruned += 1
+                    if not (spool/name).exists():
+                        receipts.pop(name, None)
+            local_bytes = 0
+            for p in spool.iterdir():
+                try:
+                    if p.is_file():local_bytes += p.stat().st_size
+                except FileNotFoundError:
+                    continue
             atomic_json(spool / 'archive_status.json', {
                 'pid': os.getpid(), 'updated_unix': time.time(),
                 'archived_files': len(receipts), 'pending_files': len(changed),
                 'active_copies': len(pending), 'errors': errors,
+                'pruned_files_this_cycle': pruned, 'local_bytes': local_bytes,
+                'max_bytes': max_bytes, 'over_capacity': bool(max_bytes and local_bytes > max_bytes),
                 'inference_waits_for_archive': False,
             })
             time.sleep(interval)
@@ -141,11 +198,14 @@ def main():
     p.add_argument('--archive', type=Path)
     p.add_argument('--proxy-pid', type=int)
     p.add_argument('--interval', type=float, default=30)
+    p.add_argument('--prune-verified', action='store_true')
+    p.add_argument('--max-bytes', type=int, default=0)
     args = p.parse_args()
     if args.action == 'cutover':
         print(json.dumps(cutover(args.log_dir, args.spool, args.proxy_pid)))
     else:
-        watch(args.spool, args.archive, args.interval)
+        watch(args.spool, args.archive, args.interval,
+              prune=args.prune_verified, max_bytes=args.max_bytes)
 
 
 if __name__ == '__main__':

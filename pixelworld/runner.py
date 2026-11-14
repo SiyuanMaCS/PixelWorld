@@ -147,6 +147,8 @@ def _provider_infra_failure(events: Path) -> str | None:
         return "provider_queue_exceeded"
     if "Connection failed: error sending request" in text:
         return "provider_connection_failed"
+    if "No space left on device" in text or "storage_backpressure:" in text:
+        return "storage_infrastructure_failure"
     return None
 
 

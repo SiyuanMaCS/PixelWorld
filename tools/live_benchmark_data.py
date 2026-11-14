@@ -465,7 +465,7 @@ def main():
                 evaluation_future=evaluation_pool.submit(collect_evaluation,args.run_root.resolve())
             save_head_pointer(destination, published_revision)
             save(cache_path, cache)
-            subprocess.run(['git', 'add', '--', 'pixelworld', ':(exclude)pixelworld/**/*.tmp'], cwd=root, check=True)
+            subprocess.run(['git', 'add', '--sparse', '--', 'pixelworld', ':(exclude)pixelworld/**/*.tmp'], cwd=root, check=True)
             if subprocess.run(['git', 'diff', '--cached', '--quiet'], cwd=root).returncode:
                 subprocess.run(['git', 'commit', '-m', 'Refresh live PixelWorld progress and saved candidates'], cwd=root, check=True,
                                stdout=subprocess.DEVNULL)

@@ -49,16 +49,20 @@ def run(spec_path):
                 states[name] = {'phase':'waiting_dependency'}
                 continue
             if not alive_service(service):
-                environment = os.environ.copy()
-                environment.update(service.get('environment', {}))
-                for key, path in service.get('environment_files', {}).items():
-                    environment[key] = Path(path).read_text().strip()
-                log = Path(service['log']); log.parent.mkdir(parents=True, exist_ok=True)
-                with log.open('ab') as stream:
-                    process = subprocess.Popen(service['command'], cwd=service['cwd'], env=environment,
-                        stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.STDOUT, start_new_session=True)
-                Path(service['pid_file']).write_text(str(process.pid)+'\n')
-                states[name] = {'phase':'starting','pid':process.pid,'started_at':time.time()}
+                try:
+                    environment = os.environ.copy()
+                    environment.update(service.get('environment', {}))
+                    for key, path in service.get('environment_files', {}).items():
+                        environment[key] = Path(path).read_text().strip()
+                    log = Path(service['log']); log.parent.mkdir(parents=True, exist_ok=True)
+                    with log.open('ab') as stream:
+                        process = subprocess.Popen(service['command'], cwd=service['cwd'], env=environment,
+                            stdin=subprocess.DEVNULL, stdout=stream, stderr=subprocess.STDOUT, start_new_session=True)
+                    pid_file=Path(service['pid_file']);pid_file.parent.mkdir(parents=True,exist_ok=True)
+                    pid_file.write_text(str(process.pid)+'\n')
+                    states[name] = {'phase':'starting','pid':process.pid,'started_at':time.time()}
+                except (OSError,ValueError) as exc:
+                    states[name] = {'phase':'stale','error':f'{type(exc).__name__}: {exc}'}
             else:
                 states[name] = {'phase':'active','pid':int(Path(service['pid_file']).read_text().strip())}
         payload = {'pid':os.getpid(),'updated_at':time.time(),'services':states,

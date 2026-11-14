@@ -17,7 +17,8 @@ def infrastructure_failure(manifest: dict) -> bool:
     if manifest.get('stop_reason') == 'output_token_budget_exhausted':
         return False
     return bool((manifest.get('validation') or {}).get('infra_error')
-                or manifest.get('stop_reason') in ('provider_queue_exceeded','provider_connection_failed'))
+                or manifest.get('stop_reason') in ('provider_queue_exceeded','provider_connection_failed',
+                                                 'storage_infrastructure_failure'))
 
 
 def ledger_path(config: Benchmark) -> Path:
